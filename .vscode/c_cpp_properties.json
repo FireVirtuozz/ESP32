@@ -1,0 +1,19 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/opt/esp-idf/components/**",
+                "/opt/esp-idf/components/freertos/FreeRTOS-Kernel/**",
+                "/opt/esp-idf/components/esp_wifi/**"
+            ],
+            "defines": [],
+            "compilerPath": "/usr/bin/xtensa-esp32-elf-gcc",
+            "cStandard": "c17",
+            "cppStandard": "gnu++17",
+            "intelliSenseMode": "linux-gcc-x64"
+        }
+    ],
+    "version": 4
+}

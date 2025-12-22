@@ -1,0 +1,420 @@
+#include <stdio.h>
+#include <inttypes.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "driver/gpio.h"
+#include "driver/i2c_master.h"
+#include "esp_system.h"
+#include "esp_chip_info.h"
+#include "esp_flash.h"
+#include "esp_partition.h"
+#include "esp_log.h"
+#include "driver/uart.h"
+#include "wsLib.h"
+#include "wifiLib.h"
+
+// LED intégrée
+#define LED_PIN 2
+
+// I2C pins
+#define I2C_MASTER_SDA_IO 22
+#define I2C_MASTER_SCL_IO 21
+
+// SSD1306 address
+#define OLED_ADDR_DEFAULT 0x3C
+
+uint8_t screen[128*8];
+
+// Police 5x8 pour A-Z (chaque caractère = 5 colonnes)
+const uint8_t font5x8[64][5] = {
+    {0x7C,0x12,0x11,0x12,0x7C}, // A
+    {0x7F,0x49,0x49,0x49,0x36}, // B
+    {0x3E,0x41,0x41,0x41,0x22}, // C
+    {0x7F,0x41,0x41,0x22,0x1C}, // D
+    {0x7F,0x49,0x49,0x49,0x41}, // E
+    {0x7F,0x09,0x09,0x09,0x01}, // F
+    {0x3E,0x41,0x49,0x49,0x7A}, // G
+    {0x7F,0x08,0x08,0x08,0x7F}, // H
+    {0x00,0x41,0x7F,0x41,0x00}, // I
+    {0x20,0x40,0x41,0x3F,0x01}, // J
+    {0x7F,0x08,0x14,0x22,0x41}, // K
+    {0x7F,0x40,0x40,0x40,0x40}, // L
+    {0x7F,0x02,0x0C,0x02,0x7F}, // M
+    {0x7F,0x04,0x08,0x10,0x7F}, // N
+    {0x3E,0x41,0x41,0x41,0x3E}, // O
+    {0x7F,0x09,0x09,0x09,0x06}, // P
+    {0x3E,0x41,0x51,0x21,0x5E}, // Q
+    {0x7F,0x09,0x19,0x29,0x46}, // R
+    {0x46,0x49,0x49,0x49,0x31}, // S
+    {0x01,0x01,0x7F,0x01,0x01}, // T
+    {0x3F,0x40,0x40,0x40,0x3F}, // U
+    {0x1F,0x20,0x40,0x20,0x1F}, // V
+    {0x3F,0x40,0x38,0x40,0x3F}, // W
+    {0x63,0x14,0x08,0x14,0x63}, // X
+    {0x07,0x08,0x70,0x08,0x07}, // Y
+    {0x61,0x51,0x49,0x45,0x43},  // Z
+
+    // a-z (26-51)
+    {0x20,0x54,0x54,0x54,0x78}, // a
+    {0x7F,0x48,0x44,0x44,0x38}, // b
+    {0x38,0x44,0x44,0x44,0x20}, // c
+    {0x38,0x44,0x44,0x48,0x7F}, // d
+    {0x38,0x54,0x54,0x54,0x18}, // e
+    {0x08,0x7E,0x09,0x01,0x02}, // f
+    {0x0C,0x52,0x52,0x52,0x3E}, // g
+    {0x7F,0x08,0x04,0x04,0x78}, // h
+    {0x00,0x44,0x7D,0x40,0x00}, // i
+    {0x20,0x40,0x44,0x3D,0x00}, // j
+    {0x7F,0x10,0x28,0x44,0x00}, // k
+    {0x00,0x41,0x7F,0x40,0x00}, // l
+    {0x7C,0x04,0x18,0x04,0x78}, // m
+    {0x7C,0x08,0x04,0x04,0x78}, // n
+    {0x38,0x44,0x44,0x44,0x38}, // o
+    {0x7C,0x14,0x14,0x14,0x08}, // p
+    {0x08,0x14,0x14,0x18,0x7C}, // q
+    {0x7C,0x08,0x04,0x04,0x08}, // r
+    {0x48,0x54,0x54,0x54,0x20}, // s
+    {0x04,0x3F,0x44,0x40,0x20}, // t
+    {0x3C,0x40,0x40,0x20,0x7C}, // u
+    {0x1C,0x20,0x40,0x20,0x1C}, // v
+    {0x3C,0x40,0x30,0x40,0x3C}, // w
+    {0x44,0x28,0x10,0x28,0x44}, // x
+    {0x0C,0x50,0x50,0x50,0x3C}, // y
+    {0x44,0x64,0x54,0x4C,0x44}, // z
+
+    // 0-9 (52-61)
+    {0x3E,0x51,0x49,0x45,0x3E}, // 0
+    {0x00,0x42,0x7F,0x40,0x00}, // 1
+    {0x42,0x61,0x51,0x49,0x46}, // 2
+    {0x21,0x41,0x45,0x4B,0x31}, // 3
+    {0x18,0x14,0x12,0x7F,0x10}, // 4
+    {0x27,0x45,0x45,0x45,0x39}, // 5
+    {0x3C,0x4A,0x49,0x49,0x30}, // 6
+    {0x01,0x71,0x09,0x05,0x03}, // 7
+    {0x36,0x49,0x49,0x49,0x36}, // 8
+    {0x06,0x49,0x49,0x29,0x1E},  // 9
+
+    // 62 : .
+    {0x00, 0x60, 0x60, 0x00, 0x00},
+
+    // 63 : :
+    {0x00, 0x36, 0x36, 0x00, 0x00}
+};
+
+void ssd1306_draw_char(uint8_t *buffer, char c, int x, int page) {
+    int index = -1;
+
+    if (c >= 'A' && c <= 'Z') {
+        index = c - 'A';             // 0-25
+    } else if (c >= 'a' && c <= 'z') {
+        index = 26 + (c - 'a');      // 26-51
+    } else if (c >= '0' && c <= '9') {
+        index = 52 + (c - '0');      // 52-61
+    } else if (c == '.') index = 62;
+    else if (c == ':') index = 63;
+
+    if (index == -1) return; // caractère non supporté
+
+    for (int i = 0; i < 5; i++) {
+        buffer[page * 128 + x + i] = font5x8[index][i];
+    }
+}
+
+void ssd1306_draw_string(uint8_t *buffer, const char *str, int x, int page) {
+    while (*str) {
+        char c = *str++;
+        if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
+        || (c >= '0' && c <= '9') || c == '.' || c == ':') {
+            ssd1306_draw_char(buffer, c, x, page);
+        }
+        x += 6; // 5 pixels de largeur + 1 pixel d'espacement
+        if (x > 127) break;
+    }
+}
+
+
+/*
+================================================================
+INIT I2C BUS : master (esp32) and device (ssd1306)
+================================================================
+*/
+
+//intern pointer : active master i2c bus
+i2c_master_bus_handle_t bus_handle;
+
+//describe i2c bus
+i2c_master_bus_config_t i2c_mst_config = {
+    .clk_source = I2C_CLK_SRC_DEFAULT,  //clock source for i2c bus (default)
+    .i2c_port = I2C_NUM_0, //i2c number of esp32
+    .scl_io_num = I2C_MASTER_SCL_IO, // pin for scl (clock), 21 here
+    .sda_io_num = I2C_MASTER_SDA_IO, // pin for sda (data), 22 here
+    .glitch_ignore_cnt = 7, //ignore short impulsions (for noise)
+    .flags.enable_internal_pullup = true,
+};
+
+//pointer towards i2c device
+i2c_master_dev_handle_t dev_handle;
+
+//describe an i2c device
+i2c_device_config_t dev_cfg = {
+    .dev_addr_length = I2C_ADDR_BIT_LEN_7, //length of i2c address
+    .device_address = OLED_ADDR_DEFAULT, //address of device
+    .scl_speed_hz = 800000, //i2c bus frequency
+};
+
+/*
+================================================================
+TRANSMIT DATA : master -> device
+================================================================
+*/
+
+// transmit one buffer data : sending 5 commands in a row
+// 0x00 : SSD1306 control byte, command type
+// 0xAE, 0xA6, 0x20, 0xAF = SSD1306 commands
+//uint8_t data_wr[5] = {0x00, 0xAE, 0xA6, 0x20, 0xAF};
+//ESP_ERROR_CHECK(i2c_master_transmit(dev_handle, data_wr, 5, -1));
+
+/**
+ * @brief Send commands to SSD1306 over I2C
+ * 
+ * @param handle        I2C device handle
+ * @param cmd           Pointer to command buffer
+ * @param cmd_size      Number of command bytes
+ * @return esp_err_t    ESP_OK if successful, error code otherwise
+ */
+esp_err_t ssd1306_send_cmd(i2c_master_dev_handle_t handle,
+                        uint8_t *cmd, size_t cmd_size)
+{
+    if (!cmd || cmd_size == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    uint8_t control_byte = 0x00; // 0x00 = commands
+    i2c_master_transmit_multi_buffer_info_t multi_buffer[2] = {
+        {.write_buffer = &control_byte, .buffer_size = 1},
+        {.write_buffer = cmd,           .buffer_size = cmd_size}
+    };
+
+    return i2c_master_multi_buffer_transmit(handle, multi_buffer, 2, -1);
+}
+
+/**
+ * @brief Send data/pixels to SSD1306 over I2C
+ * 
+ * @param handle        I2C device handle
+ * @param data          Pointer to data buffer
+ * @param data_size     Number of bytes
+ * @return esp_err_t    ESP_OK if successful, error code otherwise
+ */
+esp_err_t ssd1306_send_data(i2c_master_dev_handle_t handle,
+                            uint8_t *data, size_t data_size)
+{
+    if (!data || data_size == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    uint8_t control_byte = 0x40; // 0x40 = data
+    i2c_master_transmit_multi_buffer_info_t multi_buffer[2] = {
+        {.write_buffer = &control_byte, .buffer_size = 1},
+        {.write_buffer = data,         .buffer_size = data_size}
+    };
+
+    return i2c_master_multi_buffer_transmit(handle, multi_buffer, 2, -1);
+}
+
+/*
+================================================================
+CORE FUNCTIONS
+================================================================
+*/
+
+void ssd1306_setup(void)
+{
+    uint8_t init_cmds[] = {
+        0xAE,       // Display OFF
+        0x20, 0x00, // Horizontal addressing mode
+        0xB0,       // Page start address 0
+        0xC8,       // COM output scan direction remapped
+        0x00,       // Lower column address
+        0x10,       // Higher column address
+        0x40,       // Display start line
+        0x81, 0x7F, // Contrast
+        0xA1,       // Segment remap
+        0xA6,       // Normal display
+        0xA8, 0x3F, // Multiplex ratio
+        0xD3, 0x00, // Display offset
+        0xD5, 0x80, // Display clock divide / freq
+        0xD9, 0xF1, // Pre-charge period
+        0xDA, 0x12, // COM pins config
+        0xDB, 0x40, // VCOMH deselect level
+        0x8D, 0x14, // Charge pump
+        0xAF        // Display ON
+    };
+
+    ESP_ERROR_CHECK(ssd1306_send_cmd(dev_handle, init_cmds, sizeof(init_cmds)));
+}
+
+// --------- I2C Init et Scan ---------
+void i2c_init(void)
+{
+    //config of i2c registers, gpio, start
+    ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_mst_config, &bus_handle));
+
+    //check if the adress is known
+    ESP_ERROR_CHECK(i2c_master_probe(bus_handle, OLED_ADDR_DEFAULT, -1));
+
+    //add the address of the device on the master bus
+    ESP_ERROR_CHECK(i2c_master_bus_add_device(bus_handle, &dev_cfg, &dev_handle));
+}
+
+/*
+================================================================
+BLINK
+================================================================
+*/
+
+// --------- LED Blink Task ---------
+void blink_task(void *pvParameter)
+{
+    gpio_reset_pin(LED_PIN);
+    gpio_set_direction(LED_PIN, GPIO_MODE_OUTPUT);
+
+    while (1) {
+        gpio_set_level(LED_PIN, 1);
+        vTaskDelay(pdMS_TO_TICKS(500));
+        gpio_set_level(LED_PIN, 0);
+        vTaskDelay(pdMS_TO_TICKS(500));
+    }
+}
+
+void oled_blink_task(void *pvParameter)
+{
+    uint8_t buffer_on[128*8];
+    uint8_t buffer_off[128*8];
+    memset(buffer_on, 0xFF, sizeof(buffer_on));   // pixels allumés
+    memset(buffer_off, 0x00, sizeof(buffer_off)); // pixels éteints
+
+    while (1) {
+        // Allume tout l'écran
+        ssd1306_send_data(dev_handle, buffer_on, sizeof(buffer_on));
+        vTaskDelay(pdMS_TO_TICKS(500)); // 500 ms ON
+
+        // Éteint tout l'écran
+        ssd1306_send_data(dev_handle, buffer_off, sizeof(buffer_off));  
+        vTaskDelay(pdMS_TO_TICKS(500)); // 500 ms OFF
+    }
+}
+
+void uart_task(void *pvParameter) {
+    uint8_t data[1024];
+    gpio_reset_pin(LED_PIN);
+    gpio_set_direction(LED_PIN, GPIO_MODE_OUTPUT);
+
+    // Config UART0 par défaut (USB)
+    uart_config_t uart_config = {
+        .baud_rate = 115200,
+        .data_bits = UART_DATA_8_BITS,
+        .parity    = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE
+    };
+    uart_param_config(UART_NUM_0, &uart_config);
+    uart_driver_install(UART_NUM_0, 1024*2, 0, 0, NULL, 0);
+
+    while (1) {
+        int len = uart_read_bytes(UART_NUM_0, data, 1024-1, pdMS_TO_TICKS(100));
+        if (len > 0) {
+            data[len] = 0; // null-terminate
+            printf("Reçu: %s\n", data);
+            
+            float timer = 4.0f;       // commence à 0
+            float max_time = 40.0f;   // fin du timer
+            char info[32];
+
+            // Si on détecte "bombe_plantée"
+            if (strstr((char*)data, "bombe_plantee")) {
+                printf("💣 Bombe plantée détectée !\n");
+                gpio_set_level(LED_PIN, 1); // allume LED
+                while (timer <= max_time) {  
+                    //not real time : use timer abstime
+                    snprintf(info, sizeof(info), "Bomb : %.1f", timer);
+                    ssd1306_draw_string(screen, info, 0, 4); // page 1
+                    ssd1306_send_data(dev_handle, screen, sizeof(screen)); // tout l'écran
+                    vTaskDelay(pdMS_TO_TICKS(100));
+                    timer += 0.1f;
+                }
+                gpio_set_level(LED_PIN, 0);
+            } else {
+                gpio_set_level(LED_PIN, 0); // éteint LED
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+}
+
+
+
+/*
+================================================================
+MAIN
+================================================================
+*/
+
+void app_main(void)
+{
+    printf("=== ESP32 Info & Blink Demo ===\n");
+
+    esp_chip_info_t chip_info;
+    esp_chip_info(&chip_info);
+    printf("Chip: %d CPU cores, WiFi%s%s, Revision %d\n",
+        chip_info.cores,
+        (chip_info.features & CHIP_FEATURE_WIFI_BGN) ? "/WiFi" : "",
+        (chip_info.features & CHIP_FEATURE_BLE) ? "/BLE" : "",
+        chip_info.revision);
+
+    uint32_t flash_size = 0;
+    esp_flash_get_size(NULL, &flash_size);
+    printf("Flash size: %" PRIu32 " bytes\n", flash_size);
+    printf("Free heap: %" PRIu32 " bytes\n", esp_get_free_heap_size());
+    printf("ESP-IDF version: %s\n", esp_get_idf_version());
+
+    i2c_init();
+    ssd1306_setup();
+
+    //xTaskCreate(blink_task, "blink_task", 2048, NULL, 5, NULL);
+
+    memset(screen, 0x00, sizeof(screen)); // Clear buffer
+
+    ssd1306_draw_string(screen, "HELLO WORLD", 0, 0); // Page 0
+    for (int page = 0; page < 8; page++) {
+        uint8_t page_cmd[] = {0xB0 | page, 0x00, 0x10}; // page + colonnes start
+        ESP_ERROR_CHECK(ssd1306_send_cmd(dev_handle, page_cmd, sizeof(page_cmd)));
+        ESP_ERROR_CHECK(ssd1306_send_data(dev_handle, &screen[page*128], 128));
+    }
+
+    char info[32];
+    snprintf(info, sizeof(info), "CPU cores: %d", chip_info.cores);
+    ssd1306_draw_string(screen, info, 0, 1); // page 1
+    ssd1306_send_data(dev_handle, screen, sizeof(screen)); // tout l'écran
+
+    snprintf(info, sizeof(info), "Devip gros CACA");
+    ssd1306_draw_string(screen, info, 0, 2); // page 2
+    ssd1306_send_data(dev_handle, screen, sizeof(screen)); // tout l'écran
+
+    //xTaskCreate(uart_task, "uart_task", 4096, NULL, 5, NULL);
+
+    //ESP_ERROR_CHECK(ssd1306_send_data(dev_handle, screen, sizeof(screen)));
+
+    //xTaskCreate(oled_blink_task, "oled_blink_task", 4096, NULL, 5, NULL);
+
+    wifi_init_sta();
+    ESP_LOGI("MAIN", "ESP32 IP: %s", wifi_get_ip());
+
+    ws_server_init();
+
+    while (1) {
+        printf("Running..\n");
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        ws_send_text("ping du serveur ESP32");
+    }
+}

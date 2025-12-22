@@ -1,27 +1,38 @@
-# intro
+# Useful
 
-commande docker
+Docker
+```bash
 docker build -t esp32-idf .
 docker run -it --rm --network host --device=/dev/ttyUSB0 -v $(pwd):/workspace esp32-idf
+```
 
-commande setup usb
+Setup usb windows -> linux docker
+```bash
 ls /dev/ttyUSB*
 usbipd list
 usbipd bind --busid 2-3
 usbipd attach --wsl --busid 2-3
+```
 
-commande lancement wsl
+Launch container (windows powershell)
+```bash
 usbipd attach --wsl --busid 2-3
+cd D:\ESP32
+wsl
+docker run -it --rm --network host --device=/dev/ttyUSB0 -v $(pwd):/workspace esp32-idf
+```
 
-lancer environnement esp-idf
+Launch esp-idf environment
+```bash
 . $IDF_PATH/export.sh
+```
 
 # esp32 
 
-## Commandes
+## Commands
 
 ```bash
-idf.py create-project mon_projet
+idf.py create-project my_project
 idf.py set-target esp32
 idf.py menuconfig
 idf.py build
@@ -29,17 +40,20 @@ idf.py flash
 idf.py monitor
 ```
 
-## Serial flashing config
-
-Disable download stub 
-flasher utilise le petit programme temporaire qui rend le téléchargement du firmware plus fiable et rapide.
-
-Flash SPI mode 
-mode de communication SPI entre l’ESP32 et sa mémoire flash
-DIO / DOUT / QIO / QOUT / OPI indiquent combien de lignes de données sont utilisées pour lire/écrire dans la flash
-
-etc..
-
 ## oled ssd1306 screen display
 
 https://cdn-shop.adafruit.com/datasheets/SSD1306.pdf
+
+Works with I²C; See for server/components/screenLib for use.
+
+# Git
+
+```bash
+git init
+git remote add origin https://github.com/FireVirtuozz/ESP32.git
+git branch -M main
+git add .
+git status
+git commit -m "new"
+git push -u origin mai
+```

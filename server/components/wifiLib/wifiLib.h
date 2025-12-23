@@ -10,10 +10,10 @@
 #include <string.h>
 #include <esp_wifi.h>
 
-// Initialise le WiFi en mode station et attend connexion
+//Initialize wifi station, waiting to get IP from router
 void wifi_init_sta(void);
 
-// Récupère l'IP actuelle de l'ESP32
+//Get the IP address of ESP
 const char* wifi_get_ip(void);
 
 #endif

@@ -46,6 +46,27 @@ https://cdn-shop.adafruit.com/datasheets/SSD1306.pdf
 
 Works with I²C; See for server/components/screenLib for use.
 
+## ESP-IDF Components
+
+### NVS
+
+For storage of data within ESP; Used for wifi.
+
+https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/storage/nvs_flash.html
+
+Do not forget to erase flash if data not used anymore.
+
+```bash
+idf.py erase-flash
+```
+### I²C
+
+For I²C bus communication; Used for screen display ssd1306.
+
+### Semaphore
+
+https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/freertos_idf.html#semaphore-api
+
 # Git
 
 ```bash
@@ -55,5 +76,6 @@ git branch -M main
 git add .
 git status
 git commit -m "new"
-git push -u origin mai
+git push -u origin main
+git add -A
 ```

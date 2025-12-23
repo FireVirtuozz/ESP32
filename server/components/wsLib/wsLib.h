@@ -5,10 +5,10 @@
 #include <esp_err.h>
 #include "ledLib.h"
 
-// Initialise le serveur WebSocket
+// Initialize websocket server
 void ws_server_init(void);
 
-// Envoie un message texte à tous les clients (simplifié pour 1 client)
+// Send a message to all clients
 esp_err_t ws_send_text(const char *msg);
 
 #endif

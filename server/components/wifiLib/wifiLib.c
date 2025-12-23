@@ -7,7 +7,7 @@
  * - Event group handler for WiFi events
  * 
  * - WiFi station initialization:
- *   - Initialize NVS : store persistent data (flash not ram)
+ *   - Initialize NVS : store persistent data (flash not ram) --> done in nvs_init
  *   - Initialize netif (network interface) (TCP/IP stack..) and event loop (messages bus)
  *   - Configure and initialize WiFi driver (hardware of ESP32, handle frames..)
  *   - Register WiFi and IP event handlers (system call for handlers)
@@ -70,7 +70,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
 
 /**
  * Initialize ESP WiFi in station mode
- * -Initialize NVS to store WIFI data
+ * -Initialize NVS to store WIFI data --> done in nvs_init
  * -Initialize netif for TCP/IP and events
  * -Load default config, initialize driver
  * -register wifi event handlers
@@ -79,6 +79,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
  */
 void wifi_init_sta(void)
 {
+    /*
     //Initialize NVS (non volatile storage) to store data from wifi
     esp_err_t ret = nvs_flash_init();
     //if error : erase & init clean
@@ -86,6 +87,7 @@ void wifi_init_sta(void)
         nvs_flash_erase();
         nvs_flash_init();
     }
+        */
 
     //Initialize netif TCP/IP
     esp_netif_init();

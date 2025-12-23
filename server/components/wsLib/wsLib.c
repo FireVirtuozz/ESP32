@@ -30,7 +30,7 @@ static esp_err_t ws_handler(httpd_req_t *req)
 {
     //if get method, client connected and return ok
     if (req->method == HTTP_GET) { 
-        ESP_LOGI(TAG, "Client connecté");
+        ESP_LOGI(TAG, "Client connected");
         return ESP_OK;
     }
 
@@ -58,7 +58,7 @@ static esp_err_t ws_handler(httpd_req_t *req)
     ws_pkt.payload[ws_pkt.len] = '\0'; 
 
     //log for debug
-    ESP_LOGI(TAG, "Reçu: %s", (char *)ws_pkt.payload);
+    ESP_LOGI(TAG, "Received: %s", (char *)ws_pkt.payload);
 
     //compare messages to give instructions
     if (strcmp((char *)ws_pkt.payload, "LED_ON") == 0) {
@@ -107,9 +107,9 @@ void ws_server_init(void)
     if (httpd_start(&server, &config) == ESP_OK) {
         //register uri handler from before
         httpd_register_uri_handler(server, &ws_uri);
-        ESP_LOGI(TAG, "Serveur WS démarré");
+        ESP_LOGI(TAG, "WS server deployed");
     } else {
-        ESP_LOGE(TAG, "Erreur démarrage serveur WS");
+        ESP_LOGE(TAG, "Error on WS server startup");
     }
 }
 

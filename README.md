@@ -48,13 +48,19 @@ Works with I²C; See for server/components/screenLib for use.
 
 ## ESP-IDF Components
 
+### GPIO
+
+For gpio control; used in led
+
+https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/gpio.html
+
 ### NVS
 
-For storage of data within ESP; Used for wifi.
+For storage of data within ESP; Used for wifi, led, getting previous data...
 
 https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/storage/nvs_flash.html
 
-Do not forget to erase flash if data not used anymore.
+Do not forget to erase flash if data not used anymore or issues.
 
 ```bash
 idf.py erase-flash
@@ -65,7 +71,37 @@ For I²C bus communication; Used for screen display ssd1306.
 
 ### Semaphore
 
+Mutex used in NVS, Led, to avoid having R/W issues  
+
 https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/freertos_idf.html#semaphore-api
+
+### Wifi
+
+Wifi component;
+
+https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/network/esp_wifi.html
+
+with Netif for TCP/IP;
+
+https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/network/esp_netif.html
+
+with event group for wifi events;
+
+https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/freertos_idf.html#event-group-api
+
+with esp event for event loop;
+
+https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/esp_event.html
+
+### WS
+
+esp http server; using uri ws handlers;
+
+https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/protocols/esp_http_server.html
+
+### ESP log & err
+
+Useful logging;
 
 # Git
 

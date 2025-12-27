@@ -93,11 +93,25 @@ with esp event for event loop;
 
 https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/esp_event.html
 
+In APSTA mode : 
+
+menuconfig -> component config 
+
+DNS -> enable dns server setting with netif
+DNS -> Enable DNS fallback support 8.8.8.8
+
+Enable IP forwarding
+Enable NAT & NAT port mapping
+
 ### WS
 
 esp http server; using uri ws handlers;
 
 https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/protocols/esp_http_server.html
+
+menuconfig -> component config
+
+activate websocket support
 
 ### ESP log & err
 

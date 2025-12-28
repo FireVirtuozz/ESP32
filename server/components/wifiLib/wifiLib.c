@@ -720,76 +720,150 @@ static void print_config_ap(wifi_ap_config_t ap) {
     ESP_LOGI(TAG, "SSID           : %s" , ap.ssid);
     ESP_LOGI(TAG, "Password       : %s", ap.password);
     ESP_LOGI(TAG, "SSID length    : %d", ap.ssid_len);
+    //channel used by ESP to emit
     ESP_LOGI(TAG, "Channel        : %d", ap.channel);
     
+    //type of security authentication
     print_auth_mode(ap.authmode);
 
+    //if SSID visible in wifi scan from clients
     ESP_LOGI(TAG, "SSID hidden    : %s", ap.ssid_hidden ? "Yes" : "No");
+
+    //Maximum number of clients
     ESP_LOGI(TAG, "Max connections: %d", ap.max_connection);
+
+    //Interval between each beacon sent by ESP AP
     ESP_LOGI(TAG, "Beacon interval: %d TU", ap.beacon_interval);
+
+    //Channel switch announcement
+    //If ESP AP needs to change channel, this counter shows how many beacons needed before the switch
     ESP_LOGI(TAG, "CSA count      : %d", ap.csa_count);
+
+    //Delivery Traffic Indication Message
+    //How many beacons before a client in ps mode receive broadcast messages
     ESP_LOGI(TAG, "DTIM period    : %d", ap.dtim_period);
 
+    //Type of encryption used to secure communication with each client
     print_cipher_pair(ap.pairwise_cipher);
+
+    //Fine Timing Measurement (802.11mc)
+    //Useful to measure distance
     ESP_LOGI(TAG, "FTM responder  : %s", ap.ftm_responder ? "Enabled" : "Disabled");
     
+    //Protected Management Frames
     ESP_LOGI(TAG, "PMF config     : Required=%d, Capable=%d", 
         ap.pmf_cfg.required, ap.pmf_cfg.capable);
 
+    //SAE (WPA3) parameters
+    //H2E : Hash-to-Element; Secure WPA3 handshake
     print_sae_pwe(ap.sae_pwe_h2e);
+
+    //Unallow some transitions between APs or networks
     ESP_LOGI(TAG, "Transition disable: %d", ap.transition_disable);
+    //Simultaneous Authentication of Equals – Extended
+    //Protocol of authentication used by WPA3 to replace PSK; more robust WPA3 handshake
+    //PSK : Pre-shared key; Wifi SSID / Password
     ESP_LOGI(TAG, "SAE EXT        : %d", ap.sae_ext);
+    //If true, ESP STA will not make WPA3 connection compatible with WPA2
     ESP_LOGI(TAG, "WPA3 compatible mode: %d", ap.wpa3_compatible_mode);
 
+    //BSS idle timeout
+    //How much time for an inactive client associated before being disconnected
     print_bss(ap.bss_max_idle_cfg);
 
+    //Interval of renewal of GTK keys (Group temporal key)
+    //WPA2-3 security for broadcast comms
     ESP_LOGI(TAG, "GTK rekey interval: %d sec", ap.gtk_rekey_interval);
 }
 
-//function to print ESP's STA config
+//function to print ESP's STA config;
+//Config is used by ESP in STA mode to search APs that fits best
 static void print_config_sta(wifi_sta_config_t sta) {
     ESP_LOGI(TAG, "=== STA Configuration ===");
     ESP_LOGI(TAG, "SSID           : %s", sta.ssid);
     ESP_LOGI(TAG, "Password       : %s", sta.password);
     
     print_scan_method(sta.scan_method);
+
+    //if ESP wants to connect to specific MAC address
     ESP_LOGI(TAG, "BSSID set      : %s", sta.bssid_set ? "Yes" : "No");
     if (sta.bssid_set) {
         print_bssid(sta.bssid);
     }
+
+    //Channel index hint
     ESP_LOGI(TAG, "Channel hint   : %d", sta.channel);
+
+    //Interval in Beacon Periods for STA to listen AP beacons
     ESP_LOGI(TAG, "Listen interval: %d", sta.listen_interval);
+
+    //Sort APs by RSSI or Security
     print_sort_method(sta.sort_method);
+
+    //minimum signal to connect
     print_scan_threshold(sta.threshold);
 
+    //Protected Management Frames
     ESP_LOGI(TAG, "PMF config     : Required=%d, Capable=%d", 
         sta.pmf_cfg.required, sta.pmf_cfg.capable);
 
+    //Radio Measurement 802.11k to collect info on signal and APs
     ESP_LOGI(TAG, "Radio Measurement enabled: %s", sta.rm_enabled ? "Yes" : "No");
+
+    //BSS Transmition management 802.11v
+    //Allows to AP to indicate to ESP STA to change AP for better performance
     ESP_LOGI(TAG, "BTM enabled              : %s", sta.btm_enabled ? "Yes" : "No");
+
+    //Multi Band Operation / Opportunistic
+    //Allows STA to choose best Channel / Bandwidth auto
     ESP_LOGI(TAG, "MBO enabled              : %s", sta.mbo_enabled ? "Yes" : "No");
+
+    //Fast Transition (802.11r)
+    //Fast roaming between APs
     ESP_LOGI(TAG, "FT enabled               : %s", sta.ft_enabled ? "Yes" : "No");
+
+    //Opportunistic Wireless Encryption
+    //Open wifi but encryptionned
     ESP_LOGI(TAG, "OWE enabled              : %s", sta.owe_enabled ? "Yes" : "No");
+
+    //Unallow some transitions between APs or networks
     ESP_LOGI(TAG, "Transition disable       : %s", sta.transition_disable ? "Yes" : "No");
+
+    //If true, ESP STA will not make WPA3 connection compatible with WPA2
     ESP_LOGI(TAG, "Disable WPA3 compatible  : %s", sta.disable_wpa3_compatible_mode ? "Yes" : "No");
 
+    //SAE (WPA3) parameters
+    //H2E : Hash-to-Element; Secure WPA3 handshake
     print_sae_pwe(sta.sae_pwe_h2e);
+    //PK : Public Key; generation mode of keys
     print_sae_pk(sta.sae_pk_mode);
+
+    //Number of retry of STA connection before failure
     ESP_LOGI(TAG, "Failure retry count      : %d", sta.failure_retry_cnt);
 
+    //HE params (wifi 6, 802.11ax)
+    //DCM : Dual Carrier Modulation, enhance range
     ESP_LOGI(TAG, "HE DCM set               : %d", sta.he_dcm_set);
     ESP_LOGI(TAG, "HE DCM max constellation TX : %d", sta.he_dcm_max_constellation_tx);
     ESP_LOGI(TAG, "HE DCM max constellation RX : %d", sta.he_dcm_max_constellation_rx);
+    //MCS9 : modulation coding scheme, transmission speed
     ESP_LOGI(TAG, "HE MCS9 enabled           : %d", sta.he_mcs9_enabled);
+    //Beamforming : optimize signal direction
     ESP_LOGI(TAG, "HE SU beamformee disabled : %d", sta.he_su_beamformee_disabled);
+    //TRIG feedback : generates debug on quality
     ESP_LOGI(TAG, "HE TRIG SU feedback disabled : %d", sta.he_trig_su_bmforming_feedback_disabled);
     ESP_LOGI(TAG, "HE TRIG MU partial feedback disabled : %d", sta.he_trig_mu_bmforming_partial_feedback_disabled);
     ESP_LOGI(TAG, "HE TRIG CQI feedback disabled : %d", sta.he_trig_cqi_feedback_disabled);
 
+    //VHT parameters (Wi-Fi 5 / 802.11ac)
+    //SU : Single user signal direction optimization
     ESP_LOGI(TAG, "VHT SU beamformee disabled : %d", sta.vht_su_beamformee_disabled);
+    //MU : Multi user (MIMO) signal direction optimization
     ESP_LOGI(TAG, "VHT MU beamformee disabled : %d", sta.vht_mu_beamformee_disabled);
+    //MCS8 : modulation coding scheme, transmission speed
     ESP_LOGI(TAG, "VHT MCS8 enabled           : %d", sta.vht_mcs8_enabled);
 
+    //print H2E id used by WPA3 SAE (secure handshake between AP / STA)
     char buf[SAE_H2E_IDENTIFIER_LEN + 1];
     memcpy(buf, sta.sae_h2e_identifier, SAE_H2E_IDENTIFIER_LEN);
     buf[SAE_H2E_IDENTIFIER_LEN] = '\0';
@@ -837,6 +911,7 @@ static void print_sta_info(wifi_sta_list_t stas) {
             // 2.4 & 5 GHz, OFDMA, MIMO, up to 10Gbps, Wi-Fi 6 standard
             ESP_LOGI(TAG, "Supports 802.11ax");
         }
+        //wifi mesh with esp_mesh; if STA connected to parent node
         if (stas.sta[i].is_mesh_child) {
             ESP_LOGI(TAG, "Is mesh child");
         }
@@ -931,11 +1006,13 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
     }
 }
 
-/* Initialize soft AP config netif*/
+/* Initialize simpel soft AP config netif*/
 esp_netif_t *wifi_init_softap_netif(void)
 {
+    //create netif TCP/IP for AP mode
     esp_netif_t *esp_netif_ap = esp_netif_create_default_wifi_ap();
 
+    //config : ssid, length, password, max connection, authmode
     wifi_config_t wifi_ap_config = {
         .ap = {
             .ssid = ESP_SSID,
@@ -946,6 +1023,7 @@ esp_netif_t *wifi_init_softap_netif(void)
         },
     };
 
+    //apply config AP to ESP
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_ap_config));
 
     ESP_LOGI(TAG, "wifi_init_softap finished. SSID:%s password:%s",
@@ -957,8 +1035,10 @@ esp_netif_t *wifi_init_softap_netif(void)
 /* Initialize wifi station config netif*/
 esp_netif_t *wifi_init_sta_netif(void)
 {
+    //create netif TCP/IP for station mode
     esp_netif_t *esp_netif_sta = esp_netif_create_default_wifi_sta();
 
+    //config of ESP station
     wifi_config_t wifi_sta_config = {
         .sta = {
             .ssid = WIFI_SSID,
@@ -972,6 +1052,7 @@ esp_netif_t *wifi_init_sta_netif(void)
         },
     };
 
+    //Apply station config to ESP
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_sta_config) );
 
     ESP_LOGI(TAG, "wifi_init_sta finished.");
@@ -979,15 +1060,35 @@ esp_netif_t *wifi_init_sta_netif(void)
     return esp_netif_sta;
 }
 
-//to describe..
-void softap_set_dns_addr(esp_netif_t *esp_netif_ap,esp_netif_t *esp_netif_sta)
+//Set DNS address of ESP AP to transmit the one from ESP STA to clients connected to ESP AP
+//DNS : Domain Name System; Converts domain name to IP; Without DNS, use only IP;
+//NAT : Network Address Translation; Allows private IPs to access Internet with only one public IP;
+//NAT : Change source IP of request to public IP (here, public IP of ESP STA)
+//NAPT : Handle several clients at same time using TCP/UDP ports
+//DHCP : Dynamic Host Configuration Protocol
+//DHCP : Assign auto an IP, Gateway, DNS to clients connecting to ESP AP
+static void softap_set_dns_addr(esp_netif_t *esp_netif_ap, esp_netif_t *esp_netif_sta)
 {
     esp_netif_dns_info_t dns;
-    esp_netif_get_dns_info(esp_netif_sta,ESP_NETIF_DNS_MAIN,&dns);
+
+    //getting dns info of ESP STA mode (MAIN DNS)
+    esp_netif_get_dns_info(esp_netif_sta, ESP_NETIF_DNS_MAIN, &dns);
+
+    //Option for DHCP server of AP; offers DNS to clients when they ask for an IP
     uint8_t dhcps_offer_option = DHCPS_OFFER_DNS;
+
+    //Stops DHCP server to apply a new config
     ESP_ERROR_CHECK_WITHOUT_ABORT(esp_netif_dhcps_stop(esp_netif_ap));
-    ESP_ERROR_CHECK(esp_netif_dhcps_option(esp_netif_ap, ESP_NETIF_OP_SET, ESP_NETIF_DOMAIN_NAME_SERVER, &dhcps_offer_option, sizeof(dhcps_offer_option)));
+
+    //Config DHCP of AP to offer DNS to clients
+    //when a client connects, this will tell him which DNS address to use
+    ESP_ERROR_CHECK(esp_netif_dhcps_option(esp_netif_ap, ESP_NETIF_OP_SET, ESP_NETIF_DOMAIN_NAME_SERVER,
+        &dhcps_offer_option, sizeof(dhcps_offer_option)));
+
+    //Set DNS got from STA to AP
     ESP_ERROR_CHECK(esp_netif_set_dns_info(esp_netif_ap, ESP_NETIF_DNS_MAIN, &dns));
+
+    //Restart DHCP server with new config
     ESP_ERROR_CHECK_WITHOUT_ABORT(esp_netif_dhcps_start(esp_netif_ap));
 }
 
@@ -1010,8 +1111,6 @@ void wifi_init_sta(void)
     
     //Create system event loop
     ESP_ERROR_CHECK(esp_event_loop_create_default());
-    //Create wifi network in station mode
-    esp_netif_create_default_wifi_sta();
 
     //Load default config and initialize driver
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
@@ -1026,15 +1125,12 @@ void wifi_init_sta(void)
     esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
                                         &wifi_event_handler, NULL, &instance_got_ip);
 
-    //Config station : copy SSID and password
-    wifi_config_t wifi_config = {0};
-    strncpy((char*)wifi_config.sta.ssid, WIFI_SSID, sizeof(wifi_config.sta.ssid));
-    strncpy((char*)wifi_config.sta.password, WIFI_PASS, sizeof(wifi_config.sta.password));
-
     //Configure esp in station mode
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    //apply wifi config to station
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
+
+    //esp_netif_t * netif_sta = wifi_init_sta_netif();
+    wifi_init_sta_netif();
+    
     //start wifi : triggers WIFI_EVENT_STA_START handler
     ESP_ERROR_CHECK(esp_wifi_start());
 
@@ -1042,8 +1138,16 @@ void wifi_init_sta(void)
     ESP_LOGI(TAG, "Connection to %s...", WIFI_SSID);
 
     //Waiting for connection until WIFI_CONNECTED_BIT is activated (if init in main, it will wait..)
-    xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_BIT,
+    EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_BIT,
                         pdFALSE, pdTRUE, portMAX_DELAY);
+
+    if (bits & WIFI_CONNECTED_BIT) {
+        ESP_LOGI(TAG, "connected to ap SSID:%s password:%s",
+                 WIFI_SSID, WIFI_PASS);
+    } else {
+        ESP_LOGE(TAG, "UNEXPECTED EVENT");
+        return;
+    }
 }
 
 /**
@@ -1063,8 +1167,6 @@ void wifi_init_ap(void)
     
     //Create system event loop
     ESP_ERROR_CHECK(esp_event_loop_create_default());
-    //Create wifi network in AP mode
-    esp_netif_create_default_wifi_ap();
 
     //Load default config and initialize driver
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
@@ -1075,18 +1177,12 @@ void wifi_init_ap(void)
     esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
                                         &wifi_event_handler, NULL, &instance_any_id);
 
-    //Config station : copy SSID and password
-    wifi_config_t wifi_config = {0};
-    strncpy((char*)wifi_config.ap.ssid, ESP_SSID, sizeof(wifi_config.sta.ssid));
-    strncpy((char*)wifi_config.ap.password, ESP_PASS, sizeof(wifi_config.sta.password));
-    wifi_config.ap.ssid_len = strlen(ESP_SSID);
-    wifi_config.ap.max_connection = ESP_MAX_CONNECTION;
-    wifi_config.ap.authmode = WIFI_AUTH_WPA2_PSK;
-
     //Configure esp in AP mode
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
-    //apply wifi config to AP
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
+
+    //esp_netif_t * netif_ap = wifi_init_softap_netif();
+    wifi_init_softap_netif();
+
     //start wifi : triggers WIFI_EVENT_STA_START handler
     ESP_ERROR_CHECK(esp_wifi_start());
 
@@ -1138,11 +1234,9 @@ void wifi_init_apsta(void)
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
 
      /* Initialize AP */
-    ESP_LOGI(TAG, "ESP_WIFI_MODE_AP");
     esp_netif_t *esp_netif_ap = wifi_init_softap_netif();
 
     /* Initialize STA */
-    ESP_LOGI(TAG, "ESP_WIFI_MODE_STA");
     esp_netif_t *esp_netif_sta = wifi_init_sta_netif();
 
     //start wifi : triggers WIFI_EVENT_STA_START handler
@@ -1157,16 +1251,20 @@ void wifi_init_apsta(void)
     if (bits & WIFI_CONNECTED_BIT) {
         ESP_LOGI(TAG, "connected to ap SSID:%s password:%s",
                  WIFI_SSID, WIFI_PASS);
-        softap_set_dns_addr(esp_netif_ap,esp_netif_sta);
+        //get dns from sta mode ESP & config it for ESP AP's clients
+        //"transmit dns internet from WAN to Clients"
+        softap_set_dns_addr(esp_netif_ap, esp_netif_sta);
     } else {
         ESP_LOGE(TAG, "UNEXPECTED EVENT");
         return;
     }
 
     /* Set sta as the default interface */
+    //every Internet request will go through ESP STA mode (not AP)
     esp_netif_set_default_netif(esp_netif_sta);
 
     /* Enable napt on the AP netif */
+    //transform private IPs of clients from ESP AP to public IP of ESP STA (NAT)
     if (esp_netif_napt_enable(esp_netif_ap) != ESP_OK) {
         ESP_LOGE(TAG, "NAPT not enabled on the netif: %p", esp_netif_ap);
     }

@@ -48,6 +48,17 @@ Works with I²C; See for server/components/screenLib for use.
 
 ## ESP-IDF Components
 
+### System
+
+Bootloader : like the BIOS
+
+```bash
+esptool --chip esp32 image-info build/app.bin
+esptool --chip esp32 image-info ./build/bootloader/bootloader.bin
+idf.py size
+idf.py size-components
+```
+
 ### GPIO
 
 For gpio control; used in led
@@ -93,15 +104,79 @@ with esp event for event loop;
 
 https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/esp_event.html
 
-In APSTA mode : 
+WiFi stack:
+- esp_wifi (MAC + PHY)
+- esp_netif (TCP/IP interface)
+- esp_event (central event loop)
+- FreeRTOS Event Groups (synchronization)
 
-menuconfig -> component config 
+APSTA mode:
+- ESP acts as both WiFi client (STA) and Access Point (AP)
+- ESP works as a small router (NAT + DHCP + DNS forwarding)
 
-DNS -> enable dns server setting with netif
-DNS -> Enable DNS fallback support 8.8.8.8
+Menuconfig (APSTA):
+- DNS → Enable DNS server settings with netif
+- DNS → Enable DNS fallback (8.8.8.8)
+- LWIP → Enable IP forwarding
+- LWIP → Enable NAT & NAPT
 
-Enable IP forwarding
-Enable NAT & NAT port mapping
+Workflow:
+1. Configure WiFi AP + STA
+2. STA connects to WAN (router)
+3. Retrieve DNS from STA netif
+4. Configure DHCP on AP to advertise DNS
+5. Enable NAPT to route traffic from AP clients to STA
+
+WiFi concepts:
+- WPA2-PSK: classic SSID + password
+- WPA3-SAE: modern secure handshake (no offline attacks)
+- WPA2/WPA3 Enterprise (802.1X): EAP authentication via RADIUS
+- Cipher: encryption algorithm (CCMP, GCMP, etc.)
+- BSSID: MAC address of an AP
+- RSSI: signal strength (-90 dBm weak → -20 dBm strong)
+
+PHY / Standards (depends on ESP32 variant):
+- 2.4 GHz / 5 GHz
+- 802.11b/g/n
+- 802.11ax (Wi-Fi 6 on supported chips)
+- MIMO, OFDM, OFDMA
+
+Wi-Fi 6 (802.11ax):
+- HE (High Efficiency)
+- BSS Coloring
+- OFDMA
+- Improved performance in dense networks
+
+Power save:
+- Modem sleep min / max
+
+Promiscuous mode:
+- Raw WiFi frame capture (Wireshark-like)
+
+FTM (802.11mc):
+- Fine Timing Measurement
+- Distance estimation using RTT
+
+Security:
+- SAE PWE: password-to-element method (H2E recommended)
+- SAE PK: public-key validation against rogue APs
+
+ESP AP configuration:
+- SSID, Password, Channel
+- Cipher, PMF, DTIM
+- Beacon interval, CSA count
+- WPA2 / WPA3 / SAE
+
+ESP STA configuration:
+- SSID / BSSID
+- Scan sort / threshold
+- PMF, 802.11k/v/r
+- OWE, WPA3, SAE PWE / PK
+- HE / VHT parameters
+
+Mesh networking:
+- Nodes organized in parent / child topology
+
 
 ### WS
 

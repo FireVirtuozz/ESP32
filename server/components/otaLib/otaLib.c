@@ -1,7 +1,6 @@
 #include "otaLib.h"
 #include <esp_log.h>
 #include <esp_https_ota.h>
-#include <esp_wifi.h>
 #include <esp_event.h>
 
 static const char *TAG = "ota_library";

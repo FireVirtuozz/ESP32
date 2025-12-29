@@ -22,11 +22,11 @@ extern const uint8_t server_cert_pem_end[] asm("_binary_ca_cert_pem_end");
 #define EXAMPLE_FIRMWARE_UPGRADE_URL \
 "https://raw.githubusercontent.com/FireVirtuozz/ESP32/main/server/build/server.bin"
 
-#define EXAMPLE_SKIP_COMMON_NAME_CHECK true
-#define EXAMPLE_SKIP_VERSION_CHECK false
+#define EXAMPLE_SKIP_COMMON_NAME_CHECK 1
+#define EXAMPLE_SKIP_VERSION_CHECK 0
 #define EXAMPLE_OTA_RECV_TIMEOUT 5000
 #define EXAMPLE_OTA_BUF_SIZE 1024
-#define EXAMPLE_USE_CERT_BUNDLE true
+#define EXAMPLE_USE_CERT_BUNDLE 1
 //depends on MBEDTLS_CERTIFICATE_BUNDLE
 
 /* Event handler for catching system events */
@@ -82,7 +82,7 @@ static esp_err_t validate_image_header(esp_app_desc_t *new_app_info)
         ESP_LOGI(TAG, "New firmware version: %s", new_app_info->version);
     }
 
-#ifndef EXAMPLE_SKIP_VERSION_CHECK
+#if !EXAMPLE_SKIP_VERSION_CHECK
     if (memcmp(new_app_info->version, running_app_info.version, sizeof(new_app_info->version)) == 0) {
         ESP_LOGW(TAG, "Current running version is the same as a new. We will not continue the update.");
         return ESP_FAIL;

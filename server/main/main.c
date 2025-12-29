@@ -3,6 +3,10 @@
 #include "wsLib.h"
 #include "ledLib.h"
 #include "nvsLib.h"
+#include "efuseLib.h"
+
+#define FW_VERSION "v1.1"
+#define FIRMWARE_URL "https://raw.githubusercontent.com/ton-compte/firmware/main/firmware.bin"
 
 void app_main(void)
 {
@@ -28,4 +32,6 @@ void app_main(void)
     wifi_scan_aps(); //scan APs
 
     wifi_scan_esp();
+
+    print_chip_info();
 }

@@ -38,6 +38,8 @@ idf.py menuconfig
 idf.py build
 idf.py flash
 idf.py monitor
+esptool chip-id
+esptool flash-id
 ```
 
 ## oled ssd1306 screen display
@@ -50,14 +52,34 @@ Works with I²C; See for server/components/screenLib for use.
 
 ### System
 
-Bootloader : like the BIOS
+Bootloader
+- BIOS-like, initializes clocks, flash, and memory  
+- Loads the application from flash 
 
+Useful commands
 ```bash
 esptool --chip esp32 image-info build/app.bin
 esptool --chip esp32 image-info ./build/bootloader/bootloader.bin
 idf.py size
 idf.py size-components
 ```
+
+App Level Tracing
+- Lightweight tracing for fine-grained debugging
+- Less costly than full logging
+- Can be enabled via menuconfig
+
+External stack:
+- Uses PSRAM instead of internal DRAM for function stack (but slower)
+- Useful when internal DRAM is close to full
+- Helps avoid stack overflows for heavy functions (JSON, TLS, logs)
+- Not suitable for ISR or timing-critical code
+
+Memory overview
+- IRAM: fast code (interrupts, critical paths)
+- DRAM: data and task stacks
+- PSRAM: large buffers and temporary stacks
+- Use idf.py size and idf.py size-components to check usage
 
 ### GPIO
 
@@ -177,6 +199,28 @@ ESP STA configuration:
 Mesh networking:
 - Nodes organized in parent / child topology
 
+### OTA
+
+Over The Air Updates
+
+OTA HTTPS
+
+Edit partitions to a custom partition in menuconfig
+
+# Name, Type, SubType, Offset, Size, Flags
+nvs,      data, nvs,       , 0x6000
+otadata,  data, ota,       , 0x2000
+phy_init, data, phy,       , 0x1000
+factory,  app,  factory,   , 1M
+ota_0,    app,  ota_0,     , 1M
+ota_1,    app,  ota_1,     , 1M
+spiffs,   data, spiffs,    , 1M
+
+--> ota 0 & 1 & data : for OTA
+--> Spiffs : web pages
+--> nvs : wifi storage
+--> phy_init : for wifi phy
+--> factory : for base app
 
 ### WS
 

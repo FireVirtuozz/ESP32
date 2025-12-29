@@ -3,9 +3,19 @@
 
 #include <esp_log.h>
 #include <esp_https_ota.h>
-#include <esp_event.h>
+#include <string.h>
+#include <inttypes.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/event_groups.h"
+#include "esp_system.h"
+#include "esp_event.h"
+#include "esp_check.h"
+#include "esp_ota_ops.h"
+#include "esp_http_client.h"
+#include "esp_https_ota.h"
 #include <esp_crt_bundle.h>
 
-void ota_init(const char* firmware_url);
+void ota_init();
 
 #endif

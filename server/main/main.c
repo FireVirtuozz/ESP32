@@ -6,9 +6,6 @@
 #include "efuseLib.h"
 #include "otaLib.h"
 
-#define FW_VERSION "v1.1"
-#define FIRMWARE_URL "https://github.com/FireVirtuozz/ESP32/raw/refs/heads/main/server/build/server.bin"
-
 void app_main(void)
 {
     nvs_init(); //init memory first, wifi/led needs this..
@@ -28,7 +25,7 @@ void app_main(void)
     
     led_init(); //init led
 
-    ota_init(FIRMWARE_URL);
+    ota_init();
 
     list_storage(); //list used keys of type i32 in nvs
 

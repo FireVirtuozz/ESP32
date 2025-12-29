@@ -4,9 +4,10 @@
 #include "ledLib.h"
 #include "nvsLib.h"
 #include "efuseLib.h"
+#include "otaLib.h"
 
 #define FW_VERSION "v1.1"
-#define FIRMWARE_URL "https://raw.githubusercontent.com/ton-compte/firmware/main/firmware.bin"
+#define FIRMWARE_URL "https://github.com/FireVirtuozz/ESP32/raw/refs/heads/main/server/build/server.bin"
 
 void app_main(void)
 {
@@ -26,6 +27,8 @@ void app_main(void)
     wifi_init_apsta();
     
     led_init(); //init led
+
+    ota_init(FIRMWARE_URL);
 
     list_storage(); //list used keys of type i32 in nvs
 

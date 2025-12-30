@@ -8,6 +8,7 @@
 #include <inttypes.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "mqttLib.h"
 
 //Function to init nvs
 esp_err_t nvs_init();

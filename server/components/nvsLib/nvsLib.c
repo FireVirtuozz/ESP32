@@ -1,4 +1,5 @@
 #include "nvsLib.h"
+#include "mqttLib.h"
 #include <nvs_flash.h>
 #include <nvs.h>
 #include <inttypes.h>
@@ -67,7 +68,8 @@ esp_err_t nvs_init() {
     //if mutex already initialized, quit
     if( xMutex != NULL )
     {
-        ESP_LOGW(TAG, "NVS already initialized");
+        //log_mqtt()
+        log_mqtt(LOG_WARN, TAG, true, "NVS already initialized");
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -76,7 +78,7 @@ esp_err_t nvs_init() {
     //If error in Create mutex
     if( xMutex == NULL )
     {
-        ESP_LOGE(TAG, "Error in mutex creation");
+        log_mqtt(LOG_ERROR, TAG, true, "Error in mutex creation");
         return ESP_ERR_INVALID_RESPONSE;
     }
 
@@ -91,10 +93,10 @@ esp_err_t nvs_init() {
     ESP_ERROR_CHECK(err);
 
     // Open NVS handle
-    ESP_LOGI(TAG, "\nOpening Non-Volatile Storage (NVS) handle...");
+    log_mqtt(LOG_INFO, TAG, true, "Opening Non-Volatile Storage (NVS) handle...");
     err = nvs_open("storage", NVS_READWRITE, &my_handle);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Error (%s) opening NVS handle!", esp_err_to_name(err));
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) opening NVS handle!", esp_err_to_name(err));
     }
     return err;
 }
@@ -103,7 +105,7 @@ esp_err_t nvs_init() {
  * Function to load an int in nvs
  * -Take mutex, read nvs and handle return value, init if needed
  * @param key str key
- * @param val int in/out value updated
+ * @param val int in/out value updated*
  */
 esp_err_t load_nvs_int(const char *key, int *val) {
 
@@ -120,7 +122,7 @@ esp_err_t load_nvs_int(const char *key, int *val) {
     //wait to take mutex
     if (xSemaphoreTake(xMutex, portMAX_DELAY) == pdTRUE) {
 
-        ESP_LOGI(TAG, "\nReading %s from NVS...", key);
+        log_mqtt(LOG_INFO, TAG, false, "Reading %s from NVS...", key);
         //read value i32
         err = nvs_get_i32(my_handle, key, &read_val);
 
@@ -128,17 +130,17 @@ esp_err_t load_nvs_int(const char *key, int *val) {
         switch (err) {
             // ok : update value
             case ESP_OK:
-                ESP_LOGI(TAG, "Read %s = %" PRIu32, key, read_val);
+                log_mqtt(LOG_INFO, TAG, true, "Read %s = %" PRIu32, key, read_val);
                 *val = (int)read_val;
                 break;
             // not found : initialize value to 0 (default)
             case ESP_ERR_NVS_NOT_FOUND:
                 need_init = 1;
-                ESP_LOGW(TAG, "The value is not initialized yet!");
+                log_mqtt(LOG_WARN, TAG, true, "The value is not initialized yet!");
                 break;
             //other : error
             default:
-                ESP_LOGE(TAG, "Error (%s) reading!", esp_err_to_name(err));
+                log_mqtt(LOG_ERROR, TAG, true, "Error (%s) reading!", esp_err_to_name(err));
         }
         //free mutex
         xSemaphoreGive(xMutex);
@@ -169,21 +171,21 @@ esp_err_t save_nvs_int(const char *key, const int value) {
 
     if (xSemaphoreTake(xMutex, portMAX_DELAY) == pdTRUE) {
         
-        ESP_LOGI(TAG, "\nWriting %s to NVS...", key);
+        log_mqtt(LOG_INFO, TAG, true, "Writing %s to NVS...", key);
         // Store an integer value
         esp_err_t err = nvs_set_i32(my_handle, key, val);
         if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to write %s!", key);
+            log_mqtt(LOG_ERROR, TAG, true, "Failed to write %s!", key);
         }
 
         // Commit changes
         // After setting any values, nvs_commit() must be called to ensure changes are written
         // to flash storage. Implementations may write to storage at other times,
         // but this is not guaranteed.
-        ESP_LOGI(TAG, "\nCommitting updates in NVS...");
+        log_mqtt(LOG_INFO, TAG, true, "Committing updates in NVS...");
         err = nvs_commit(my_handle);
         if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to commit NVS changes!");
+            log_mqtt(LOG_ERROR, TAG, true, "Failed to commit NVS changes!");
         }
         xSemaphoreGive(xMutex);
         return err;
@@ -203,7 +205,7 @@ void close_nvs() {
 
     // Close
     nvs_close(my_handle);
-    ESP_LOGI(TAG, "NVS handle closed.");
+    log_mqtt(LOG_INFO, TAG, true, "NVS handle closed.");
 
     vSemaphoreDelete(xMutex);
     xMutex = NULL;
@@ -225,7 +227,7 @@ void list_storage() {
     //take mutex
     if (xSemaphoreTake(xMutex, portMAX_DELAY) == pdTRUE) {
 
-        ESP_LOGI(TAG, "\nFinding keys in NVS...");
+        log_mqtt(LOG_INFO, TAG, true, "Finding keys in NVS...");
         nvs_iterator_t it = NULL;
         // Find keys in NVS and put it in the iterator
         esp_err_t res = nvs_entry_find("nvs", "storage", NVS_TYPE_ANY, &it);
@@ -245,24 +247,24 @@ void list_storage() {
                 //load value : load function not called to prevent deadlock mutex
                 int val;
                 int32_t read_val;
-                ESP_LOGI(TAG, "\nReading %s from NVS...", info.key);
+                log_mqtt(LOG_INFO, TAG, false, "Reading %s from NVS...", info.key);
                 esp_err_t err = nvs_get_i32(my_handle, info.key, &read_val);
 
                 switch (err) {
                     case ESP_OK:
                         val = (int)read_val;
-                        ESP_LOGI(TAG, "Key: '%s', Type: %s, Value: %d",
+                        log_mqtt(LOG_INFO, TAG, true, "Key: '%s', Type: %s, Value: %d",
                             info.key, type_str, val);
                         break;
                     case ESP_ERR_NVS_NOT_FOUND:
-                        ESP_LOGW(TAG, "The value is not initialized yet!");
+                        log_mqtt(LOG_WARN, TAG, true, "The value is not initialized yet!");
                         break;
                     default:
-                        ESP_LOGE(TAG, "Error (%s) reading!", esp_err_to_name(err));
+                        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) reading!", esp_err_to_name(err));
                 }
                 
             } else {
-                ESP_LOGI(TAG, "Key: '%s', Type: %s", info.key, type_str);
+                log_mqtt(LOG_INFO, TAG, true, "Key: '%s', Type: %s", info.key, type_str);
             }
             //next iterator
             res = nvs_entry_next(&it);

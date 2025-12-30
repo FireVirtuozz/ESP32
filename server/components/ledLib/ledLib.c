@@ -4,6 +4,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "nvsLib.h"
+#include "mqttLib.h"
+#include <stdarg.h>
 
 static SemaphoreHandle_t xMutex = NULL;
 
@@ -41,7 +43,8 @@ void led_init() {
     ESP_ERROR_CHECK(load_nvs_int("led_state", &led_state));
     gpio_set_level(LED_PIN, led_state);
 
-    ESP_LOGI(TAG, "Led initialized on pin %d", LED_PIN);
+    //ESP_LOGI(TAG, "Led initialized on pin %d", LED_PIN);
+    log_mqtt(LOG_INFO, TAG, true, "Led initialized on pin %d", LED_PIN);
 
 }
 
@@ -59,7 +62,8 @@ void led_on() {
             led_state = 1;
             gpio_set_level(LED_PIN, led_state);
             save_nvs_int("led_state", led_state);
-            ESP_LOGI(TAG, "Led on");
+            //ESP_LOGI(TAG, "Led on");
+            log_mqtt(LOG_INFO, TAG, true, "Led on");
         }
         xSemaphoreGive(xMutex);
     }
@@ -79,7 +83,7 @@ void led_off() {
             led_state = 0;
             gpio_set_level(LED_PIN, led_state);
             save_nvs_int("led_state", led_state);
-            ESP_LOGI(TAG, "Led off");
+            log_mqtt(LOG_INFO, TAG, true, "Led off");
         }
         xSemaphoreGive(xMutex);
     }
@@ -98,7 +102,8 @@ void led_toggle() {
         led_state = !led_state;
         gpio_set_level(LED_PIN, led_state);
         save_nvs_int("led_state", led_state);
-        ESP_LOGI(TAG, "Led toggled to : %d", led_state);
+        //ESP_LOGI(TAG, "Led toggled to : %d", led_state);
+        log_mqtt(LOG_INFO, TAG, true, "Led toggled to : %d", led_state);
         xSemaphoreGive(xMutex);
     }
 }
@@ -116,7 +121,8 @@ void close_led() {
     vSemaphoreDelete(xMutex);
     xMutex = NULL;
 
-    ESP_LOGI(TAG, "Led closed");
+    //ESP_LOGI(TAG, "Led closed");
+    log_mqtt(LOG_INFO, TAG, true, "Led closed");
 }
 
 /**

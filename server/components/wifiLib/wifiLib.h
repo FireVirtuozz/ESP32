@@ -10,6 +10,7 @@
 #include <string.h>
 #include <esp_wifi.h>
 #include <esp_mac.h>
+#include "mqttLib.h"
 
 //Initialize wifi station, waiting to get IP from router
 void wifi_init_sta(void);

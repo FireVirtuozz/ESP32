@@ -13,11 +13,9 @@
 #include "esp_http_client.h"
 #include "esp_https_ota.h"
 #include <esp_crt_bundle.h>
+#include "mqttLib.h"
 
 static const char *TAG = "ota_library";
-
-extern const uint8_t server_cert_pem_start[] asm("_binary_ca_cert_pem_start");
-extern const uint8_t server_cert_pem_end[] asm("_binary_ca_cert_pem_end");
 
 #define EXAMPLE_FIRMWARE_UPGRADE_URL \
 "https://raw.githubusercontent.com/FireVirtuozz/ESP32/main/server/build/server.bin"
@@ -36,34 +34,34 @@ static void event_handler(void* arg, esp_event_base_t event_base,
     if (event_base == ESP_HTTPS_OTA_EVENT) {
         switch (event_id) {
             case ESP_HTTPS_OTA_START:
-                ESP_LOGI(TAG, "OTA started");
+                log_mqtt(LOG_INFO, TAG, true, "OTA started");
                 break;
             case ESP_HTTPS_OTA_CONNECTED:
-                ESP_LOGI(TAG, "Connected to server");
+                log_mqtt(LOG_INFO, TAG, false, "Connected to server");
                 break;
             case ESP_HTTPS_OTA_GET_IMG_DESC:
-                ESP_LOGI(TAG, "Reading Image Description");
+                log_mqtt(LOG_INFO, TAG, false, "Reading Image Description");
                 break;
             case ESP_HTTPS_OTA_VERIFY_CHIP_ID:
-                ESP_LOGI(TAG, "Verifying chip id of new image: %d", *(esp_chip_id_t *)event_data);
+                log_mqtt(LOG_INFO, TAG, false, "Verifying chip id of new image: %d", *(esp_chip_id_t *)event_data);
                 break;
             case ESP_HTTPS_OTA_VERIFY_CHIP_REVISION:
-                ESP_LOGI(TAG, "Verifying chip revision of new image: %d", *(esp_chip_id_t *)event_data);
+                log_mqtt(LOG_INFO, TAG, false, "Verifying chip revision of new image: %d", *(esp_chip_id_t *)event_data);
                 break;
             case ESP_HTTPS_OTA_DECRYPT_CB:
-                ESP_LOGI(TAG, "Callback to decrypt function");
+                log_mqtt(LOG_INFO, TAG, false, "Callback to decrypt function");
                 break;
             case ESP_HTTPS_OTA_WRITE_FLASH:
-                ESP_LOGD(TAG, "Writing to flash: %d written", *(int *)event_data);
+                log_mqtt(LOG_DEBUG, TAG, false, "Writing to flash: %d written", *(int *)event_data);
                 break;
             case ESP_HTTPS_OTA_UPDATE_BOOT_PARTITION:
-                ESP_LOGI(TAG, "Boot partition updated. Next Partition: %d", *(esp_partition_subtype_t *)event_data);
+                log_mqtt(LOG_INFO, TAG, false, "Boot partition updated. Next Partition: %d", *(esp_partition_subtype_t *)event_data);
                 break;
             case ESP_HTTPS_OTA_FINISH:
-                ESP_LOGI(TAG, "OTA finish");
+                log_mqtt(LOG_INFO, TAG, true, "OTA finish");
                 break;
             case ESP_HTTPS_OTA_ABORT:
-                ESP_LOGI(TAG, "OTA abort");
+                log_mqtt(LOG_INFO, TAG, true, "OTA abort");
                 break;
         }
     }
@@ -78,13 +76,13 @@ static esp_err_t validate_image_header(esp_app_desc_t *new_app_info)
     const esp_partition_t *running = esp_ota_get_running_partition();
     esp_app_desc_t running_app_info;
     if (esp_ota_get_partition_description(running, &running_app_info) == ESP_OK) {
-        ESP_LOGI(TAG, "Running firmware version: %s", running_app_info.version);
-        ESP_LOGI(TAG, "New firmware version: %s", new_app_info->version);
+        log_mqtt(LOG_INFO, TAG, false, "Running firmware version: %s", running_app_info.version);
+        log_mqtt(LOG_INFO, TAG, false, "New firmware version: %s", new_app_info->version);
     }
 
 #if !EXAMPLE_SKIP_VERSION_CHECK
     if (memcmp(new_app_info->version, running_app_info.version, sizeof(new_app_info->version)) == 0) {
-        ESP_LOGW(TAG, "Current running version is the same as a new. We will not continue the update.");
+        log_mqtt(LOG_WARN, TAG, true, "Current running version is the same as a new. We will not continue the update.");
         return ESP_FAIL;
     }
 #endif
@@ -102,7 +100,7 @@ static esp_err_t _http_client_init_cb(esp_http_client_handle_t http_client)
 
 void advanced_ota_example_task(void *pvParameter)
 {
-    ESP_LOGI(TAG, "Starting Advanced OTA example");
+    log_mqtt(LOG_INFO, TAG, true, "Starting Advanced OTA example");
 
     esp_err_t err;
     esp_err_t ota_finish_err = ESP_OK;
@@ -122,19 +120,19 @@ void advanced_ota_example_task(void *pvParameter)
     esp_https_ota_handle_t https_ota_handle = NULL;
     err = esp_https_ota_begin(&ota_config, &https_ota_handle);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "ESP HTTPS OTA Begin failed");
+        log_mqtt(LOG_ERROR, TAG, true, "ESP HTTPS OTA Begin failed");
         vTaskDelete(NULL);
     }
 
     esp_app_desc_t app_desc = {};
     err = esp_https_ota_get_img_desc(https_ota_handle, &app_desc);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "esp_https_ota_get_img_desc failed");
+        log_mqtt(LOG_ERROR, TAG, true, "esp_https_ota_get_img_desc failed");
         goto ota_end;
     }
     err = validate_image_header(&app_desc);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "image header verification failed");
+        log_mqtt(LOG_ERROR, TAG, true, "image header verification failed");
         goto ota_end;
     }
 
@@ -149,40 +147,39 @@ void advanced_ota_example_task(void *pvParameter)
         // monitor the status of OTA upgrade by calling esp_https_ota_get_image_len_read, which gives length of image
         // data read so far.
         const size_t len = esp_https_ota_get_image_len_read(https_ota_handle);
-        ESP_LOGD(TAG, "Image bytes read: %d", len);
+        log_mqtt(LOG_DEBUG, TAG, true, "Image bytes read: %d", len);
     }
 
     if (esp_https_ota_is_complete_data_received(https_ota_handle) != true) {
         // the OTA image was not completely received and user can customise the response to this situation.
-        ESP_LOGE(TAG, "Complete data was not received.");
+        log_mqtt(LOG_ERROR, TAG, true, "Complete data was not received.");
     } else {
 
         ota_finish_err = esp_https_ota_finish(https_ota_handle);
         
         if ((err == ESP_OK) && (ota_finish_err == ESP_OK)) {
-            ESP_LOGI(TAG, "ESP_HTTPS_OTA upgrade successful. Rebooting ...");
+            log_mqtt(LOG_INFO, TAG, true, "ESP_HTTPS_OTA upgrade successful. Rebooting ...");
             vTaskDelay(1000 / portTICK_PERIOD_MS);
             esp_restart();
         } else {
 
             if (ota_finish_err == ESP_ERR_OTA_VALIDATE_FAILED) {
-                ESP_LOGE(TAG, "Image validation failed, image is corrupted");
+                log_mqtt(LOG_ERROR, TAG, true, "Image validation failed, image is corrupted");
             }
 
-            ESP_LOGE(TAG, "ESP_HTTPS_OTA upgrade failed 0x%x", ota_finish_err);
+            log_mqtt(LOG_ERROR, TAG, true, "ESP_HTTPS_OTA upgrade failed 0x%x", ota_finish_err);
             vTaskDelete(NULL);
         }
     }
 
 ota_end:
     esp_https_ota_abort(https_ota_handle);
-    ESP_LOGE(TAG, "ESP_HTTPS_OTA upgrade failed");
+    log_mqtt(LOG_ERROR, TAG, true, "ESP_HTTPS_OTA upgrade failed");
     vTaskDelete(NULL);
 }
 
 void ota_init() {
-    ESP_LOGI(TAG, "OTA example app_main start");
-
+    log_mqtt(LOG_INFO, TAG, false, "OTA example app_main start");
 
     //ESP_ERROR_CHECK(esp_event_loop_create_default());
 

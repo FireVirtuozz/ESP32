@@ -1,5 +1,7 @@
 #include "wifiLib.h"
 #include <esp_wifi.h>
+#include "mqttLib.h"
+#include <stdarg.h>
 
 /**
  * WiFi library
@@ -24,16 +26,33 @@
  //scan AP max number
 #define DEFAULT_SCAN_LIST_SIZE 16
 
-//wifi credentials
-#define WIFI_SSID "freebox_isidor"
-#define WIFI_PASS "casanova1664"
-
+//ESP AP Config
 #define ESP_SSID "big_esp"
 #define ESP_PASS "espdegigachad"
 #define ESP_MAX_CONNECTION 4
 
-/*DHCP server option*/
+/*DHCP server option flag*/
 #define DHCPS_OFFER_DNS             0x02
+
+#define MAX_STR_LINES 16
+#define MAX_LINE_LEN 128
+
+typedef struct {
+    char lines[MAX_STR_LINES][MAX_LINE_LEN];
+    int count;
+} sta_info_strings_t;
+
+//wifi known networks
+typedef struct {
+    const char* ssid;
+    const char* password;
+    uint8_t priority;
+} wifi_network_t;
+
+wifi_network_t known_networks[] = {
+    {"freebox_isidor", "casanova1664", 0}, 
+    {"tchomec", "BahOuais", 1},
+};
 
 /* FreeRTOS event group to signal when we are connected*/
 static EventGroupHandle_t s_wifi_event_group;
@@ -49,152 +68,119 @@ static const char *TAG = "wifi_library";
 //Buffer for IP address
 static char s_ip_str[16];
 
+/*
+=====================================================================
+FUNCTION CONVERT TO STR
+=====================================================================
+*/
+
 //function to print the wifi authentication mode
-static void print_auth_mode(int authmode)
+static const char *get_authmode_str(int authmode)
 {
     switch (authmode) {
     case WIFI_AUTH_OPEN:
-        ESP_LOGI(TAG, "Authmode \tWIFI_AUTH_OPEN");
-        break;
+        return "WIFI_AUTH_OPEN";
     case WIFI_AUTH_OWE:
-        ESP_LOGI(TAG, "Authmode \tWIFI_AUTH_OWE");
-        break;
+        return "WIFI_AUTH_OWE";
     case WIFI_AUTH_WEP:
-        ESP_LOGI(TAG, "Authmode \tWIFI_AUTH_WEP");
-        break;
+        return "WIFI_AUTH_WEP";
     case WIFI_AUTH_WPA_PSK:
-        ESP_LOGI(TAG, "Authmode \tWIFI_AUTH_WPA_PSK");
-        break;
+        return "WIFI_AUTH_WPA_PSK";
     case WIFI_AUTH_WPA2_PSK:
-        ESP_LOGI(TAG, "Authmode \tWIFI_AUTH_WPA2_PSK");
-        break;
+        return "WIFI_AUTH_WPA2_PSK";
     case WIFI_AUTH_WPA_WPA2_PSK:
-        ESP_LOGI(TAG, "Authmode \tWIFI_AUTH_WPA_WPA2_PSK");
-        break;
+        return "WIFI_AUTH_WPA_WPA2_PSK";
     case WIFI_AUTH_ENTERPRISE:
-        ESP_LOGI(TAG, "Authmode \tWIFI_AUTH_ENTERPRISE");
-        break;
+        return "WIFI_AUTH_ENTERPRISE";
     case WIFI_AUTH_WPA3_PSK:
-        ESP_LOGI(TAG, "Authmode \tWIFI_AUTH_WPA3_PSK");
-        break;
+        return "WIFI_AUTH_WPA3_PSK";
     case WIFI_AUTH_WPA2_WPA3_PSK:
-        ESP_LOGI(TAG, "Authmode \tWIFI_AUTH_WPA2_WPA3_PSK");
-        break;
+        return "WIFI_AUTH_WPA2_WPA3_PSK";
     case WIFI_AUTH_WPA3_ENTERPRISE:
-        ESP_LOGI(TAG, "Authmode \tWIFI_AUTH_WPA3_ENTERPRISE");
-        break;
+        return "WIFI_AUTH_WPA3_ENTERPRISE";
     case WIFI_AUTH_WPA2_WPA3_ENTERPRISE:
-        ESP_LOGI(TAG, "Authmode \tWIFI_AUTH_WPA2_WPA3_ENTERPRISE");
-        break;
+        return "WIFI_AUTH_WPA2_WPA3_ENTERPRISE";
     case WIFI_AUTH_WPA3_ENT_192:
-        ESP_LOGI(TAG, "Authmode \tWIFI_AUTH_WPA3_ENT_192");
-        break;
+        return "WIFI_AUTH_WPA3_ENT_192";
     default:
-        ESP_LOGI(TAG, "Authmode \tWIFI_AUTH_UNKNOWN");
-        break;
+        return "WIFI_AUTH_UNKNOWN";
     }
 }
 
-static void print_cipher_pair(int pairwise) {
+//function to print cipher pair (encryption)
+static const char *get_cipher_pair_str(int pairwise) {
     switch (pairwise) {
     case WIFI_CIPHER_TYPE_NONE:
-        ESP_LOGI(TAG, "Pairwise Cipher \tWIFI_CIPHER_TYPE_NONE");
-        break;
+        return "WIFI_CIPHER_TYPE_NONE";
     case WIFI_CIPHER_TYPE_WEP40:
-        ESP_LOGI(TAG, "Pairwise Cipher \tWIFI_CIPHER_TYPE_WEP40");
-        break;
+        return "WIFI_CIPHER_TYPE_WEP40";
     case WIFI_CIPHER_TYPE_WEP104:
-        ESP_LOGI(TAG, "Pairwise Cipher \tWIFI_CIPHER_TYPE_WEP104");
-        break;
+        return "WIFI_CIPHER_TYPE_WEP104";
     case WIFI_CIPHER_TYPE_TKIP:
-        ESP_LOGI(TAG, "Pairwise Cipher \tWIFI_CIPHER_TYPE_TKIP");
-        break;
+        return "WIFI_CIPHER_TYPE_TKIP";
     case WIFI_CIPHER_TYPE_CCMP:
-        ESP_LOGI(TAG, "Pairwise Cipher \tWIFI_CIPHER_TYPE_CCMP");
-        break;
+        return "WIFI_CIPHER_TYPE_CCMP";
     case WIFI_CIPHER_TYPE_TKIP_CCMP:
-        ESP_LOGI(TAG, "Pairwise Cipher \tWIFI_CIPHER_TYPE_TKIP_CCMP");
-        break;
+        return "WIFI_CIPHER_TYPE_TKIP_CCMP";
     case WIFI_CIPHER_TYPE_AES_CMAC128:
-        ESP_LOGI(TAG, "Pairwise Cipher \tWIFI_CIPHER_TYPE_AES_CMAC128");
-        break;
+        return "WIFI_CIPHER_TYPE_AES_CMAC128";
     case WIFI_CIPHER_TYPE_SMS4:
-        ESP_LOGI(TAG, "Pairwise Cipher \tWIFI_CIPHER_TYPE_SMS4");
-        break;
+        return "WIFI_CIPHER_TYPE_SMS4";
     case WIFI_CIPHER_TYPE_GCMP:
-        ESP_LOGI(TAG, "Pairwise Cipher \tWIFI_CIPHER_TYPE_GCMP");
-        break;
+        return "WIFI_CIPHER_TYPE_GCMP";
     case WIFI_CIPHER_TYPE_GCMP256:
-        ESP_LOGI(TAG, "Pairwise Cipher \tWIFI_CIPHER_TYPE_GCMP256");
-        break;
+        return "WIFI_CIPHER_TYPE_GCMP256";
     default:
-        ESP_LOGI(TAG, "Pairwise Cipher \tWIFI_CIPHER_TYPE_UNKNOWN");
-        break;
+        return "WIFI_CIPHER_TYPE_UNKNOWN";
     }
 }
 
-//function to print the cipher type (what's this??)
-static void print_cipher_type(int pairwise_cipher, int group_cipher)
+//function to print the cipher type
+static const char *get_cipher_type_str(int group_cipher)
 {
-    print_cipher_pair(pairwise_cipher);
-
     switch (group_cipher) {
     case WIFI_CIPHER_TYPE_NONE:
-        ESP_LOGI(TAG, "Group Cipher \tWIFI_CIPHER_TYPE_NONE");
-        break;
+        return "WIFI_CIPHER_TYPE_NONE";
     case WIFI_CIPHER_TYPE_WEP40:
-        ESP_LOGI(TAG, "Group Cipher \tWIFI_CIPHER_TYPE_WEP40");
-        break;
+        return "WIFI_CIPHER_TYPE_WEP40";
     case WIFI_CIPHER_TYPE_WEP104:
-        ESP_LOGI(TAG, "Group Cipher \tWIFI_CIPHER_TYPE_WEP104");
-        break;
+        return "WIFI_CIPHER_TYPE_WEP104";
     case WIFI_CIPHER_TYPE_TKIP:
-        ESP_LOGI(TAG, "Group Cipher \tWIFI_CIPHER_TYPE_TKIP");
-        break;
+        return "WIFI_CIPHER_TYPE_TKIP";
     case WIFI_CIPHER_TYPE_CCMP:
-        ESP_LOGI(TAG, "Group Cipher \tWIFI_CIPHER_TYPE_CCMP");
-        break;
+        return "WIFI_CIPHER_TYPE_CCMP";
     case WIFI_CIPHER_TYPE_TKIP_CCMP:
-        ESP_LOGI(TAG, "Group Cipher \tWIFI_CIPHER_TYPE_TKIP_CCMP");
-        break;
+        return "WIFI_CIPHER_TYPE_TKIP_CCMP";
     case WIFI_CIPHER_TYPE_SMS4:
-        ESP_LOGI(TAG, "Group Cipher \tWIFI_CIPHER_TYPE_SMS4");
-        break;
+        return "WIFI_CIPHER_TYPE_SMS4";
     case WIFI_CIPHER_TYPE_GCMP:
-        ESP_LOGI(TAG, "Group Cipher \tWIFI_CIPHER_TYPE_GCMP");
-        break;
+        return "WIFI_CIPHER_TYPE_GCMP";
     case WIFI_CIPHER_TYPE_GCMP256:
-        ESP_LOGI(TAG, "Group Cipher \tWIFI_CIPHER_TYPE_GCMP256");
-        break;
+        return "WIFI_CIPHER_TYPE_GCMP256";
     default:
-        ESP_LOGI(TAG, "Group Cipher \tWIFI_CIPHER_TYPE_UNKNOWN");
-        break;
+        return "WIFI_CIPHER_TYPE_UNKNOWN";
     }
 }
 
 //function to print bssid
-static void print_bssid(uint8_t bssid[6]) {
-    char mac[18];
+static const char *get_bssid_str(uint8_t bssid[6]) {
+    static char mac[18];
     snprintf(mac, sizeof(mac), "%02X:%02X:%02X:%02X:%02X:%02X",
              bssid[0], bssid[1], bssid[2],
              bssid[3], bssid[4], bssid[5]);
-    ESP_LOGI(TAG, "BSSID : \t\t%s", mac);
+    return mac;
 }
 
-static void print_antenna(int ant) {
+static const char *get_antenna_str(int ant) {
     switch (ant) {
-    case  WIFI_ANT_ANT0:
-        ESP_LOGI(TAG, "Antenna used \twifi antenna 0");
-        break;
+    case WIFI_ANT_ANT0:
+        return "wifi antenna 0";
     case WIFI_ANT_ANT1:
-        ESP_LOGI(TAG, "Antenna used \twifi antenna 1");
-        break;
+        return "wifi antenna 1";
     case WIFI_ANT_MAX:
-        ESP_LOGI(TAG, "Antenna used \twifi antenna invalid");
-        break;
+        return "wifi antenna invalid";
     default:
-        ESP_LOGI(TAG, "Antenna used \twifi antenna unknown");
-        break;
+        return "wifi antenna unknown";
     }
 }
 
@@ -202,721 +188,637 @@ static void print_antenna(int ant) {
 // MIMO: multiple antennas / simultaneous data streams
 // OFDM: channel divided into parallel subcarriers for data transmission
 // OFDMA: multiple users share subcarriers simultaneously (Wi-Fi 6)
-static void print_phy(wifi_ap_record_t record) {
-    if (record.phy_11b) {
-        // 2.4 GHz, old standard, maximum data rate 1-11 Mbps
-        ESP_LOGI(TAG, "Supports 802.11b");
-    }
-    if (record.phy_11g) {
-        // 2.4 GHz, newer than 11b, up to 54 Mbps
-        ESP_LOGI(TAG, "Supports 802.11g");
-    }
-    if (record.phy_11n) {
-        // 2.4 & 5 GHz, MIMO support, OFDM, up to 600 Mbps
-        ESP_LOGI(TAG, "Supports 802.11n");
-    }
-    if (record.phy_lr) {
-        // Low Rate mode, used for IoT or long-range communication at low speeds
-        ESP_LOGI(TAG, "Supports low rate");
-    }
-    if (record.phy_11a) {
-        // 5 GHz only, up to 54 Mbps, older standard
-        ESP_LOGI(TAG, "Supports 802.11a");
-    }
-    if (record.phy_11ac) {
-        // 5 GHz, MIMO enhanced, OFDM, up to 1Gbps, Wi-Fi 5 standard
-        ESP_LOGI(TAG, "Supports 802.11ac");
-    }
-    if (record.phy_11ax) {
-        // 2.4 & 5 GHz, OFDMA, MIMO, up to 10Gbps, Wi-Fi 6 standard
-        ESP_LOGI(TAG, "Supports 802.11ax");
-    }
-    if (record.wps) {
-        // Wi-Fi Protected Setup supported, easy connection via button or PIN
-        ESP_LOGI(TAG, "Supports WPS");
-    }
-    if (record.ftm_responder) {
-        // FTM (Fine Timing Measurement) supported in responder mode for precise localization
-        ESP_LOGI(TAG, "Supports FTM responder mode");
-    }
-    if (record.ftm_initiator) {
-        // FTM supported in initiator mode, AP can initiate distance measurements
-        ESP_LOGI(TAG, "Supports FTM initiator mode");
-    }
+static sta_info_strings_t *get_phy_info(wifi_ap_record_t record) {
+    static sta_info_strings_t out;
+    out.count = 3;
+
+    // init lines
+    for (int i = 0; i < out.count; i++)
+        out.lines[i][0] = '\0';
+
+    strcat(out.lines[0], "802.11: ");
+    strcat(out.lines[1], "FTM: ");
+    strcat(out.lines[2], "WPS: ");
+
+    if (record.phy_11b) strcat(out.lines[0], "b/");
+    if (record.phy_11g) strcat(out.lines[0], "g/");
+    if (record.phy_11n) strcat(out.lines[0], "n/");
+    if (record.phy_lr)  strcat(out.lines[0], "lr/");
+    if (record.phy_11a) strcat(out.lines[0], "a/");
+    if (record.phy_11ac) strcat(out.lines[0], "ac/");
+    if (record.phy_11ax) strcat(out.lines[0], "ax/");
+
+    strcat(out.lines[1], record.ftm_responder ? "responder/" : "");
+    strcat(out.lines[1], record.ftm_initiator ? "initiator" : "");
+
+    strcat(out.lines[2], record.wps ? "Yes" : "No");
+
+    return &out;
 }
 
 //function to print country channels & max power alllowed, policy
-static void print_country(wifi_country_t country) {
+static sta_info_strings_t *get_country_info(wifi_country_t country) {
+    static sta_info_strings_t out;
+    out.count = 0;
 
-    //copy string to add \0
+    // init lines
+    for (int i = 0; i < 5; i++)
+        out.lines[i][0] = '\0';
+
+    // copy country code
     char cc[3];
     memcpy(cc, country.cc, 2);
     cc[2] = '\0';
 
-    if (strcmp(cc,"") != 0) {
-        ESP_LOGI(TAG, "Country code : \t%s", cc);
-        ESP_LOGI(TAG, "Country start channel (2.4GHz) : \t%d", country.schan);
-        ESP_LOGI(TAG, "Country number of channels (2.4GHz) : \t%d", country.nchan);
-        ESP_LOGI(TAG, "Country max tx power : \t\t%d dBm", country.max_tx_power);
+    if (strcmp(cc, "") != 0) {
+        out.count = 5;
+
+        snprintf(out.lines[0], sizeof(out.lines[0]), "Country code: %s", cc);
+        snprintf(out.lines[1], sizeof(out.lines[1]), "Start channel: %d", country.schan);
+        snprintf(out.lines[2], sizeof(out.lines[2]), "Number of channels: %d", country.nchan);
+        snprintf(out.lines[3], sizeof(out.lines[3]), "Max TX power: %d dBm", country.max_tx_power);
+
+        const char *policy;
         switch(country.policy) {
-            case WIFI_COUNTRY_POLICY_AUTO :
-                ESP_LOGI(TAG, "Country policy : \tauto");
-                break;
-            case WIFI_COUNTRY_POLICY_MANUAL :
-                ESP_LOGI(TAG, "Country policy : \tmanual");
-                break;
+            case WIFI_COUNTRY_POLICY_AUTO:
+                policy = "auto"; break;
+            case WIFI_COUNTRY_POLICY_MANUAL:
+                policy = "manual"; break;
             default:
-                ESP_LOGI(TAG, "Country policy : \tunknown");
-                break;
+                policy = "unknown"; break;
         }
+        snprintf(out.lines[4], sizeof(out.lines[4]), "Policy: %s", policy);
     } else {
-        ESP_LOGI(TAG, "Country info : \tempty");
+        out.count = 1;
+        strcpy(out.lines[0], "Country info: empty");
     }
+
+    return &out;
 }
 
 //function to print he info on wifi 6 AP
-static void print_he(wifi_he_ap_info_t he) {
+static sta_info_strings_t *get_he_info(wifi_he_ap_info_t he) {
+    static sta_info_strings_t out;
+    out.count = 4;
 
-    // identifies the AP in dense networks with number 0-63 assigned to AP
-    ESP_LOGI(TAG, "HE BSS color : \t%d", he.bss_color);
+    // init lines
+    for (int i = 0; i < 4; i++)
+        out.lines[i][0] = '\0';
 
-    // for partial interference management :  client only sees part of frames
-    if (he.partial_bss_color) {
-        ESP_LOGI(TAG, "Client doesn't see all frames");
-    } else {
-        ESP_LOGI(TAG, "Client receive everything");
-    }
+    snprintf(out.lines[0], sizeof(out.lines[0]), "HE BSS color: %d", he.bss_color);
+    snprintf(out.lines[1], sizeof(out.lines[1]),
+             "Partial BSS color: %s",
+             he.partial_bss_color ? "client doesn't see all frames" : "client receives everything");
+    snprintf(out.lines[2], sizeof(out.lines[2]),
+             "BSS color: %s",
+             he.bss_color_disabled ? "disabled" : "enabled");
+    snprintf(out.lines[3], sizeof(out.lines[3]), "BSSID index: %d", he.bssid_index);
 
-    // BSS feature used by this AP?
-    if (he.bss_color_disabled) {
-        ESP_LOGI(TAG, "BSS color disabled");
-    } else {
-        ESP_LOGI(TAG, "BSS color enabled");
-    }
-
-    // identifies the AP’s BSSID index (for non-transmitted or virtual BSS)
-    ESP_LOGI(TAG, "AP's BSSID index : \t%d", he.bssid_index);
+    return &out;
 }
 
 // Function to print Wi-Fi channel bandwidth
-static void print_bandwidth(int bandwidth) {
+static const char *get_bandwidth_str(int bandwidth) {
 
     switch(bandwidth) {
 
         // 20 MHz channel: HT20 (802.11n) or generic 20 MHz
         case WIFI_BW_HT20: // same value as WIFI_BW20
-            ESP_LOGI(TAG, "Bandwidth \t20 MHz (HT20)");
-            break;
+            return "20 MHz (HT20)";
 
         // 40 MHz channel: HT40 (802.11n) or generic 40 MHz
         case WIFI_BW_HT40: // same value as WIFI_BW40
-            ESP_LOGI(TAG, "Bandwidth \t40 MHz (HT40)");
-            break;
+            return "40 MHz (HT40)";
         
         //wifi 5-6 : below
 
         // 80 MHz channel
         case WIFI_BW80:
-            ESP_LOGI(TAG, "Bandwidth \t80 MHz");
-            break;
+            return "80 MHz";
 
         // 160 MHz channel
         case WIFI_BW160:
-            ESP_LOGI(TAG, "Bandwidth \t160 MHz");
-            break;
+            return "160 MHz";
 
         // 80+80 MHz channel (non-contiguous)
         case WIFI_BW80_BW80:
-            ESP_LOGI(TAG, "Bandwidth \t80+80 MHz (non-contiguous)");
-            break;
+            return "80+80 MHz (non-contiguous)";
 
         // Default case if unknown
         default:
-            ESP_LOGI(TAG, "Bandwidth \tunknown");
-            break;
+            return "unknown";
     }
 }
 
 // Function to print VHT center channel frequencies from AP record
-static void print_vht_channels(wifi_ap_record_t ap_info) {
+static sta_info_strings_t *get_vht_channels_info(wifi_ap_record_t ap_info) {
+    static sta_info_strings_t out;
+    out.count = 0;
+
+    // init
+    for (int i = 0; i < 2; i++)
+        out.lines[i][0] = '\0';
+
     int bandwidth = ap_info.bandwidth;
 
-    // vht_ch_freq1: center frequency of the primary channel segment
-    // For 80 MHz or 160 MHz bandwidth, this is the main center channel
-    // For 80+80 MHz, this is the center of the lower frequency segment
     if (bandwidth == WIFI_BW80 || bandwidth == WIFI_BW160 || bandwidth == WIFI_BW80_BW80) {
-        ESP_LOGI(TAG, "VHT primary center channel frequency: \t%d", ap_info.vht_ch_freq1);
+        snprintf(out.lines[out.count], sizeof(out.lines[0]),
+                 "Primary center freq: %d", ap_info.vht_ch_freq1);
+        out.count++;
     }
 
-    // vht_ch_freq2: used only for 80+80 MHz bandwidth
-    // Transmits the center channel frequency of the second (upper) segment
     if (bandwidth == WIFI_BW80_BW80) {
-        ESP_LOGI(TAG, "VHT secondary center channel frequency: \t%d", ap_info.vht_ch_freq2);
+        snprintf(out.lines[out.count], sizeof(out.lines[0]),
+                 "Secondary center freq: %d", ap_info.vht_ch_freq2);
+        out.count++;
     }
+
+    if (out.count == 0) {
+        strcpy(out.lines[0], "No VHT channel info");
+        out.count = 1;
+    }
+
+    return &out;
 }
 
 //function to print scan parameters
-static void print_scan_params(wifi_scan_default_params_t params) {
-    //send probes by wifi and APs respond
-    ESP_LOGI(TAG, "Time range per channel : %d ms to %d ms",
-        params.scan_time.active.max, params.scan_time.active.min);
-    //esp only listen beacons by APs
-    ESP_LOGI(TAG, "Passive time per channel : %d ms", params.scan_time.passive);
-    //time between each channel
-    ESP_LOGI(TAG, "Time between channels : %d ms", params.home_chan_dwell_time);
+static sta_info_strings_t *get_scan_params_info(wifi_scan_default_params_t params) {
+    static sta_info_strings_t out;
+    out.count = 0;
+
+    // init lines
+    for (int i = 0; i < 3; i++)
+        out.lines[i][0] = '\0';
+
+    snprintf(out.lines[out.count], sizeof(out.lines[0]),
+             "Active scan time: %" PRIu32 "-%" PRIu32 " ms",
+             params.scan_time.active.min,
+             params.scan_time.active.max);
+    out.count++;
+
+    snprintf(out.lines[out.count], sizeof(out.lines[0]),
+             "Passive scan time: %" PRIu32 " ms",
+             params.scan_time.passive);
+    out.count++;
+
+    snprintf(out.lines[out.count], sizeof(out.lines[0]),
+             "Time between channels: %d ms",
+             params.home_chan_dwell_time);
+    out.count++;
+
+    return &out;
 }
 
 // Function to print Wi-Fi mode of the ESP32
-static void print_wifi_mode(int mode) {
+static const char *get_wifi_mode_str(int mode) {
     switch(mode) {
         case WIFI_MODE_NULL:
-            // Null mode : Wi-Fi disabled
-            ESP_LOGI(TAG, "Wi-Fi mode : \tnull (disabled)");
-            break;
-
+            return "null (disabled)";
         case WIFI_MODE_STA:
-            // Station mode : ESP32 connects to an AP
-            ESP_LOGI(TAG, "Wi-Fi mode : \tstation (STA)");
-            break;
-
+            return "station (STA)";
         case WIFI_MODE_AP:
-            // Soft-AP mode : ESP32 acts as an access point
-            ESP_LOGI(TAG, "Wi-Fi mode : \tsoft-AP (AP)");
-            break;
-
+            return "soft-AP (AP)";
         case WIFI_MODE_APSTA:
-            // Station + Soft-AP : ESP32 can connect to AP and provide its own AP
-            ESP_LOGI(TAG, "Wi-Fi mode : \tstation + soft-AP (APSTA)");
-            break;
-
+            return "station + soft-AP (APSTA)";
         case WIFI_MODE_NAN:
-            // NAN mode : Neighbor Awareness Networking (Wi-Fi P2P)
-            ESP_LOGI(TAG, "Wi-Fi mode : \tNAN (Neighbor Awareness Networking)");
-            break;
-
+            return "NAN (Neighbor Awareness Networking)";
         case WIFI_MODE_MAX:
-            // Max value placeholder, not used
-            ESP_LOGI(TAG, "Wi-Fi mode : \tmax (placeholder)");
-            break;
-
+            return "max (placeholder)";
         default:
-            // Unknown mode
-            ESP_LOGI(TAG, "Wi-Fi mode : \tunknown");
-            break;
+            return "unknown";
     }
 }
 
 // Function to print Wi-Fi power save type
-static void print_ps(int ps) {
+static const char *get_ps_str(int ps) {
     switch(ps) {
         case WIFI_PS_NONE:
-            // No power save : Wi-Fi always active, higher power consumption
-            ESP_LOGI(TAG, "Power save mode : NONE (Wi-Fi always active)");
-            break;
-
+            return "NONE (Wi-Fi always active)";
         case WIFI_PS_MIN_MODEM:
-            // Minimum modem power saving
-            // ESP32 wakes up to receive beacons every DTIM period
-            ESP_LOGI(TAG, "Power save mode : MIN_MODEM (wake up every DTIM)");
-            break;
-
+            return "MIN_MODEM (wake up every DTIM)";
         case WIFI_PS_MAX_MODEM:
-            // Maximum modem power saving
-            // ESP32 wakes up to receive beacons based on listen_interval
-            ESP_LOGI(TAG, "Power save mode : MAX_MODEM (wake up per listen_interval)");
-            break;
-
-        default:
-            ESP_LOGI(TAG, "Power save mode : UNKNOWN (%d)", ps);
-            break;
+            return "MAX_MODEM (wake up per listen_interval)";
+        default: {
+            static char buf[32];
+            snprintf(buf, sizeof(buf), "UNKNOWN (%d)", ps);
+            return buf;
+        }
     }
 }
 
 //function to print protocols : use macro bitmasks
-static void print_protocols(wifi_protocols_t protocols)
-{
+static sta_info_strings_t *get_protocols_info(wifi_protocols_t protocols) {
+    static sta_info_strings_t out;
+    out.count = 0;
+
+    // init
+    for (int i = 0; i < 4; i++) 
+        out.lines[i][0] = '\0';
 
     if (protocols.ghz_2g) {
-        ESP_LOGI(TAG, "  2.4 GHz:");
-        if (protocols.ghz_2g & WIFI_PROTOCOL_LR)
-            ESP_LOGI(TAG, "    - Long Range (LR)");
-        if (protocols.ghz_2g & WIFI_PROTOCOL_11B)
-            ESP_LOGI(TAG, "    - 802.11b");
-        if (protocols.ghz_2g & WIFI_PROTOCOL_11G)
-            ESP_LOGI(TAG, "    - 802.11g");
-        if (protocols.ghz_2g & WIFI_PROTOCOL_11N)
-            ESP_LOGI(TAG, "    - 802.11n");
-        if (protocols.ghz_2g & WIFI_PROTOCOL_11AX)
-            ESP_LOGI(TAG, "    - 802.11ax (Wi-Fi 6)");
+        strcat(out.lines[out.count], "2.4 GHz: ");
+        if (protocols.ghz_2g & WIFI_PROTOCOL_LR)    strcat(out.lines[out.count], "LR ");
+        if (protocols.ghz_2g & WIFI_PROTOCOL_11B)   strcat(out.lines[out.count], "11b ");
+        if (protocols.ghz_2g & WIFI_PROTOCOL_11G)   strcat(out.lines[out.count], "11g ");
+        if (protocols.ghz_2g & WIFI_PROTOCOL_11N)   strcat(out.lines[out.count], "11n ");
+        if (protocols.ghz_2g & WIFI_PROTOCOL_11AX)  strcat(out.lines[out.count], "11ax ");
+        out.count++;
     }
 
     if (protocols.ghz_5g) {
-        ESP_LOGI(TAG, "  5 GHz:");
-        if (protocols.ghz_5g & WIFI_PROTOCOL_11A)
-            ESP_LOGI(TAG, "    - 802.11a");
-        if (protocols.ghz_5g & WIFI_PROTOCOL_11N)
-            ESP_LOGI(TAG, "    - 802.11n");
-        if (protocols.ghz_5g & WIFI_PROTOCOL_11AC)
-            ESP_LOGI(TAG, "    - 802.11ac (Wi-Fi 5)");
-        if (protocols.ghz_5g & WIFI_PROTOCOL_11AX)
-            ESP_LOGI(TAG, "    - 802.11ax (Wi-Fi 6)");
+        strcat(out.lines[out.count], "5 GHz: ");
+        if (protocols.ghz_5g & WIFI_PROTOCOL_11A)   strcat(out.lines[out.count], "11a ");
+        if (protocols.ghz_5g & WIFI_PROTOCOL_11N)   strcat(out.lines[out.count], "11n ");
+        if (protocols.ghz_5g & WIFI_PROTOCOL_11AC)  strcat(out.lines[out.count], "11ac ");
+        if (protocols.ghz_5g & WIFI_PROTOCOL_11AX)  strcat(out.lines[out.count], "11ax ");
+        out.count++;
     }
 
-    if (protocols.ghz_2g == 0 && protocols.ghz_5g == 0) {
-        ESP_LOGI(TAG, "  No protocol enabled");
+    if (out.count == 0) {
+        strcpy(out.lines[0], "No protocol enabled");
+        out.count = 1;
     }
+
+    return &out;
 }
 
 // Function to print general promiscuous packet filters (non-CTRL)
-static void print_promiscuous_filter(wifi_promiscuous_filter_t filter)
-{
-    // Print the raw mask value for debugging
-    ESP_LOGI(TAG, "Promiscuous filter mask: 0x%08lX", filter.filter_mask);
+static sta_info_strings_t *get_promiscuous_filter_info(wifi_promiscuous_filter_t filter) {
+    static sta_info_strings_t out;
+    out.count = 0;
 
+    // init lines
+    for (int i = 0; i < 4; i++)
+        out.lines[i][0] = '\0';
+
+    // ligne 0 = mask brut
+    snprintf(out.lines[0], sizeof(out.lines[0]), "Mask: 0x%08lX", filter.filter_mask);
+    out.count = 1;
+
+    // ligne 1 = types capturés
     if (filter.filter_mask == WIFI_PROMIS_FILTER_MASK_ALL) {
-        ESP_LOGI(TAG, "  All packet types are captured");
-        return;
+        strcpy(out.lines[1], "All packet types");
+        out.count = 2;
+    } else {
+        if (filter.filter_mask & WIFI_PROMIS_FILTER_MASK_MGMT)       strcat(out.lines[1], "MGMT/");
+        if (filter.filter_mask & WIFI_PROMIS_FILTER_MASK_CTRL)       strcat(out.lines[1], "CTRL/");
+        if (filter.filter_mask & WIFI_PROMIS_FILTER_MASK_DATA)       strcat(out.lines[1], "DATA/");
+        if (filter.filter_mask & WIFI_PROMIS_FILTER_MASK_MISC)       strcat(out.lines[1], "MISC/");
+        if (filter.filter_mask & WIFI_PROMIS_FILTER_MASK_DATA_MPDU)  strcat(out.lines[1], "MPDU/");
+        if (filter.filter_mask & WIFI_PROMIS_FILTER_MASK_DATA_AMPDU) strcat(out.lines[1], "AMPDU/");
+        if (filter.filter_mask & WIFI_PROMIS_FILTER_MASK_FCSFAIL)    strcat(out.lines[1], "FCSFAIL/");
+
+        // enlever le dernier '/'
+        size_t len = strlen(out.lines[1]);
+        if (len > 0 && out.lines[1][len-1] == '/') out.lines[1][len-1] = '\0';
+
+        out.count = 2;
     }
 
-    // Management frames (beacons, association requests, etc.)
-    if (filter.filter_mask & WIFI_PROMIS_FILTER_MASK_MGMT)
-        ESP_LOGI(TAG, "  - Management frames (MGMT)");
-
-    // Control frames (ACK, RTS, CTS, etc.) -- usually filtered separately
-    if (filter.filter_mask & WIFI_PROMIS_FILTER_MASK_CTRL)
-        ESP_LOGI(TAG, "  - Control frames (CTRL)");
-
-    // Data frames (payload data between stations/APs)
-    if (filter.filter_mask & WIFI_PROMIS_FILTER_MASK_DATA)
-        ESP_LOGI(TAG, "  - Data frames (DATA)");
-
-    // Miscellaneous frames (like beacon reports, vendor-specific)
-    if (filter.filter_mask & WIFI_PROMIS_FILTER_MASK_MISC)
-        ESP_LOGI(TAG, "  - Miscellaneous frames (MISC)");
-
-    // Only specific MPDU data frames
-    if (filter.filter_mask & WIFI_PROMIS_FILTER_MASK_DATA_MPDU)
-        ESP_LOGI(TAG, "  - Data MPDU frames");
-
-    // Aggregated AMPDU frames (multiple frames sent together)
-    if (filter.filter_mask & WIFI_PROMIS_FILTER_MASK_DATA_AMPDU)
-        ESP_LOGI(TAG, "  - Data AMPDU frames");
-
-    // Frames with FCS errors (frame check sequence failed)
-    if (filter.filter_mask & WIFI_PROMIS_FILTER_MASK_FCSFAIL)
-        ESP_LOGI(TAG, "  - Frames with FCS errors");
+    return &out;
 }
 
-
 // Function to print control frame filters in promiscuous mode
-static void print_promiscuous_ctrl_filter(wifi_promiscuous_filter_t filter)
-{
-    // Print the raw mask value (useful for debugging)
-    ESP_LOGI(TAG, "Promiscuous CTRL filter mask: 0x%08lX", filter.filter_mask);
+static sta_info_strings_t *get_promiscuous_ctrl_filter_info(wifi_promiscuous_filter_t filter) {
+    static sta_info_strings_t out;
+    out.count = 0;
 
-    // If all control frame types are filtered
+    // init lines
+    for (int i = 0; i < 4; i++)
+        out.lines[i][0] = '\0';
+
+    // ligne 0 = mask brut
+    snprintf(out.lines[0], sizeof(out.lines[0]), "CTRL Mask: 0x%08lX", filter.filter_mask);
+    out.count = 1;
+
+    // ligne 1 = types capturés
     if (filter.filter_mask == WIFI_PROMIS_CTRL_FILTER_MASK_ALL) {
-        ESP_LOGI(TAG, "  All control packets"); // All control frames are captured
-        return;
+        strcpy(out.lines[1], "All control packets");
+        out.count = 2;
+    } else {
+        if (filter.filter_mask & WIFI_PROMIS_CTRL_FILTER_MASK_WRAPPER)    strcat(out.lines[1], "WRAPPER/");
+        if (filter.filter_mask & WIFI_PROMIS_CTRL_FILTER_MASK_BAR)        strcat(out.lines[1], "BAR/");
+        if (filter.filter_mask & WIFI_PROMIS_CTRL_FILTER_MASK_BA)         strcat(out.lines[1], "BA/");
+        if (filter.filter_mask & WIFI_PROMIS_CTRL_FILTER_MASK_PSPOLL)     strcat(out.lines[1], "PSPOLL/");
+        if (filter.filter_mask & WIFI_PROMIS_CTRL_FILTER_MASK_RTS)        strcat(out.lines[1], "RTS/");
+        if (filter.filter_mask & WIFI_PROMIS_CTRL_FILTER_MASK_CTS)        strcat(out.lines[1], "CTS/");
+        if (filter.filter_mask & WIFI_PROMIS_CTRL_FILTER_MASK_ACK)        strcat(out.lines[1], "ACK/");
+        if (filter.filter_mask & WIFI_PROMIS_CTRL_FILTER_MASK_CFEND)      strcat(out.lines[1], "CFEND/");
+        if (filter.filter_mask & WIFI_PROMIS_CTRL_FILTER_MASK_CFENDACK)   strcat(out.lines[1], "CFENDACK/");
+
+        // enlever le dernier '/'
+        size_t len = strlen(out.lines[1]);
+        if (len > 0 && out.lines[1][len-1] == '/') out.lines[1][len-1] = '\0';
+
+        out.count = 2;
     }
 
-    // Each bit represents a specific subtype of control frame
-    // Wrapper frame type (encapsulates other frames)
-    if (filter.filter_mask & WIFI_PROMIS_CTRL_FILTER_MASK_WRAPPER)
-        ESP_LOGI(TAG, "  - Control Wrapper"); 
-
-    // Request to acknowledge a block of frames
-    if (filter.filter_mask & WIFI_PROMIS_CTRL_FILTER_MASK_BAR)
-        ESP_LOGI(TAG, "  - Block Ack Request (BAR)"); 
-
-    // Acknowledgment of a block of frames
-    if (filter.filter_mask & WIFI_PROMIS_CTRL_FILTER_MASK_BA)
-        ESP_LOGI(TAG, "  - Block Ack (BA)"); 
-
-    // Power-Save poll frame, wakes up station in power-save mode
-    if (filter.filter_mask & WIFI_PROMIS_CTRL_FILTER_MASK_PSPOLL)
-        ESP_LOGI(TAG, "  - PS-Poll"); 
-
-    // Request to Send (asking for permission to send data)
-    if (filter.filter_mask & WIFI_PROMIS_CTRL_FILTER_MASK_RTS)
-        ESP_LOGI(TAG, "  - RTS"); 
-
-    // Clear to Send (permission to transmit data)
-    if (filter.filter_mask & WIFI_PROMIS_CTRL_FILTER_MASK_CTS)
-        ESP_LOGI(TAG, "  - CTS"); 
-
-    // Acknowledgment of a previously received frame
-    if (filter.filter_mask & WIFI_PROMIS_CTRL_FILTER_MASK_ACK)
-        ESP_LOGI(TAG, "  - ACK"); 
-
-    // Marks the end of a contention-free sequence
-    if (filter.filter_mask & WIFI_PROMIS_CTRL_FILTER_MASK_CFEND)
-        ESP_LOGI(TAG, "  - CF-END"); 
-        
-    // End of sequence + associated acknowledgment
-    if (filter.filter_mask & WIFI_PROMIS_CTRL_FILTER_MASK_CFENDACK)
-        ESP_LOGI(TAG, "  - CF-END + CF-ACK"); 
-
+    return &out;
 }
 
 //function to print phy mode used between ESP & AP
-static void print_phy_mode(wifi_phy_mode_t mode)
+static const char *get_phy_str(wifi_phy_mode_t mode)
 {
     switch (mode) {
         case WIFI_PHY_MODE_LR:
-            ESP_LOGI(TAG, "PHY mode used : \tLow Rate (LR)");
-            break;
-
+            return "Low Rate (LR)";
         case WIFI_PHY_MODE_11B:
-            ESP_LOGI(TAG, "PHY mode used : \t802.11b");
-            break;
-
+            return "802.11b";
         case WIFI_PHY_MODE_11G:
-            ESP_LOGI(TAG, "PHY mode used : \t802.11g");
-            break;
-
+            return "802.11g";
         case WIFI_PHY_MODE_11A:
-            ESP_LOGI(TAG, "PHY mode used : \t802.11a (5 GHz)");
-            break;
-
+            return "802.11a (5 GHz)";
         case WIFI_PHY_MODE_HT20:
-            ESP_LOGI(TAG, "PHY mode used : \t802.11n HT20 (20 MHz)");
-            break;
-
+            return "802.11n HT20 (20 MHz)";
         case WIFI_PHY_MODE_HT40:
-            ESP_LOGI(TAG, "PHY mode used : \t802.11n HT40 (40 MHz)");
-            break;
-
+            return "802.11n HT40 (40 MHz)";
         case WIFI_PHY_MODE_VHT20:
-            ESP_LOGI(TAG, "PHY mode used : \t802.11ac VHT20 (20 MHz)");
-            break;
-
+            return "802.11ac VHT20 (20 MHz)";
         case WIFI_PHY_MODE_HE20:
-            ESP_LOGI(TAG, "PHY mode used : \t802.11ax HE20 (20 MHz)");
-            break;
-
-        default:
-            ESP_LOGW(TAG, "PHY mode used : \tUnknown (%d)", mode);
-            break;
+            return "802.11ax HE20 (20 MHz)";
+        default: {
+            static char buf[32];
+            snprintf(buf, sizeof(buf), "Unknown (%d)", mode);
+            return buf;
+        }
     }
 }
 
-static void print_scan_method(wifi_scan_method_t scan) {
+static const char *get_scan_method_str(wifi_scan_method_t scan) {
     switch (scan)
     {
     case WIFI_FAST_SCAN:
-        ESP_LOGI(TAG, "Scan method : fast ");
-        break;
+        return "fast";
     case WIFI_ALL_CHANNEL_SCAN:
-        ESP_LOGI(TAG, "Scan method : all channels ");
-        break;
+        return "all channels";
     default:
-        ESP_LOGI(TAG, "Scan method : unknown");
-        break;
+        return "unknown";
     }
 }
 
-static void print_sort_method(wifi_sort_method_t sort) {
+static const char *get_sort_method_str(wifi_sort_method_t sort) {
     switch (sort)
     {
     case WIFI_CONNECT_AP_BY_SIGNAL:
-        ESP_LOGI(TAG, "Sort APs by RSSI");
-        break;
+        return "Sort APs by RSSI";
     case WIFI_CONNECT_AP_BY_SECURITY:
-        ESP_LOGI(TAG, "Sort APs by security mode");
-        break;
+        return "Sort APs by security mode";
     default:
-        ESP_LOGI(TAG, "Sort method unknown");
-        break;
+        return "Sort method unknown";
     }
 }
 
-static void print_scan_threshold(wifi_scan_threshold_t threshold) {
-    ESP_LOGI(TAG, "Minimum RSSI in Fast scan : %d dBm", threshold.rssi);
-    ESP_LOGI(TAG, "Weakest authmode to accept in fast scan : ");
-    print_auth_mode(threshold.authmode);
-    ESP_LOGI(TAG, "RSSI 5G AP (priority) : %d dBm", threshold.rssi_5g_adjustment);    
+static sta_info_strings_t *get_scan_threshold_info(wifi_scan_threshold_t threshold) {
+    static sta_info_strings_t out;
+    out.count = 0;
+
+    // init lines
+    for (int i = 0; i < 4; i++)
+        out.lines[i][0] = '\0';
+
+    snprintf(out.lines[0], sizeof(out.lines[0]), "Min RSSI: %d dBm", threshold.rssi);
+    snprintf(out.lines[1], sizeof(out.lines[1]), "Weakest auth mode: %s", get_authmode_str(threshold.authmode));
+    snprintf(out.lines[2], sizeof(out.lines[2]), "5G RSSI adjustment: %d dBm", threshold.rssi_5g_adjustment);
+
+    out.count = 3;
+    return &out;
 }
 
-static void print_sae_pk(wifi_sae_pk_mode_t pk) {
+static const char *get_sae_pk_str(wifi_sae_pk_mode_t pk) {
     switch (pk)
     {
     case WPA3_SAE_PK_MODE_AUTOMATIC:
-        ESP_LOGI(TAG, "WPA3 SAE PK auto");
-        break;
+        return "WPA3 SAE PK auto";
     case WPA3_SAE_PK_MODE_ONLY:
-        ESP_LOGI(TAG, "WPA3 SAE PK only");
-        break;
+        return "WPA3 SAE PK only";
     case WPA3_SAE_PK_MODE_DISABLED:
-        ESP_LOGI(TAG, "WPA3 SAE PK disabled");
-        break;
+        return "WPA3 SAE PK disabled";
     default:
-        ESP_LOGI(TAG, "WPA3 SAE PK unknown");
-        break;
+        return "WPA3 SAE PK unknown";
     }
 }
 
-static void print_sae_pwe(wifi_sae_pwe_method_t pwe) {
+static const char *get_sae_pwe_str(wifi_sae_pwe_method_t pwe) {
     switch (pwe)
     {
     case WPA3_SAE_PWE_UNSPECIFIED:
-        ESP_LOGI(TAG, "WPA3 SAE PWE unspecified");
-        break;
+        return "WPA3 SAE PWE unspecified";
     case WPA3_SAE_PWE_HUNT_AND_PECK:
-        ESP_LOGI(TAG, "WPA3 SAE PWE hunt & peck");
-        break;
+        return "WPA3 SAE PWE hunt & peck";
     case WPA3_SAE_PWE_HASH_TO_ELEMENT:
-        ESP_LOGI(TAG, "WPA3 SAE PWE hash to element");
-        break;
+        return "WPA3 SAE PWE hash to element";
     case WPA3_SAE_PWE_BOTH:
-        ESP_LOGI(TAG, "WPA3 SAE PWE both");
-        break;
+        return "WPA3 SAE PWE both";
     default:
-        ESP_LOGI(TAG, "WPA3 SAE PWE unknown");
-        break;
+        return "WPA3 SAE PWE unknown";
     }
 }
 
-static void print_bss(wifi_bss_max_idle_config_t bss) {
-    ESP_LOGI(TAG, "BSS max idle period : %d TUs", bss.period);
-    ESP_LOGI(TAG, "Protected keep alive required %s",
-        bss.protected_keep_alive ? "Yes" : "No");
+static sta_info_strings_t *get_bss_info(wifi_bss_max_idle_config_t bss) {
+    static sta_info_strings_t out;
+    out.count = 0;
+
+    // init lines
+    for (int i = 0; i < 2; i++)
+        out.lines[i][0] = '\0';
+
+    snprintf(out.lines[0], sizeof(out.lines[0]), "BSS max idle: %d TUs", bss.period);
+    snprintf(out.lines[1], sizeof(out.lines[1]), "Protected keep alive: %s", bss.protected_keep_alive ? "Yes" : "No");
+
+    out.count = 2;
+    return &out;
 }
 
 //function to print wifi event mask
-static void print_wifi_event_mask(uint32_t mask)
-{
-    ESP_LOGI(TAG, "ESP wifi event mask : 0x%08" PRIX32, mask);
+static sta_info_strings_t *get_wifi_event_mask_info(uint32_t mask) {
+    static sta_info_strings_t out;
+    out.count = 0;
 
-    // Special cases
+    // init lines
+    for (int i = 0; i < 4; i++)
+        out.lines[i][0] = '\0';
+
+    snprintf(out.lines[0], sizeof(out.lines[0]), "ESP wifi event mask: 0x%08" PRIX32, mask);
+
     if (mask == WIFI_EVENT_MASK_NONE) {
-        ESP_LOGI(TAG, "  No Wi-Fi events are masked (all events enabled)");
-        return;
+        strcpy(out.lines[1], "No Wi-Fi events are masked");
+        out.count = 2;
+        return &out;
     }
 
     if (mask == WIFI_EVENT_MASK_ALL) {
-        ESP_LOGI(TAG, "  All Wi-Fi events are masked");
-        return;
+        strcpy(out.lines[1], "All Wi-Fi events are masked");
+        out.count = 2;
+        return &out;
     }
 
-    // Known maskable events
+    int line_idx = 1;
     if (mask & WIFI_EVENT_MASK_AP_PROBEREQRECVED) {
-        ESP_LOGI(TAG, "  - AP probe request received event is masked");
+        strcpy(out.lines[line_idx++], "AP_PROBEREQRECVED");
     }
 
-    // Detect unknown / undocumented bits
-    uint32_t known_mask =
-        WIFI_EVENT_MASK_AP_PROBEREQRECVED;
-
+    uint32_t known_mask = WIFI_EVENT_MASK_AP_PROBEREQRECVED;
     uint32_t unknown = mask & ~known_mask;
     if (unknown) {
-        ESP_LOGW(TAG, "  - Unknown masked bits: 0x%08" PRIX32, unknown);
+        snprintf(out.lines[line_idx++], sizeof(out.lines[0]), "Unknown bits: 0x%08" PRIX32, unknown);
     }
+
+    out.count = line_idx;
+    return &out;
 }
 
 //function to print ESP's AP config
-static void print_config_ap(wifi_ap_config_t ap) {
-    ESP_LOGI(TAG, "=== Soft-AP Configuration ===");
-    ESP_LOGI(TAG, "SSID           : %s" , ap.ssid);
-    ESP_LOGI(TAG, "Password       : %s", ap.password);
-    ESP_LOGI(TAG, "SSID length    : %d", ap.ssid_len);
-    //channel used by ESP to emit
-    ESP_LOGI(TAG, "Channel        : %d", ap.channel);
+static sta_info_strings_t *get_config_ap_info(wifi_ap_config_t ap) {
+    static sta_info_strings_t out;
+    out.count = 0;
+    for (int i = 0; i < MAX_STR_LINES; i++) out.lines[i][0] = '\0';
+
+    // line 0: SSID and password info
+    snprintf(out.lines[out.count++], sizeof(out.lines[0]),
+             "SSID: %s | PASS: %s | SSID len: %d",
+             ap.ssid, ap.password, ap.ssid_len);
+
+    // line 1: channel, auth mode, hidden
+    snprintf(out.lines[out.count++], sizeof(out.lines[0]),
+             "CH: %d | Auth: %s | Hidden: %s",
+             ap.channel, get_authmode_str(ap.authmode),
+             ap.ssid_hidden ? "Yes" : "No");
+
+    // line 2: Max connections, beacon, CSA, DTIM
+    snprintf(out.lines[out.count++], sizeof(out.lines[0]),
+             "Max conn: %d | Beacon: %d | CSA: %d | DTIM: %d",
+             ap.max_connection, ap.beacon_interval, ap.csa_count, ap.dtim_period);
+
+    // line 3: Pairwise cipher and FTM responder
+    snprintf(out.lines[out.count++], sizeof(out.lines[0]),
+             "Pairwise: %s | FTM: %s",
+             get_cipher_pair_str(ap.pairwise_cipher),
+             ap.ftm_responder ? "Enabled" : "Disabled");
+
+    // line 4: PMF required / capable
+    snprintf(out.lines[out.count++], sizeof(out.lines[0]),
+             "PMF Req: %d | PMF Capable: %d",
+             ap.pmf_cfg.required, ap.pmf_cfg.capable);
+
+    // line 5: SAE PWE, transition disable, SAE EXT, WPA3 compatibility
+    snprintf(out.lines[out.count++], sizeof(out.lines[0]),
+             "SAE PWE: %s | Transition disable: %d | SAE EXT: %d | WPA3 compat: %d",
+             get_sae_pwe_str(ap.sae_pwe_h2e),
+             ap.transition_disable,
+             ap.sae_ext,
+             ap.wpa3_compatible_mode);
     
-    //type of security authentication
-    print_auth_mode(ap.authmode);
 
-    //if SSID visible in wifi scan from clients
-    ESP_LOGI(TAG, "SSID hidden    : %s", ap.ssid_hidden ? "Yes" : "No");
+    // line 6 & more : BSS max idle
+    sta_info_strings_t *info = get_bss_info(ap.bss_max_idle_cfg);
+    for (int i = 0; i < info->count; i++) {
+        snprintf(out.lines[out.count++], sizeof(out.lines[0]),
+             "BSS [%d]: %s", i, info->lines[i]);
+    }
 
-    //Maximum number of clients
-    ESP_LOGI(TAG, "Max connections: %d", ap.max_connection);
+    // last line : GTK rekey
+    snprintf(out.lines[out.count++], sizeof(out.lines[0]),
+                "GTK rekey: %d",
+             ap.gtk_rekey_interval);
 
-    //Interval between each beacon sent by ESP AP
-    ESP_LOGI(TAG, "Beacon interval: %d TU", ap.beacon_interval);
-
-    //Channel switch announcement
-    //If ESP AP needs to change channel, this counter shows how many beacons needed before the switch
-    ESP_LOGI(TAG, "CSA count      : %d", ap.csa_count);
-
-    //Delivery Traffic Indication Message
-    //How many beacons before a client in ps mode receive broadcast messages
-    ESP_LOGI(TAG, "DTIM period    : %d", ap.dtim_period);
-
-    //Type of encryption used to secure communication with each client
-    print_cipher_pair(ap.pairwise_cipher);
-
-    //Fine Timing Measurement (802.11mc)
-    //Useful to measure distance
-    ESP_LOGI(TAG, "FTM responder  : %s", ap.ftm_responder ? "Enabled" : "Disabled");
-    
-    //Protected Management Frames
-    ESP_LOGI(TAG, "PMF config     : Required=%d, Capable=%d", 
-        ap.pmf_cfg.required, ap.pmf_cfg.capable);
-
-    //SAE (WPA3) parameters
-    //H2E : Hash-to-Element; Secure WPA3 handshake
-    print_sae_pwe(ap.sae_pwe_h2e);
-
-    //Unallow some transitions between APs or networks
-    ESP_LOGI(TAG, "Transition disable: %d", ap.transition_disable);
-    //Simultaneous Authentication of Equals – Extended
-    //Protocol of authentication used by WPA3 to replace PSK; more robust WPA3 handshake
-    //PSK : Pre-shared key; Wifi SSID / Password
-    ESP_LOGI(TAG, "SAE EXT        : %d", ap.sae_ext);
-    //If true, ESP STA will not make WPA3 connection compatible with WPA2
-    ESP_LOGI(TAG, "WPA3 compatible mode: %d", ap.wpa3_compatible_mode);
-
-    //BSS idle timeout
-    //How much time for an inactive client associated before being disconnected
-    print_bss(ap.bss_max_idle_cfg);
-
-    //Interval of renewal of GTK keys (Group temporal key)
-    //WPA2-3 security for broadcast comms
-    ESP_LOGI(TAG, "GTK rekey interval: %d sec", ap.gtk_rekey_interval);
+    return &out;
 }
 
 //function to print ESP's STA config;
 //Config is used by ESP in STA mode to search APs that fits best
-static void print_config_sta(wifi_sta_config_t sta) {
-    ESP_LOGI(TAG, "=== STA Configuration ===");
-    ESP_LOGI(TAG, "SSID           : %s", sta.ssid);
-    ESP_LOGI(TAG, "Password       : %s", sta.password);
-    
-    print_scan_method(sta.scan_method);
+static sta_info_strings_t *get_config_sta_info(wifi_sta_config_t sta) {
+    static sta_info_strings_t out;
+    out.count = 0;
+    for (int i=0; i<MAX_STR_LINES; i++) out.lines[i][0] = '\0';
 
-    //if ESP wants to connect to specific MAC address
-    ESP_LOGI(TAG, "BSSID set      : %s", sta.bssid_set ? "Yes" : "No");
-    if (sta.bssid_set) {
-        print_bssid(sta.bssid);
+    char h2e[SAE_H2E_IDENTIFIER_LEN + 1];
+    memcpy(h2e, sta.sae_h2e_identifier, SAE_H2E_IDENTIFIER_LEN);
+    h2e[SAE_H2E_IDENTIFIER_LEN] = '\0';
+
+    snprintf(out.lines[out.count++], sizeof(out.lines[0]),
+             "SSID: %s | PASS: %s",
+             sta.ssid, sta.password);
+    
+    snprintf(out.lines[out.count++], sizeof(out.lines[0]),
+             "BSSID set: %s | CH: %d",
+             sta.bssid_set ? "Yes":"No", sta.channel);
+    
+    snprintf(out.lines[out.count++], sizeof(out.lines[0]),
+             "Scan: %s",
+             get_scan_method_str(sta.scan_method));
+
+    snprintf(out.lines[out.count++], sizeof(out.lines[0]),
+             "Listen: %d | Sort: %s | PMF Req: %d Cap: %d",
+             sta.listen_interval, get_sort_method_str(sta.sort_method),
+             sta.pmf_cfg.required, sta.pmf_cfg.capable);
+
+    sta_info_strings_t *info = get_scan_threshold_info(sta.threshold);
+    for (int i = 0; i < info->count; i++) {
+        snprintf(out.lines[out.count++], sizeof(out.lines[0]),
+             "Threshold [%d]: %s", i, info->lines[i]);
     }
 
-    //Channel index hint
-    ESP_LOGI(TAG, "Channel hint   : %d", sta.channel);
+    snprintf(out.lines[out.count++], sizeof(out.lines[0]),
+             "RM: %s | BTM: %s | MBO: %s | FT: %s | OWE: %s | Transition: %s | Disable WPA3 compat: %s",
+             sta.rm_enabled?"Yes":"No", sta.btm_enabled?"Yes":"No",
+             sta.mbo_enabled?"Yes":"No", sta.ft_enabled?"Yes":"No",
+             sta.owe_enabled?"Yes":"No", sta.transition_disable?"Yes":"No",
+             sta.disable_wpa3_compatible_mode?"Yes":"No");
 
-    //Interval in Beacon Periods for STA to listen AP beacons
-    ESP_LOGI(TAG, "Listen interval: %d", sta.listen_interval);
+    snprintf(out.lines[out.count++], sizeof(out.lines[0]),
+             "SAE PWE: %s | SAE PK: %s | Retry: %d | HE DCM: %d TX:%d RX:%d",
+             get_sae_pwe_str(sta.sae_pwe_h2e), get_sae_pk_str(sta.sae_pk_mode),
+             sta.failure_retry_cnt, sta.he_dcm_set, sta.he_dcm_max_constellation_tx,
+             sta.he_dcm_max_constellation_rx);
 
-    //Sort APs by RSSI or Security
-    print_sort_method(sta.sort_method);
+    snprintf(out.lines[out.count++], sizeof(out.lines[0]),
+             "HE MCS9: %d | HE SU BF: %d | HE TRIG SU: %d MU: %d CQI: %d",
+             sta.he_mcs9_enabled, sta.he_su_beamformee_disabled,
+             sta.he_trig_su_bmforming_feedback_disabled,
+             sta.he_trig_mu_bmforming_partial_feedback_disabled,
+             sta.he_trig_cqi_feedback_disabled);
 
-    //minimum signal to connect
-    print_scan_threshold(sta.threshold);
+    snprintf(out.lines[out.count++], sizeof(out.lines[0]),
+             "VHT SU BF: %d MU BF: %d MCS8: %d | H2E ID: %s",
+             sta.vht_su_beamformee_disabled, sta.vht_mu_beamformee_disabled,
+             sta.vht_mcs8_enabled, h2e);
 
-    //Protected Management Frames
-    ESP_LOGI(TAG, "PMF config     : Required=%d, Capable=%d", 
-        sta.pmf_cfg.required, sta.pmf_cfg.capable);
-
-    //Radio Measurement 802.11k to collect info on signal and APs
-    ESP_LOGI(TAG, "Radio Measurement enabled: %s", sta.rm_enabled ? "Yes" : "No");
-
-    //BSS Transmition management 802.11v
-    //Allows to AP to indicate to ESP STA to change AP for better performance
-    ESP_LOGI(TAG, "BTM enabled              : %s", sta.btm_enabled ? "Yes" : "No");
-
-    //Multi Band Operation / Opportunistic
-    //Allows STA to choose best Channel / Bandwidth auto
-    ESP_LOGI(TAG, "MBO enabled              : %s", sta.mbo_enabled ? "Yes" : "No");
-
-    //Fast Transition (802.11r)
-    //Fast roaming between APs
-    ESP_LOGI(TAG, "FT enabled               : %s", sta.ft_enabled ? "Yes" : "No");
-
-    //Opportunistic Wireless Encryption
-    //Open wifi but encryptionned
-    ESP_LOGI(TAG, "OWE enabled              : %s", sta.owe_enabled ? "Yes" : "No");
-
-    //Unallow some transitions between APs or networks
-    ESP_LOGI(TAG, "Transition disable       : %s", sta.transition_disable ? "Yes" : "No");
-
-    //If true, ESP STA will not make WPA3 connection compatible with WPA2
-    ESP_LOGI(TAG, "Disable WPA3 compatible  : %s", sta.disable_wpa3_compatible_mode ? "Yes" : "No");
-
-    //SAE (WPA3) parameters
-    //H2E : Hash-to-Element; Secure WPA3 handshake
-    print_sae_pwe(sta.sae_pwe_h2e);
-    //PK : Public Key; generation mode of keys
-    print_sae_pk(sta.sae_pk_mode);
-
-    //Number of retry of STA connection before failure
-    ESP_LOGI(TAG, "Failure retry count      : %d", sta.failure_retry_cnt);
-
-    //HE params (wifi 6, 802.11ax)
-    //DCM : Dual Carrier Modulation, enhance range
-    ESP_LOGI(TAG, "HE DCM set               : %d", sta.he_dcm_set);
-    ESP_LOGI(TAG, "HE DCM max constellation TX : %d", sta.he_dcm_max_constellation_tx);
-    ESP_LOGI(TAG, "HE DCM max constellation RX : %d", sta.he_dcm_max_constellation_rx);
-    //MCS9 : modulation coding scheme, transmission speed
-    ESP_LOGI(TAG, "HE MCS9 enabled           : %d", sta.he_mcs9_enabled);
-    //Beamforming : optimize signal direction
-    ESP_LOGI(TAG, "HE SU beamformee disabled : %d", sta.he_su_beamformee_disabled);
-    //TRIG feedback : generates debug on quality
-    ESP_LOGI(TAG, "HE TRIG SU feedback disabled : %d", sta.he_trig_su_bmforming_feedback_disabled);
-    ESP_LOGI(TAG, "HE TRIG MU partial feedback disabled : %d", sta.he_trig_mu_bmforming_partial_feedback_disabled);
-    ESP_LOGI(TAG, "HE TRIG CQI feedback disabled : %d", sta.he_trig_cqi_feedback_disabled);
-
-    //VHT parameters (Wi-Fi 5 / 802.11ac)
-    //SU : Single user signal direction optimization
-    ESP_LOGI(TAG, "VHT SU beamformee disabled : %d", sta.vht_su_beamformee_disabled);
-    //MU : Multi user (MIMO) signal direction optimization
-    ESP_LOGI(TAG, "VHT MU beamformee disabled : %d", sta.vht_mu_beamformee_disabled);
-    //MCS8 : modulation coding scheme, transmission speed
-    ESP_LOGI(TAG, "VHT MCS8 enabled           : %d", sta.vht_mcs8_enabled);
-
-    //print H2E id used by WPA3 SAE (secure handshake between AP / STA)
-    char buf[SAE_H2E_IDENTIFIER_LEN + 1];
-    memcpy(buf, sta.sae_h2e_identifier, SAE_H2E_IDENTIFIER_LEN);
-    buf[SAE_H2E_IDENTIFIER_LEN] = '\0';
-    ESP_LOGI(TAG, "SAE H2E identifier : %s", buf);
+    return &out;
 }
 
 //function to pint sta info connected to ESP in AP mode
-static void print_sta_info(wifi_sta_list_t stas) {
+static sta_info_strings_t *get_sta_info(wifi_sta_info_t sta) {
+    static sta_info_strings_t out;
+    out.count = 0;
 
+    // line 0 : BSSID + AID + RSSI
     uint16_t aid;
-    for (int i=0; i<stas.num; i++) {
+    esp_wifi_ap_get_sta_aid(sta.mac, &aid);
+    snprintf(out.lines[out.count++], sizeof(out.lines[0]),
+             "STA: %02X:%02X:%02X:%02X:%02X:%02X | AID:%d | RSSI:%d",
+             sta.mac[0], sta.mac[1], sta.mac[2],
+             sta.mac[3], sta.mac[4], sta.mac[5],
+             aid, sta.rssi);
 
-        print_bssid(stas.sta[i].mac);
+    // line 1 : phy
+    char phy[64] = "";
+    if (sta.phy_11b)  strcat(phy, "11b/");
+    if (sta.phy_11g)  strcat(phy, "11g/");
+    if (sta.phy_11n)  strcat(phy, "11n/");
+    if (sta.phy_lr)   strcat(phy, "LR/");
+    if (sta.phy_11a)  strcat(phy, "11a/");
+    if (sta.phy_11ac) strcat(phy, "11ac/");
+    if (sta.phy_11ax) strcat(phy, "11ax/");
+    size_t len = strlen(phy);
+    if (len > 0 && phy[len-1] == '/') phy[len-1] = '\0';
+    snprintf(out.lines[out.count++], sizeof(out.lines[0]), "PHY: %s%s",
+             phy, sta.is_mesh_child ? " | Mesh child" : "");
 
-        esp_wifi_ap_get_sta_aid(stas.sta[i].mac, &aid);
-        ESP_LOGI(TAG, "STA associated id : %d", aid);
+    // line 2 : optionnal info
+    snprintf(out.lines[out.count++], sizeof(out.lines[0]),
+             "Mesh child: %s", sta.is_mesh_child ? "Yes" : "No");
 
-        ESP_LOGI(TAG, "STA average RSSI : %d", stas.sta[i].rssi);
-        
-        if (stas.sta[i].phy_11b) {
-        // 2.4 GHz, old standard, maximum data rate 1-11 Mbps
-        ESP_LOGI(TAG, "Supports 802.11b");
-        }
-        if (stas.sta[i].phy_11g) {
-            // 2.4 GHz, newer than 11b, up to 54 Mbps
-            ESP_LOGI(TAG, "Supports 802.11g");
-        }
-        if (stas.sta[i].phy_11n) {
-            // 2.4 & 5 GHz, MIMO support, OFDM, up to 600 Mbps
-            ESP_LOGI(TAG, "Supports 802.11n");
-        }
-        if (stas.sta[i].phy_lr) {
-            // Low Rate mode, used for IoT or long-range communication at low speeds
-            ESP_LOGI(TAG, "Supports low rate");
-        }
-        if (stas.sta[i].phy_11a) {
-            // 5 GHz only, up to 54 Mbps, older standard
-            ESP_LOGI(TAG, "Supports 802.11a");
-        }
-        if (stas.sta[i].phy_11ac) {
-            // 5 GHz, MIMO enhanced, OFDM, up to 1Gbps, Wi-Fi 5 standard
-            ESP_LOGI(TAG, "Supports 802.11ac");
-        }
-        if (stas.sta[i].phy_11ax) {
-            // 2.4 & 5 GHz, OFDMA, MIMO, up to 10Gbps, Wi-Fi 6 standard
-            ESP_LOGI(TAG, "Supports 802.11ax");
-        }
-        //wifi mesh with esp_mesh; if STA connected to parent node
-        if (stas.sta[i].is_mesh_child) {
-            ESP_LOGI(TAG, "Is mesh child");
-        }
-    }
-
+    return &out;
 }
 
 //function to print a record info AP
@@ -936,26 +838,160 @@ static void print_sta_info(wifi_sta_list_t stas) {
 //bandwidth : type of bandwidth used by wifi channel
 //vht : for wifi 5/6, center channel frequencies
 static void print_record(wifi_ap_record_t ap_info) {
-    ESP_LOGI(TAG, "=================== SSID %s ===============", ap_info.ssid);
-    ESP_LOGI(TAG, "RSSI \t\t%d dBm", ap_info.rssi);
-    print_auth_mode(ap_info.authmode);
+    sta_info_strings_t * info;
+
+    log_mqtt(LOG_INFO, TAG, true, "=================== SSID %s ===============",
+        ap_info.ssid);
+
+    log_mqtt(LOG_INFO, TAG, true, "RSSI : %d dBm",
+        ap_info.rssi);
+
+    log_mqtt(LOG_INFO, TAG, true, "Authmode : %s",
+        get_authmode_str(ap_info.authmode));
+
     if (ap_info.authmode != WIFI_AUTH_WEP) {
-        print_cipher_type(ap_info.pairwise_cipher, ap_info.group_cipher);
+        log_mqtt(LOG_INFO, TAG, true, "Cipher: Pair: %s / Type : %s",
+            get_cipher_pair_str(ap_info.pairwise_cipher), get_cipher_type_str(ap_info.group_cipher));
     }
-    ESP_LOGI(TAG, "Channel \t\t%d", ap_info.primary);
+
+    log_mqtt(LOG_INFO, TAG, true, "Channel : %d",
+        ap_info.primary);
     //ESP_LOGI(TAG, "Secondary channel \t\t%d", ap_info.second);
-    print_bssid(ap_info.bssid);
-    print_antenna(ap_info.ant);
-    print_country(ap_info.country);
-    print_phy(ap_info);
-    if (ap_info.phy_11ax) {
-        print_he(ap_info.he_ap);
+
+    log_mqtt(LOG_INFO, TAG, true, "bssid : %s",
+        get_bssid_str(ap_info.bssid));
+
+    log_mqtt(LOG_INFO, TAG, true, "antenna : %s",
+        get_antenna_str(ap_info.ant));
+
+    info = get_country_info(ap_info.country);
+    for (int i = 0; i < info->count; i++) {
+        log_mqtt(LOG_INFO, TAG, true, "country [%d] : %s",
+            i, info->lines[i]);
     }
-    print_bandwidth(ap_info.bandwidth);
-    print_vht_channels(ap_info);
-    ESP_LOGI(TAG, "================================================");
+
+    info = get_phy_info(ap_info);
+    for (int i = 0; i < info->count; i++) {
+        log_mqtt(LOG_INFO, TAG, true, "phy [%d] : %s",
+            i, info->lines[i]);
+    }
+    
+    if (ap_info.phy_11ax) {
+        info = get_he_info(ap_info.he_ap);
+        for (int i = 0; i < info->count; i++) {
+            log_mqtt(LOG_INFO, TAG, true, "he [%d] : %s",
+                i, info->lines[i]);
+        }
+    }
+
+    log_mqtt(LOG_INFO, TAG, true, "Bandwidth  : %s",
+        get_bandwidth_str(ap_info.bandwidth));
+    
+    info = get_vht_channels_info(ap_info);
+    for (int i = 0; i < info->count; i++) {
+        log_mqtt(LOG_INFO, TAG, true, "vht [%d] : %s",
+            i, info->lines[i]);
+    }
+    
+    log_mqtt(LOG_INFO, TAG, true, "=================== %s end ===============",
+        ap_info.ssid);
 }
 
+/*
+=====================================================================
+USEFUL FUNCTIONS
+=====================================================================
+*/
+
+static void first_scan() {
+
+    sta_info_strings_t *info;
+
+    log_mqtt(LOG_INFO, TAG, false, "=============== First scan APs ===============");
+
+    wifi_scan_default_params_t params;
+    esp_err_t err = esp_wifi_get_scan_parameters(&params);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error on getting scan parameters : %d", err);
+    } else {
+        info = get_scan_params_info(params);
+        for (int i = 0; i < info->count; i++) {
+            log_mqtt(LOG_INFO, TAG, true, "scan params [%d] : %s", i, info->lines[i]);
+        }
+    }
+
+    //init info array
+    uint16_t number = DEFAULT_SCAN_LIST_SIZE;
+    uint16_t ap_count = 0;
+    wifi_ap_record_t* ap_info = malloc(sizeof(wifi_ap_record_t) * DEFAULT_SCAN_LIST_SIZE);
+    if (!ap_info) {
+        log_mqtt(LOG_ERROR, TAG, true, "Failed to allocate memory for AP scan");
+        return;
+    }
+    memset(ap_info, 0, sizeof(wifi_ap_record_t) * DEFAULT_SCAN_LIST_SIZE);
+
+    //launch scan
+    err = esp_wifi_scan_start(NULL, true); //blocking
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Scan failed: %d", err);
+        return;
+    }
+
+    //if fail : esp_wifi_clear_ap_list
+
+    log_mqtt(LOG_INFO, TAG, false, "Max AP number ap_info can hold = %u", number);
+
+    //get num & records of scan
+    ESP_ERROR_CHECK(esp_wifi_scan_get_ap_num(&ap_count));
+    ESP_ERROR_CHECK(esp_wifi_scan_get_ap_records(&number, ap_info));
+    log_mqtt(LOG_INFO, TAG, true, "Total APs scanned = %u, actual AP number ap_info holds = %u", ap_count, number);
+
+    wifi_network_t *wifi_credentials = NULL;
+    //go through each record and compare ssid
+    for (int i = 0; i < number; i++) {
+        print_record(ap_info[i]);
+        for (int j = 0; j < sizeof(known_networks) / sizeof(known_networks[0]); j++) {
+            if (strcmp((const char *)ap_info[i].ssid, known_networks[j].ssid) == 0) {
+                if (wifi_credentials == NULL) {
+                    wifi_credentials = &known_networks[j];
+                } else if (known_networks[j].priority < wifi_credentials->priority) {
+                    wifi_credentials = &known_networks[j];
+                }
+            } //else to add : if open network and wifi_credentials null, store open wifi
+        }
+    }
+    free(ap_info);
+
+    if (wifi_credentials == NULL) {
+        log_mqtt(LOG_ERROR, TAG, true, "No network found");
+        return;
+    }
+
+    //config of ESP station
+    wifi_config_t wifi_sta_config = {
+        .sta = {
+            .ssid = {0},
+            .password = {0},
+            .scan_method = WIFI_ALL_CHANNEL_SCAN
+            /* Authmode threshold resets to WPA2 as default if password matches WPA2 standards (password len => 8).
+             * If you want to connect the device to deprecated WEP/WPA networks, Please set the threshold value
+             * to WIFI_AUTH_WEP/WIFI_AUTH_WPA_PSK and set the password with length and format matching to
+            * WIFI_AUTH_WEP/WIFI_AUTH_WPA_PSK standards.
+             */
+        },
+    };
+
+    strncpy((char *)wifi_sta_config.sta.ssid,
+        (const char *)wifi_credentials->ssid, sizeof(wifi_sta_config.sta.ssid));
+
+    strncpy((char *)wifi_sta_config.sta.password,
+        (const char *)wifi_credentials->password, sizeof(wifi_sta_config.sta.password));
+
+    //Apply station config to ESP
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_sta_config) );
+
+    log_mqtt(LOG_INFO, TAG, false, "=============== First Scan End ===============");
+}
 
 /**
  * Event handler:
@@ -972,10 +1008,11 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
 {
     //if wifi starting event
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
+        first_scan();
         esp_wifi_connect(); // Start wifi connection : send request to router
     //if wifi disconnect event, trying to reconnect
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-        ESP_LOGI(TAG, "Disconnected, trying to reconnect..");
+        log_mqtt(LOG_INFO, TAG, true, "Disconnected, trying to reconnect..");
         esp_wifi_connect();
         //maximum retry?
     //if router assigned an IP address to ESP (triggered by DHCP netif when connection ok by router)
@@ -983,7 +1020,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         //get IP from data : cast
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
         //log wifi connected IP
-        ESP_LOGI(TAG, "Connected, IP: " IPSTR, IP2STR(&event->ip_info.ip));
+        log_mqtt(LOG_INFO, TAG, true, "Connected, IP: " IPSTR, IP2STR(&event->ip_info.ip));
 
         // Store IP address as string for later use
         snprintf(s_ip_str, sizeof(s_ip_str),
@@ -993,15 +1030,15 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
     } else if (event_id == WIFI_EVENT_AP_STACONNECTED) {
         wifi_event_ap_staconnected_t* event = (wifi_event_ap_staconnected_t*) event_data;
-        ESP_LOGI(TAG, "station "MACSTR" join, AID=%d",
+        log_mqtt(LOG_INFO, TAG, true, "station " MACSTR " join, AID=%d",
                  MAC2STR(event->mac), event->aid);
     } else if (event_id == WIFI_EVENT_AP_STADISCONNECTED) {
         wifi_event_ap_stadisconnected_t* event = (wifi_event_ap_stadisconnected_t*) event_data;
-        ESP_LOGI(TAG, "station "MACSTR" leave, AID=%d, reason=%d",
+        log_mqtt(LOG_INFO, TAG, true, "station " MACSTR " leave, AID=%d, reason=%d",
                  MAC2STR(event->mac), event->aid, event->reason);
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_ASSIGNED_IP_TO_CLIENT) {
         const ip_event_assigned_ip_to_client_t *e = (const ip_event_assigned_ip_to_client_t *)event_data;
-        ESP_LOGI(TAG, "Assigned IP to client: " IPSTR ", MAC=" MACSTR ", hostname='%s'",
+        log_mqtt(LOG_INFO, TAG, true, "Assigned IP to client: " IPSTR ", MAC=" MACSTR ", hostname='%s'",
                  IP2STR(&e->ip), MAC2STR(e->mac), e->hostname);
     }
 }
@@ -1026,44 +1063,15 @@ esp_netif_t *wifi_init_softap_netif(void)
     //apply config AP to ESP
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_ap_config));
 
-    ESP_LOGI(TAG, "wifi_init_softap finished. SSID:%s password:%s",
+    log_mqtt(LOG_INFO, TAG, true, "wifi_init_softap finished. SSID:%s password:%s",
              ESP_SSID, ESP_PASS);
 
     return esp_netif_ap;
 }
 
-/* Initialize wifi station config netif*/
-esp_netif_t *wifi_init_sta_netif(void)
-{
-    //create netif TCP/IP for station mode
-    esp_netif_t *esp_netif_sta = esp_netif_create_default_wifi_sta();
-
-    //config of ESP station
-    wifi_config_t wifi_sta_config = {
-        .sta = {
-            .ssid = WIFI_SSID,
-            .password = WIFI_PASS,
-            .scan_method = WIFI_ALL_CHANNEL_SCAN
-            /* Authmode threshold resets to WPA2 as default if password matches WPA2 standards (password len => 8).
-             * If you want to connect the device to deprecated WEP/WPA networks, Please set the threshold value
-             * to WIFI_AUTH_WEP/WIFI_AUTH_WPA_PSK and set the password with length and format matching to
-            * WIFI_AUTH_WEP/WIFI_AUTH_WPA_PSK standards.
-             */
-        },
-    };
-
-    //Apply station config to ESP
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_sta_config) );
-
-    ESP_LOGI(TAG, "wifi_init_sta finished.");
-
-    return esp_netif_sta;
-}
-
 //Set DNS address of ESP AP to transmit the one from ESP STA to clients connected to ESP AP
 //DNS : Domain Name System; Converts domain name to IP; Without DNS, use only IP;
 //NAT : Network Address Translation; Allows private IPs to access Internet with only one public IP;
-//NAT : Change source IP of request to public IP (here, public IP of ESP STA)
 //NAPT : Handle several clients at same time using TCP/UDP ports
 //DHCP : Dynamic Host Configuration Protocol
 //DHCP : Assign auto an IP, Gateway, DNS to clients connecting to ESP AP
@@ -1127,25 +1135,24 @@ void wifi_init_sta(void)
 
     //Configure esp in station mode
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-
-    //esp_netif_t * netif_sta = wifi_init_sta_netif();
-    wifi_init_sta_netif();
     
+    //esp_netif_t *esp_netif_sta = esp_netif_create_default_wifi_sta();
+    esp_netif_create_default_wifi_sta();
+
     //start wifi : triggers WIFI_EVENT_STA_START handler
     ESP_ERROR_CHECK(esp_wifi_start());
 
     //debug
-    ESP_LOGI(TAG, "Connection to %s...", WIFI_SSID);
+    log_mqtt(LOG_INFO, TAG, false, "Connection to ...");
 
     //Waiting for connection until WIFI_CONNECTED_BIT is activated (if init in main, it will wait..)
     EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_BIT,
                         pdFALSE, pdTRUE, portMAX_DELAY);
 
     if (bits & WIFI_CONNECTED_BIT) {
-        ESP_LOGI(TAG, "connected to ap SSID:%s password:%s",
-                 WIFI_SSID, WIFI_PASS);
+        log_mqtt(LOG_INFO, TAG, true, "connected to ap");
     } else {
-        ESP_LOGE(TAG, "UNEXPECTED EVENT");
+        log_mqtt(LOG_ERROR, TAG, true, "UNEXPECTED EVENT");
         return;
     }
 }
@@ -1187,7 +1194,7 @@ void wifi_init_ap(void)
     ESP_ERROR_CHECK(esp_wifi_start());
 
     //debug
-    ESP_LOGI(TAG, "Wifi Soft-AP initialized; SSID : %s, PASS : %s", ESP_SSID, ESP_PASS);
+    log_mqtt(LOG_INFO, TAG, true, "Wifi Soft-AP initialized; SSID : %s, PASS : %s", ESP_SSID, ESP_PASS);
 }
 
 /**
@@ -1237,7 +1244,7 @@ void wifi_init_apsta(void)
     esp_netif_t *esp_netif_ap = wifi_init_softap_netif();
 
     /* Initialize STA */
-    esp_netif_t *esp_netif_sta = wifi_init_sta_netif();
+    esp_netif_t *esp_netif_sta = esp_netif_create_default_wifi_sta();
 
     //start wifi : triggers WIFI_EVENT_STA_START handler
     ESP_ERROR_CHECK(esp_wifi_start());
@@ -1249,13 +1256,12 @@ void wifi_init_apsta(void)
     /* xEventGroupWaitBits() returns the bits before the call returned,
      * hence we can test which event actually happened. */
     if (bits & WIFI_CONNECTED_BIT) {
-        ESP_LOGI(TAG, "connected to ap SSID:%s password:%s",
-                 WIFI_SSID, WIFI_PASS);
+        log_mqtt(LOG_INFO, TAG, true, "connected to ap");
         //get dns from sta mode ESP & config it for ESP AP's clients
         //"transmit dns internet from WAN to Clients"
         softap_set_dns_addr(esp_netif_ap, esp_netif_sta);
     } else {
-        ESP_LOGE(TAG, "UNEXPECTED EVENT");
+        log_mqtt(LOG_ERROR, TAG, true, "UNEXPECTED EVENT");
         return;
     }
 
@@ -1266,7 +1272,7 @@ void wifi_init_apsta(void)
     /* Enable napt on the AP netif */
     //transform private IPs of clients from ESP AP to public IP of ESP STA (NAT)
     if (esp_netif_napt_enable(esp_netif_ap) != ESP_OK) {
-        ESP_LOGE(TAG, "NAPT not enabled on the netif: %p", esp_netif_ap);
+        log_mqtt(LOG_ERROR, TAG, true, "NAPT not enabled on the netif: %p", esp_netif_ap);
     }
 }
 
@@ -1280,39 +1286,46 @@ const char* wifi_get_ip(void)
 
 void wifi_scan_aps() {
 
-    ESP_LOGI(TAG, "=============== Scanning APs ===============");
+    sta_info_strings_t *info;
+
+    log_mqtt(LOG_INFO, TAG, true, "=============== Scanning APs ===============");
 
     wifi_scan_default_params_t params;
     esp_err_t err = esp_wifi_get_scan_parameters(&params);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Error on getting scan parameters : %d", err);
+        log_mqtt(LOG_ERROR, TAG, true, "Error on getting scan parameters : %d", err);
     } else {
-        print_scan_params(params);
+        info = get_scan_params_info(params);
+        for (int i = 0; i < info->count; i++) {
+            log_mqtt(LOG_INFO, TAG, true, "scan params [%d] : %s", i, info->lines[i]);
+        }
     }
 
-    //init info array
+    // init info array
     uint16_t number = DEFAULT_SCAN_LIST_SIZE;
     wifi_ap_record_t ap_info[DEFAULT_SCAN_LIST_SIZE];
     uint16_t ap_count = 0;
     memset(ap_info, 0, sizeof(ap_info));
 
-    //launch scan
-    err = esp_wifi_scan_start(NULL, true); //blocking
+    // launch scan
+    err = esp_wifi_scan_start(NULL, true); // blocking
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Scan failed: %d", err);
+        log_mqtt(LOG_ERROR, TAG, true, "Scan failed: %d", err);
         return;
     }
 
-    //if fail : esp_wifi_clear_ap_list
+    // if fail : esp_wifi_clear_ap_list
 
-    ESP_LOGI(TAG, "Max AP number ap_info can hold = %u", number);
+    log_mqtt(LOG_INFO, TAG, true, "Max AP number ap_info can hold = %u",
+        number);
 
-    //get num & records of scan
+    // get num & records of scan
     ESP_ERROR_CHECK(esp_wifi_scan_get_ap_num(&ap_count));
     ESP_ERROR_CHECK(esp_wifi_scan_get_ap_records(&number, ap_info));
-    ESP_LOGI(TAG, "Total APs scanned = %u, actual AP number ap_info holds = %u", ap_count, number);
+    log_mqtt(LOG_INFO, TAG, true, "Total APs scanned = %u, actual AP number ap_info holds = %u",
+        ap_count, number);
 
-    //go through each record and print authmode, ssid, rssi, cipher, channel..
+    // go through each record and print authmode, ssid, rssi, cipher, channel..
     for (int i = 0; i < number; i++) {
         print_record(ap_info[i]);
     }
@@ -1323,7 +1336,7 @@ void get_ap_info() {
     wifi_ap_record_t ap_info;
     esp_err_t err = esp_wifi_sta_get_ap_info(&ap_info);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG,"Error on getting current AP info  : %d", err);
+        log_mqtt(LOG_ERROR, TAG, true, "Error on getting current AP info : %d", err);
     } else {
         print_record(ap_info);
     }
@@ -1332,268 +1345,292 @@ void get_ap_info() {
 
 void wifi_scan_esp() {
 
-    ESP_LOGI(TAG, "=============== Getting ESP wifi info ===============");
+    // Launching scan
+    log_mqtt(LOG_INFO, TAG, true, "=============== Getting ESP wifi info ===============");
 
-    //get current wifi mode
+    // get current wifi mode
     wifi_mode_t mode;
     esp_err_t err = esp_wifi_get_mode(&mode);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Error on getting wifi mode %d", err);
+        log_mqtt(LOG_ERROR, TAG, true, "Error on getting wifi mode %d", err);
     } else {
-        print_wifi_mode(mode);
+        log_mqtt(LOG_INFO, TAG, true, "Wifi mode : %s", get_wifi_mode_str(mode));
     }
 
-    //get power saving type
+    // get power saving type
     wifi_ps_type_t type;
     err = esp_wifi_get_ps(&type);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Error on getting wifi power save type %d", err);
+        log_mqtt(LOG_ERROR, TAG, true, "Error on getting wifi power save type %d", err);
     } else {
-        print_ps(type);
+        log_mqtt(LOG_INFO, TAG, true, "Power save : %s", get_ps_str(type));
     }
 
     wifi_protocols_t protocols;
+    // get protocols for STA
     if (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA) {
-        //get protocols STA
         err = esp_wifi_get_protocols(WIFI_IF_STA, &protocols);
         if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Error on getting wifi STA protocol %d", err);
+            log_mqtt(LOG_ERROR, TAG, true, "Error on getting wifi STA protocol %d", err);
         } else {
-            ESP_LOGI(TAG, "ESP protocols for STA");
-            print_protocols(protocols);
+            log_mqtt(LOG_INFO, TAG, true, "ESP protocols for STA");
+            sta_info_strings_t *info = get_protocols_info(protocols);
+            for (int i = 0; i < info->count; i++) {
+                log_mqtt(LOG_INFO, TAG, true, "Protocols [%d] : %s",
+                    i, info->lines[i]);
+            }
         }
     }
 
+    // get protocols for AP
     if (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA) {
-        //get protocols AP
         err = esp_wifi_get_protocols(WIFI_IF_AP, &protocols);
         if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Error on getting wifi AP protocol %d", err);
+            log_mqtt(LOG_ERROR, TAG, true, "Error on getting wifi AP protocol %d", err);
         } else {
-            ESP_LOGI(TAG, "ESP protocols for AP");
-            print_protocols(protocols);
+            log_mqtt(LOG_INFO, TAG, true, "ESP protocols for AP");
+            sta_info_strings_t *info = get_protocols_info(protocols);
+            for (int i = 0; i < info->count; i++) {
+                log_mqtt(LOG_INFO, TAG, true, "Protocols [%d] : %s",
+                    i, info->lines[i]);
+            }
         }
     }
 
     wifi_bandwidth_t bw;
+    // get bandwidth for STA
     if (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA) {
-        //get bandwidth STA
         err = esp_wifi_get_bandwidth(WIFI_IF_STA, &bw);
         if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Error on getting wifi STA bandwidth %d", err);
+            log_mqtt(LOG_ERROR, TAG, true, "Error on getting wifi STA bandwidth %d", err);
         } else {
-            ESP_LOGI(TAG, "ESP bandwidth for STA");
-            print_bandwidth(bw);
+            log_mqtt(LOG_INFO, TAG, true, "ESP STA Bandwidth : %s", get_bandwidth_str(bw));
         }
     }
 
+    // get bandwidth for AP
     if (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA) {
-        //get bandwidth AP
         err = esp_wifi_get_bandwidth(WIFI_IF_AP, &bw);
         if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Error on getting wifi AP bandwidth %d", err);
+            log_mqtt(LOG_ERROR, TAG, true, "Error on getting wifi AP bandwidth %d", err);
         } else {
-            ESP_LOGI(TAG, "ESP bandwidth for AP");
-            print_bandwidth(bw);
+            log_mqtt(LOG_INFO, TAG, true, "ESP AP Bandwidth : %s", get_bandwidth_str(bw));
         }
     }
 
-    //get channels
+    // get channels
     uint8_t primary;
     wifi_second_chan_t second;
     err = esp_wifi_get_channel(&primary, &second);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Error on getting channel %d", err);
+        log_mqtt(LOG_ERROR, TAG, true, "Error on getting channel %d", err);
     } else {
-        ESP_LOGI(TAG, "Wifi ESP primary channel %d", primary);
-        //ESP_LOGI(TAG, "Secondary channel %d", ap_info.second);
+        log_mqtt(LOG_INFO, TAG, true, "Wifi ESP primary channel %d", primary);
+        // log_mqtt(LOG_INFO, TAG, true, "Secondary channel %d", second);
     }
 
-    //get country
+    // get country info
     wifi_country_t country;
     err = esp_wifi_get_country(&country);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Error on getting country %d", err);
+        log_mqtt(LOG_ERROR, TAG, true, "Error on getting country %d", err);
     } else {
-        print_country(country);
+        sta_info_strings_t *info = get_country_info(country);
+        for (int i = 0; i < info->count; i++) {
+            log_mqtt(LOG_INFO, TAG, true, "Country [%d] : %s", i, info->lines[i]);
+        }
     }
 
-    //get mac STA
+    // get MAC addresses
     uint8_t mac[6];
+
+    // STA MAC
     if (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA) {
         err = esp_wifi_get_mac(WIFI_IF_STA, mac);
         if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Error on getting mac STA %d", err);
+            log_mqtt(LOG_ERROR, TAG, true, "Error on getting mac STA %d", err);
         } else {
-            print_bssid(mac);
+            log_mqtt(LOG_INFO, TAG, true, "MAC STA : %s", get_bssid_str(mac));
         }
     }
 
-    //get mac AP
+    // AP MAC
     if (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA) {
         err = esp_wifi_get_mac(WIFI_IF_AP, mac);
         if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Error on getting mac AP %d", err);
+            log_mqtt(LOG_ERROR, TAG, true, "Error on getting mac AP %d", err);
         } else {
-            print_bssid(mac);
+            log_mqtt(LOG_INFO, TAG, true, "MAC AP : %s", get_bssid_str(mac));
         }
     }
 
-    //get promiscuous
-    //if enabled, ESP receive every frame, even the ones which are not for it (wireshark)
+    // get promiscuous mode
     bool en;
     err = esp_wifi_get_promiscuous(&en);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Error on getting promiscuous %d", err);
+        log_mqtt(LOG_ERROR, TAG, true, "Error on getting promiscuous %d", err);
     } else {
-        ESP_LOGI(TAG, "Promiscuous mode : \t%s", en ? "enabled" : "disabled");
+        log_mqtt(LOG_INFO, TAG, true, "Promiscuous mode : %s", en ? "enabled" : "disabled");
     }
 
-    //if promiscuous, get filter
+    // if promiscuous, get filter info
     if (en) {
         wifi_promiscuous_filter_t filter;
         err = esp_wifi_get_promiscuous_filter(&filter);
         if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Error on getting promiscuous filter %d", err);
+            log_mqtt(LOG_ERROR, TAG, true, "Error on getting promiscuous filter %d", err);
         } else {
-            print_promiscuous_filter(filter);
+            sta_info_strings_t *info = get_promiscuous_filter_info(filter);
+            for (int i = 0; i < info->count; i++) {
+                log_mqtt(LOG_INFO, TAG, true, "Promiscuous filter [%d]: %s", i, info->lines[i]);
+            }
 
-            // If control frames are enabled, print their subtypes
             if (filter.filter_mask & WIFI_PROMIS_FILTER_MASK_CTRL) {
                 wifi_promiscuous_filter_t ctrl_filter;
                 err = esp_wifi_get_promiscuous_ctrl_filter(&ctrl_filter);
                 if (err != ESP_OK) {
-                    ESP_LOGE(TAG, "Error on getting promiscuous control filter %d", err);
+                    log_mqtt(LOG_ERROR, TAG, true, "Error on getting promiscuous control filter %d", err);
                 } else {
-                    print_promiscuous_ctrl_filter(ctrl_filter);
+                    sta_info_strings_t *ctrl_info = get_promiscuous_ctrl_filter_info(ctrl_filter);
+                    for (int i = 0; i < ctrl_info->count; i++) {
+                        log_mqtt(LOG_INFO, TAG, true, "Promiscuous CTRL filter [%d]: %s", i, ctrl_info->lines[i]);
+                    }
                 }
             }
         }
     }
 
-    //get config STA
+    // get STA config
     wifi_config_t conf;
     if (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA) {
         err = esp_wifi_get_config(WIFI_IF_STA, &conf);
         if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Error on getting config STA %d", err);
+            log_mqtt(LOG_ERROR, TAG, true, "Error on getting config STA %d", err);
         } else {
-            print_config_sta(conf.sta);
+            sta_info_strings_t *info = get_config_sta_info(conf.sta);
+            for (int i = 0; i < info->count; i++) {
+                log_mqtt(LOG_INFO, TAG, true, "STA config [%d]: %s", i, info->lines[i]);
+            }
         }
     }
 
-    //get config AP
+    // get AP config
     if (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA) {
         err = esp_wifi_get_config(WIFI_IF_AP, &conf);
         if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Error on getting config AP %d", err);
+            log_mqtt(LOG_ERROR, TAG, true, "Error on getting config AP %d", err);
         } else {
-            print_config_ap(conf.ap);
+            sta_info_strings_t *info = get_config_ap_info(conf.ap);
+            for (int i = 0; i < info->count; i++) {
+                log_mqtt(LOG_INFO, TAG, true, "AP config [%d]: %s", i, info->lines[i]);
+            }
         }
     }
 
-    //get config NAN
-
-    
-    //get sta list / aid associated with ESP AP if set
-    wifi_sta_list_t sta;
+    // get list of connected STAs if in AP mode
     if (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA) {
-        err = esp_wifi_ap_get_sta_list(&sta);
+        wifi_sta_list_t stas;
+        err = esp_wifi_ap_get_sta_list(&stas);
         if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Error on getting sta list %d", err);
+            log_mqtt(LOG_ERROR, TAG, true, "Error on getting STA list %d", err);
         } else {
-            print_sta_info(sta);
+            for (int i = 0; i < stas.num; i++) {
+                sta_info_strings_t *info = get_sta_info(stas.sta[i]);
+                for (int j = 0; j < info->count; j++) {
+                    log_mqtt(LOG_INFO, TAG, true, "STA [%d] info [%d]: %s", i, j, info->lines[j]);
+                }
+            }
         }
     }
 
-    //if STA, print AP info
+    // if STA, print connected AP info
     if (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA) {
         get_ap_info();
     }
 
-    //get max tx power
+    // get max tx power
     int8_t power;
     err = esp_wifi_get_max_tx_power(&power);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Error on max tx power %d", err);
+        log_mqtt(LOG_ERROR, TAG, true, "Error on max tx power %d", err);
     } else {
-        ESP_LOGI(TAG, "ESP max TX power : \t%.2f dBm", power * 0.25f);
+        log_mqtt(LOG_INFO, TAG, true, "ESP max TX power : %.2f dBm", power * 0.25f);
     }
-    
-    //get wifi event mask
+
+    // get wifi event mask
     uint32_t mask;
     err = esp_wifi_get_event_mask(&mask);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Error on getting wifi event mask %d", err);
+        log_mqtt(LOG_ERROR, TAG, true, "Error on getting wifi event mask %d", err);
     } else {
-        print_wifi_event_mask(mask);
+        sta_info_strings_t *info = get_wifi_event_mask_info(mask);
+        for (int i = 0; i < info->count; i++) {
+            log_mqtt(LOG_INFO, TAG, true, "Event mask [%d]: %s", i, info->lines[i]);
+        }
     }
 
-    //get TSF time : Timing Synchronization Function;
-    //To sync devices on a same network
-    ESP_LOGI(TAG, "TSF time STA : \t%" PRId64 " us", esp_wifi_get_tsf_time(WIFI_IF_STA));
-    ESP_LOGI(TAG, "TSF time AP : \t%" PRId64 " us", esp_wifi_get_tsf_time(WIFI_IF_AP));
+    // get TSF time: Timing Synchronization Function
+    // To sync devices on a same network
+    log_mqtt(LOG_INFO, TAG, true, "TSF time STA: %" PRId64 " us", esp_wifi_get_tsf_time(WIFI_IF_STA));
+    log_mqtt(LOG_INFO, TAG, true, "TSF time AP: %" PRId64 " us", esp_wifi_get_tsf_time(WIFI_IF_AP));
 
-    //get inactive time in seconds if STA : disconnect / deauth from AP after
+    // get inactive times
     uint16_t sec;
     if (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA) {
         err = esp_wifi_get_inactive_time(WIFI_IF_STA, &sec);
         if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Error on getting inactive time STA %d", err);
+            log_mqtt(LOG_ERROR, TAG, true, "Error on getting inactive time STA %d", err);
         } else {
-            ESP_LOGI(TAG, "Inactive time for ESP STA : %d s", sec);
+            log_mqtt(LOG_INFO, TAG, true, "Inactive time for ESP STA: %d s", sec);
         }
     }
 
-    //get inactive time if AP
     if (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA) {
         err = esp_wifi_get_inactive_time(WIFI_IF_AP, &sec);
         if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Error on getting inactive time AP %d", err);
+            log_mqtt(LOG_ERROR, TAG, true, "Error on getting inactive time AP %d", err);
         } else {
-            ESP_LOGI(TAG, "Inactive time for ESP AP : %d s", sec);
+            log_mqtt(LOG_INFO, TAG, true, "Inactive time for ESP AP: %d s", sec);
         }
     }
 
-    //get aid assigned to esp by AP if STA
+    // get aid assigned to ESP if STA
     if (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA) {
         uint16_t aid;
         err = esp_wifi_sta_get_aid(&aid);
         if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Error on getting ESP aid %d", err);
+            log_mqtt(LOG_ERROR, TAG, true, "Error on getting ESP aid %d", err);
         } else {
-            //if 0, not connected to an AP
-            ESP_LOGI(TAG, "AP's association id of ESP: \t%d", aid);
+            log_mqtt(LOG_INFO, TAG, true, "AP's association id of ESP: %d", aid);
         }
     }
 
-    //get used phymode between ESP / AP
+    // get negotiated phymode
     if (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA) {
         wifi_phy_mode_t phymode;
         err = esp_wifi_sta_get_negotiated_phymode(&phymode);
         if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Error on getting used phymode STA %d", err);
+            log_mqtt(LOG_ERROR, TAG, true, "Error on getting used phymode STA %d", err);
         } else {
-            print_phy_mode(phymode);
+            log_mqtt(LOG_INFO, TAG, true, "Negotiated phymode : %d", get_phy_str(phymode));
         }
     }
-    
-    //get rssi if STA
+
+    // get RSSI if STA
     if (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA) {
         int rssi;
         err = esp_wifi_sta_get_rssi(&rssi);
         if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Error on getting RSSI %d", err);
+            log_mqtt(LOG_ERROR, TAG, true, "Error on getting RSSI %d", err);
         } else {
-            ESP_LOGI(TAG, "RSSI : \t%d dBm", rssi);
+            log_mqtt(LOG_INFO, TAG, true, "RSSI : %d dBm", rssi);
         }
     }
 
-    //print all statistics (low level)
-    //esp_wifi_statis_dump(WIFI_STATIS_ALL);
+    // print all statistics (low level)
+    // esp_wifi_statis_dump(WIFI_STATIS_ALL);
 
-    ESP_LOGI(TAG, "================================================");
-
+    log_mqtt(LOG_INFO, TAG, true, "=============== Getting ESP wifi info End ===============");
 }
 
 //ap mode :

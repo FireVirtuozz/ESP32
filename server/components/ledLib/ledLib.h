@@ -8,6 +8,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "nvsLib.h"
+#include "mqttLib.h"
 
 #define LED_PIN 2  //LED pin connected on breadboard
 

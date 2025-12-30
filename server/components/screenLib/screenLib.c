@@ -232,6 +232,7 @@ void ssd1306_draw_string(const char *str, int x, int page) {
             if (x > 127) break;
         }
         ssd1306_flush_screen();
+        xSemaphoreGive(xMutex);
     }
 }
 
@@ -302,6 +303,7 @@ void screen_full_on() {
         memset(screen, 0xFF, sizeof(screen));   //pixels on
         ssd1306_flush_screen();
         log_mqtt(LOG_INFO, TAG, true, "Screen full on set");
+        xSemaphoreGive(xMutex);
     }
 }
 
@@ -314,5 +316,6 @@ void screen_full_off() {
         memset(screen, 0x00, sizeof(screen));   //pixels off
         ssd1306_flush_screen();
         log_mqtt(LOG_INFO, TAG, true, "Screen full off set");
+        xSemaphoreGive(xMutex);
     }
 }

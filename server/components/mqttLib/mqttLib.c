@@ -57,19 +57,28 @@ typedef struct {
 static void handle_commands(char * data) {
     //compare messages to give instructions
     if (strcmp(data, "LED_ON") == 0) {
+        log_mqtt(LOG_INFO, TAG, true, "Start Led On");
         led_on();
     } else if (strcmp(data, "LED_OFF") == 0) {
+        log_mqtt(LOG_INFO, TAG, true, "Start Led Off");
         led_off();
     } else if (strcmp(data, "LED_TOGGLE") == 0) {
+        log_mqtt(LOG_INFO, TAG, true, "Toggling LED");
         led_toggle();
     } else if (strcmp(data, "WIFI_SCAN") == 0) {
+        log_mqtt(LOG_INFO, TAG, true, "Starting Wifi Scan");
         wifi_scan_aps();
     } else if (strcmp(data, "ESP_WIFI_INFO") == 0) {
+        log_mqtt(LOG_INFO, TAG, true, "Starting ESP Scan");
         wifi_scan_esp();
     } else if (strcmp(data, "CHIP_INFO") == 0) {
+        log_mqtt(LOG_INFO, TAG, true, "Printing chip info");
         print_chip_info();
     } else if (strcmp(data, "LIST_NVS_STORAGE") == 0) {
+        log_mqtt(LOG_INFO, TAG, true, "Listing NVS storage");
         list_storage();
+    } else {
+        log_mqtt(LOG_INFO, TAG, true, "Event unkown");
     }
     
 }
@@ -86,14 +95,7 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
         //ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
         log_mqtt(LOG_INFO, TAG, false, "MQTT_EVENT_CONNECTED");
 
-        /*
-        msg_id = esp_mqtt_client_subscribe(client, "/logs/qos0", 0);
-        //ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
-        
-        log_mqtt(LOG_INFO, TAG, true, "sent subscribe to /logs/qos0 successful, msg_id=%d", msg_id);
-        */
-
-        msg_id = esp_mqtt_client_subscribe(client, "/commands", 0);
+        msg_id = esp_mqtt_client_subscribe(client, "/commands/#", 0);
         //ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
         //esp_mqtt_client_publish(client, "/commands/qos1", "commence", 0, 1, 0);
         log_mqtt(LOG_INFO, TAG, true, "sent subscribe to /commands successful, msg_id=%d", msg_id);
@@ -108,7 +110,7 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
         //ESP_LOGI(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d, return code=0x%02x ", event->msg_id, (uint8_t)*event->data);
         log_mqtt(LOG_INFO, TAG, false,
             "MQTT_EVENT_SUBSCRIBED, msg_id=%d, return code=0x%02x ", event->msg_id, (uint8_t)*event->data);
-        esp_mqtt_client_publish(client, "/logs/qos0", "starting ESP", 0, 0, 0);
+        esp_mqtt_client_publish(client, "/logs/start", "starting ESP", 0, 0, 0);
         mqtt_connected = true;
         break;
     case MQTT_EVENT_UNSUBSCRIBED:
@@ -197,7 +199,7 @@ void log_mqtt(mqtt_log_level lvl, const char * tag, bool mqtt, const char* fmt, 
         mqtt_msg_t m;
         m.qos = 0;
         m.retain = false;
-        snprintf(m.topic, sizeof(m.topic), "/logs/qos0");
+        snprintf(m.topic, sizeof(m.topic), "/logs/%s", tag);
         snprintf(m.payload, sizeof(m.payload), "[%s] %.200s", tag, buf);
 
         if (xQueueSend(xQueue, &m, 0) != pdTRUE) {

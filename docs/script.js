@@ -6,14 +6,15 @@ const BROKER_USER = "ESP32";
 const BROKER_PASS = "BigEspGigaChad32";
 
 // Topics
-const TOPIC_LOGS = "/logs/qos0";
-const TOPIC_CMD  = "/commands";
+const TOPIC_CMD = "/commands"
+const TOPICS = [
+  "/logs/#"
+];
 
 // =======================
 // UI
 // =======================
 const statusEl = document.getElementById("status");
-const logsEl   = document.getElementById("logs");
 const cmdInput = document.getElementById("cmdInput");
 const sendBtn  = document.getElementById("sendBtn");
 
@@ -41,7 +42,14 @@ client.on("connect", () => {
   statusEl.className = "status connected";
 
   console.log("Connected to MQTT");
-  client.subscribe(TOPIC_LOGS, { qos: 0 });
+  
+  // Subscribe to all topics in the array
+  TOPICS.forEach(topic => {
+    client.subscribe(topic, { qos: 0 }, (err) => {
+      if (err) console.error("Subscribe error:", topic, err);
+      else console.log("Subscribed to", topic);
+    });
+  });
 });
 
 client.on("reconnect", () => {
@@ -62,9 +70,20 @@ client.on("error", (err) => {
 // =======================
 client.on("message", (topic, payload) => {
   const msg = payload.toString();
+  
+  if (topic.startsWith("/logs/")) {
+    const libName = topic.split("/")[2]; // wifi_library, led_library, etc.
+    const el = document.getElementById("logs-" + libName);
+    if (el) {
+      el.textContent += msg + "\n";
+      el.scrollTop = el.scrollHeight;
+    }
 
-  if (topic === TOPIC_LOGS) {
-    appendLog(msg);
+    const allEl = document.getElementById("logs-all");
+    if(allEl) {
+      allEl.textContent += msg + "\n";
+      allEl.scrollTop = allEl.scrollHeight;
+    }
   }
 });
 
@@ -87,3 +106,38 @@ sendBtn.onclick = () => {
 function sendCommand(cmd) {
   client.publish(TOPIC_CMD, cmd, { qos: 1 });
 }
+
+// =======================
+// TOGGLE LOGS
+// =======================
+
+function toggleLog(name) {
+  const allLogs = ["wifi_library","led_library","mqtt_library","nvs_library","all"];
+  
+  allLogs.forEach(logName => {
+    const el = document.getElementById("logs-" + logName);
+    if (!el) return;
+    
+    // Afficher uniquement celui sélectionné
+    if (logName === name) {
+      el.style.display = "block";
+    } else {
+      el.style.display = "none";
+    }
+  });
+
+  const badge = document.getElementById("current-log");
+  if (badge) {
+    let label = name;
+    if(name === "wifi_library") label = "WiFi";
+    else if(name === "led_library") label = "LED";
+    else if(name === "mqtt_library") label = "MQTT";
+    else if(name === "nvs_library") label = "NVS";
+    else if(name === "all") label = "All";
+    badge.textContent = label;
+  }
+}
+
+// Initialisation : afficher "all" par défaut
+toggleLog("all");
+

@@ -1,63 +1,135 @@
+/* ===========================
+   Global
+   =========================== */
 body {
   font-family: monospace;
   background: #0f1117;
   color: #e6e6e6;
   padding: 20px;
+  margin: 0;
 }
 
 h1, h2 {
   color: #7dd3fc;
+  margin-top: 0;
 }
 
-.connected {
-  background: #14532d;
-  color: #86efac;
+/* ===========================
+   Status bar
+   =========================== */
+.status {
+  padding: 5px 10px;
+  margin-bottom: 10px;
+  border-radius: 4px;
+  display: inline-block;
+  font-weight: bold;
+  font-family: monospace;
 }
+.status.connected { background-color: #14532d; color: #86efac; }
+.status.disconnected { background-color: #7f1d1d; color: #fecaca; }
 
-.disconnected {
-  background: #7f1d1d;
-  color: #fecaca;
-}
-
-pre {
-  background: #020617;
-  border: 1px solid #1e293b;
+/* ===========================
+   Sections
+   =========================== */
+section {
+  margin-bottom: 20px;
   padding: 10px;
-  height: 300px;
-  overflow-y: auto;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  background: #1e293b;
+  color: #e6e6e6;
 }
 
+/* ===========================
+   Logs
+   =========================== */
+.log-section {
+  background: #020617;
+  color: #0fef0f;
+  padding: 10px;
+  height: 400px;
+  overflow-y: auto;
+  border-radius: 4px;
+  font-family: monospace;
+  white-space: pre-wrap;
+  border: 1px solid #334155;
+  margin-bottom: 5px;
+  display: none; /* caché par défaut */
+}
+
+#log-buttons {
+  margin-bottom: 10px;
+}
+
+#log-buttons button {
+  margin-right: 5px;
+  margin-bottom: 5px;
+}
+
+pre, .log-section {
+  scrollbar-width: thin;
+  scrollbar-color: #2563eb #1e293b;
+}
+
+/* ===========================
+   Inputs
+   =========================== */
 input {
   width: 300px;
   padding: 5px;
   background: #020617;
   color: #e6e6e6;
   border: 1px solid #334155;
+  border-radius: 4px;
 }
 
+/* ===========================
+   Buttons
+   =========================== */
 button {
   padding: 6px 12px;
   margin-left: 5px;
   cursor: pointer;
+  border-radius: 4px;
+  border: none;
+  background-color: #2563eb;
+  color: white;
+  transition: background-color 0.2s;
 }
 
-.status {
-  padding: 5px 10px;
+button:hover {
+  background-color: #1d4ed8;
+}
+
+/* ===========================
+   Command list
+   =========================== */
+#commandsList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+#commandsList li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid #334155;
+}
+
+#commandsList li:last-child {
+  border-bottom: none;
+}
+
+/* ===========================
+   Misc
+   =========================== */
+section h2 {
+  margin-top: 0;
   margin-bottom: 10px;
-  border-radius: 4px;
-  display: inline-block;
-}
-.status.connected { background-color: #4caf50; color: white; }
-.status.disconnected { background-color: #f44336; color: white; }
-
-section { margin-bottom: 20px; }
-
-#logs {
-  background: #222;
-  color: #0f0;
-  padding: 10px;
-  height: 300px;
-  overflow-y: scroll;
-  border-radius: 4px;
 }
 
+#commandsList button {
+  font-family: monospace;
+}

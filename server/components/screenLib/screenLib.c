@@ -130,43 +130,6 @@ TRANSMIT DATA : master -> device
 ================================================================
 */
 
-// transmit one buffer data : sending 5 commands in a row
-// 0x00 : SSD1306 control byte, command type
-// 0xAE, 0xA6, 0x20, 0xAF = SSD1306 commands
-//uint8_t data_wr[5] = {0x00, 0xAE, 0xA6, 0x20, 0xAF};
-//ESP_ERROR_CHECK(i2c_master_transmit(dev_handle, data_wr, 5, -1));
-
-static void ssd1306_draw_char(char c, int x, int page) {
-    int index = -1;
-
-    if (c >= 'A' && c <= 'Z') {
-        index = c - 'A';             // 0-25
-    } else if (c >= 'a' && c <= 'z') {
-        index = 26 + (c - 'a');      // 26-51
-    } else if (c >= '0' && c <= '9') {
-        index = 52 + (c - '0');      // 52-61
-    } else if (c == '.') index = 62;
-    else if (c == ':') index = 63;
-
-    if (index == -1) return; // caractère non supporté
-
-    for (int i = 0; i < 5; i++) {
-        screen[page * 128 + x + i] = font5x8[index][i];
-    }
-}
-
-void ssd1306_draw_string(const char *str, int x, int page) {
-    while (*str) {
-        char c = *str++;
-        if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
-        || (c >= '0' && c <= '9') || c == '.' || c == ':') {
-            ssd1306_draw_char(c, x, page);
-        }
-        x += 6; // 5 pixels de largeur + 1 pixel d'espacement
-        if (x > 127) break;
-    }
-}
-
 /**
  * @brief Send commands to SSD1306 over I2C
  * 
@@ -215,6 +178,54 @@ static esp_err_t ssd1306_send_data(i2c_master_dev_handle_t handle,
     return i2c_master_multi_buffer_transmit(handle, multi_buffer, 2, -1);
 }
 
+static void ssd1306_flush_screen()
+{
+    for (int page = 0; page < 8; page++) {
+        uint8_t cmd[] = {0xB0 | page, 0x00, 0x10};
+        ssd1306_send_cmd(dev_handle, cmd, sizeof(cmd));
+        ssd1306_send_data(dev_handle, &screen[page * 128], 128);
+    }
+}
+
+// transmit one buffer data : sending 5 commands in a row
+// 0x00 : SSD1306 control byte, command type
+// 0xAE, 0xA6, 0x20, 0xAF = SSD1306 commands
+//uint8_t data_wr[5] = {0x00, 0xAE, 0xA6, 0x20, 0xAF};
+//ESP_ERROR_CHECK(i2c_master_transmit(dev_handle, data_wr, 5, -1));
+
+static void ssd1306_draw_char(char c, int x, int page) {
+    int index = -1;
+
+    if (c >= 'A' && c <= 'Z') {
+        index = c - 'A';             // 0-25
+    } else if (c >= 'a' && c <= 'z') {
+        index = 26 + (c - 'a');      // 26-51
+    } else if (c >= '0' && c <= '9') {
+        index = 52 + (c - '0');      // 52-61
+    } else if (c == '.') index = 62;
+    else if (c == ':') index = 63;
+
+    if (index == -1) return; // caractère non supporté
+
+    for (int i = 0; i < 5; i++) {
+        screen[page * 128 + x + i] = font5x8[index][i];
+    }
+}
+
+void ssd1306_draw_string(const char *str, int x, int page) {
+    log_mqtt(LOG_INFO, TAG, true, "Drawing : %s, offset %d, page %d", str, x, page);
+    while (*str) {
+        char c = *str++;
+        if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
+        || (c >= '0' && c <= '9') || c == '.' || c == ':') {
+            ssd1306_draw_char(c, x, page);
+        }
+        x += 6; // 5 pixels de largeur + 1 pixel d'espacement
+        if (x > 127) break;
+    }
+    ssd1306_flush_screen();
+}
+
 void ssd1306_setup()
 {
     uint8_t init_cmds[] = {
@@ -260,12 +271,12 @@ void i2c_init()
 
 void screen_full_on() {
     memset(screen, 0xFF, sizeof(screen));   //pixels on
-    ssd1306_send_data(dev_handle, screen, sizeof(screen));
+    ssd1306_flush_screen();
     log_mqtt(LOG_INFO, TAG, true, "Screen full on set");
 }
 
 void screen_full_off() {
-    memset(screen, 0x00, sizeof(screen));   //pixels on
-    ssd1306_send_data(dev_handle, screen, sizeof(screen));
+    memset(screen, 0x00, sizeof(screen));   //pixels off
+    ssd1306_flush_screen();
     log_mqtt(LOG_INFO, TAG, true, "Screen full off set");
 }

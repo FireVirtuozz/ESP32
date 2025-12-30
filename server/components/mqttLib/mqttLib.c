@@ -80,7 +80,7 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
         //ESP_LOGI(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d, return code=0x%02x ", event->msg_id, (uint8_t)*event->data);
         log_mqtt(LOG_INFO, TAG, false,
             "MQTT_EVENT_SUBSCRIBED, msg_id=%d, return code=0x%02x ", event->msg_id, (uint8_t)*event->data);
-        esp_mqtt_client_publish(client, "/logs/qos0", "commence", 0, 0, 0);
+        esp_mqtt_client_publish(client, "/logs/qos0", "starting ESP", 0, 0, 0);
         mqtt_connected = true;
         break;
     case MQTT_EVENT_UNSUBSCRIBED:

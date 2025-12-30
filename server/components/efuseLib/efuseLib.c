@@ -6,7 +6,7 @@ static const char *TAG = "efuse_library";
 
 void print_chip_info() {
 
-    log_mqtt(LOG_INFO, TAG, false, "====================== EFUSE info ======================");
+    log_mqtt(LOG_INFO, TAG, true, "====================== EFUSE info ======================");
 
     //mac address
     uint8_t mac[6];
@@ -38,6 +38,6 @@ void print_chip_info() {
     //chip package
     log_mqtt(LOG_INFO, TAG, true, "chip package version : %d", efuse_hal_get_chip_ver_pkg());
 
-    log_mqtt(LOG_INFO, TAG, false, "===================== EFUSE info end =======================");
+    log_mqtt(LOG_INFO, TAG, true, "===================== EFUSE info end =======================");
 
 }

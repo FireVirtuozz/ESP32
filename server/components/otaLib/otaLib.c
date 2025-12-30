@@ -189,8 +189,6 @@ void ota_init() {
     ota_running = true;
     log_mqtt(LOG_INFO, TAG, false, "OTA example app_main start");
 
-    //ESP_ERROR_CHECK(esp_event_loop_create_default());
-
     ESP_ERROR_CHECK(esp_event_handler_register(ESP_HTTPS_OTA_EVENT,
         ESP_EVENT_ANY_ID, &event_handler, NULL));
 
@@ -198,7 +196,7 @@ void ota_init() {
 
     xTaskCreate(&advanced_ota_example_task,
         "advanced_ota_example_task", 1024 * 8, NULL, 5, NULL);
-        
+
     } else {
         log_mqtt(LOG_WARN, TAG, true, "OTA already updating");
     }

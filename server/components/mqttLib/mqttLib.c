@@ -101,7 +101,7 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
         msg_id = esp_mqtt_client_subscribe(client, "/commands/#", 0);
         //ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
         //esp_mqtt_client_publish(client, "/commands/qos1", "commence", 0, 1, 0);
-        log_mqtt(LOG_INFO, TAG, true, "sent subscribe to /commands successful, msg_id=%d", msg_id);
+        log_mqtt(LOG_INFO, TAG, true, "Sent subscribe to /commands/# successful, msg_id=%d", msg_id);
 
         break;
     case MQTT_EVENT_DISCONNECTED:

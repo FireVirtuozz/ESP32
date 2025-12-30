@@ -9,14 +9,6 @@ h1, h2 {
   color: #7dd3fc;
 }
 
-.status {
-  padding: 8px;
-  margin-bottom: 20px;
-  width: fit-content;
-  border-radius: 4px;
-  font-weight: bold;
-}
-
 .connected {
   background: #14532d;
   color: #86efac;
@@ -48,3 +40,24 @@ button {
   margin-left: 5px;
   cursor: pointer;
 }
+
+.status {
+  padding: 5px 10px;
+  margin-bottom: 10px;
+  border-radius: 4px;
+  display: inline-block;
+}
+.status.connected { background-color: #4caf50; color: white; }
+.status.disconnected { background-color: #f44336; color: white; }
+
+section { margin-bottom: 20px; }
+
+#logs {
+  background: #222;
+  color: #0f0;
+  padding: 10px;
+  height: 300px;
+  overflow-y: scroll;
+  border-radius: 4px;
+}
+

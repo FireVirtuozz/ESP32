@@ -83,3 +83,7 @@ sendBtn.onclick = () => {
   client.publish(TOPIC_CMD, cmd, { qos: 1 });
   cmdInput.value = "";
 };
+
+function sendCommand(cmd) {
+  client.publish(TOPIC_CMD, cmd, { qos: 1 });
+}

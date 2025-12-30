@@ -23,6 +23,12 @@
 #include <stdarg.h>
 #include <stdbool.h>
 
+#include "ledLib.h"
+#include "nvsLib.h"
+#include "efuseLib.h"
+#include "otaLib.h"
+#include "wifiLib.h"
+
 typedef enum {
     LOG_INFO,
     LOG_WARN,

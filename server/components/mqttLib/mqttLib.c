@@ -22,6 +22,12 @@
 #include <stdarg.h>
 #include <stdbool.h>
 
+#include "ledLib.h"
+#include "nvsLib.h"
+#include "efuseLib.h"
+#include "otaLib.h"
+#include "wifiLib.h"
+
 //mqtt through websocket secure
 
 //command to add dependency
@@ -48,27 +54,49 @@ typedef struct {
     bool retain;
 } mqtt_msg_t;
 
+static void handle_commands(char * data) {
+    //compare messages to give instructions
+    if (strcmp(data, "LED_ON") == 0) {
+        led_on();
+    } else if (strcmp(data, "LED_OFF") == 0) {
+        led_off();
+    } else if (strcmp(data, "LED_TOGGLE") == 0) {
+        led_toggle();
+    } else if (strcmp(data, "WIFI_SCAN") == 0) {
+        wifi_scan_aps();
+    } else if (strcmp(data, "ESP_WIFI_INFO") == 0) {
+        wifi_scan_esp();
+    } else if (strcmp(data, "CHIP_INFO") == 0) {
+        print_chip_info();
+    } else if (strcmp(data, "LIST_NVS_STORAGE") == 0) {
+        list_storage();
+    }
+    
+}
+
 static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
 {
     client = event->client;
     int msg_id;
+    char topic[event->topic_len + 1];
+    char data[event->data_len + 1];
     // your_context_t *context = event->context;
     switch (event->event_id) {
     case MQTT_EVENT_CONNECTED:
         //ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
         log_mqtt(LOG_INFO, TAG, false, "MQTT_EVENT_CONNECTED");
 
+        /*
         msg_id = esp_mqtt_client_subscribe(client, "/logs/qos0", 0);
         //ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
         
-        log_mqtt(LOG_INFO, TAG, true, "sent subscribe successful, msg_id=%d", msg_id);
+        log_mqtt(LOG_INFO, TAG, true, "sent subscribe to /logs/qos0 successful, msg_id=%d", msg_id);
+        */
 
-        /*
-        msg_id = esp_mqtt_client_subscribe(client, "/commands/qos1", 1);
+        msg_id = esp_mqtt_client_subscribe(client, "/commands", 0);
         //ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
         //esp_mqtt_client_publish(client, "/commands/qos1", "commence", 0, 1, 0);
-        log_mqtt(LOG_INFO, TAG, true, "sent subscribe successful, msg_id=%d", msg_id);
-        */
+        log_mqtt(LOG_INFO, TAG, true, "sent subscribe to /commands successful, msg_id=%d", msg_id);
 
         break;
     case MQTT_EVENT_DISCONNECTED:
@@ -96,11 +124,17 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
     case MQTT_EVENT_DATA:
         //ESP_LOGI(TAG, "MQTT_EVENT_DATA");
         //log_mqtt(LOG_INFO, TAG, false, "MQTT_EVENT_DATA");
-        if (strcmp(event->topic, "commands") == 0) {
-            ESP_LOGI(TAG, "commands event");
+        
+        memcpy(topic, event->topic, event->topic_len);
+        topic[event->topic_len] = '\0';
+        if (strcmp(topic, "/commands") == 0) {
+            
+            memcpy(data, event->data, event->data_len);
+            data[event->data_len] = '\0';
+            log_mqtt(LOG_INFO, TAG, true,
+                "commands event : %s", data);
+            handle_commands(data);
         }
-        //printf("TOPIC=%.*s\r\n", event->topic_len, event->topic);
-        //printf("DATA=%.*s\r\n", event->data_len, event->data);
         break;
     case MQTT_EVENT_ERROR:
         //ESP_LOGI(TAG, "MQTT_EVENT_ERROR");

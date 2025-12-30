@@ -1289,6 +1289,7 @@ const char* wifi_get_ip(void)
 void wifi_scan_aps() {
 
     if (!scanning) {
+        scanning = true;
 
         sta_info_strings_t *info;
 
@@ -1333,6 +1334,8 @@ void wifi_scan_aps() {
         for (int i = 0; i < number; i++) {
             print_record(ap_info[i]);
         }
+
+        scanning = false;
 
     } else {
         log_mqtt(LOG_WARN, TAG, true, "Already scanning Wifi");

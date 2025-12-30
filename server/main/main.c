@@ -40,7 +40,7 @@ void app_main()
     //screen_full_off();
     screen_full_on();
 
-    ssd1306_draw_string("miaou", 0, 0);
+    ssd1306_draw_string("fonctionne stp", 0, 0);
 
     //ota_init();
 

@@ -27,6 +27,7 @@
 #include "efuseLib.h"
 #include "otaLib.h"
 #include "wifiLib.h"
+#include "screenLib.h"
 
 //mqtt through websocket secure
 
@@ -80,11 +81,25 @@ static void handle_commands(char * data) {
     } else if (strcmp(data, "OTA_UPDATE") == 0) {
         log_mqtt(LOG_INFO, TAG, true, "Starting OTA update");
         ota_init();
+    } else if (strncmp(data, "WRITE_SCREEN:", 13) == 0) {
+        char text[64];
+        int x, page;
+
+        if (sscanf(data, "WRITE_SCREEN:%63[^/]/%d/%d", text, &x, &page) == 3) {
+            log_mqtt(LOG_INFO, TAG, true, 
+                "Write screen: '%s' at x=%d page=%d", text, x, page);
+
+            ssd1306_draw_string(text, x, page);
+        } else {
+            log_mqtt(LOG_INFO, TAG, true, "Wrong format screen");
+        }
+
     } else {
         log_mqtt(LOG_INFO, TAG, true, "Event unkown");
     }
     
 }
+
 
 static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
 {

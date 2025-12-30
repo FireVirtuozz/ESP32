@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <inttypes.h>
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "driver/i2c_master.h"
 #include "esp_system.h"
@@ -18,6 +19,8 @@
 static const char * TAG = "screen_library";
 
 static uint8_t screen[128*8];
+
+static SemaphoreHandle_t xMutex = NULL;
 
 // Police 5x8 pour A-Z (chaque caractère = 5 colonnes)
 const uint8_t font5x8[64][5] = {
@@ -213,21 +216,57 @@ static void ssd1306_draw_char(char c, int x, int page) {
 }
 
 void ssd1306_draw_string(const char *str, int x, int page) {
-    log_mqtt(LOG_INFO, TAG, true, "Drawing : %s, offset %d, page %d", str, x, page);
-    while (*str) {
-        char c = *str++;
-        if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
-        || (c >= '0' && c <= '9') || c == '.' || c == ':') {
-            ssd1306_draw_char(c, x, page);
-        }
-        x += 6; // 5 pixels de largeur + 1 pixel d'espacement
-        if (x > 127) break;
+    if (xMutex == NULL) {
+        return;
     }
-    ssd1306_flush_screen();
+
+    if (xSemaphoreTake(xMutex, portMAX_DELAY) == pdTRUE) {
+        log_mqtt(LOG_INFO, TAG, true, "Drawing : %s, offset %d, page %d", str, x, page);
+        while (*str) {
+            char c = *str++;
+            if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
+            || (c >= '0' && c <= '9') || c == '.' || c == ':') {
+                ssd1306_draw_char(c, x, page);
+            }
+            x += 6; // 5 pixels de largeur + 1 pixel d'espacement
+            if (x > 127) break;
+        }
+        ssd1306_flush_screen();
+    }
+}
+
+// --------- I2C Init et Scan ---------
+static void i2c_init()
+{
+    //config of i2c registers, gpio, start
+    ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_mst_config, &bus_handle));
+
+    //check if the adress is known
+    ESP_ERROR_CHECK(i2c_master_probe(bus_handle, OLED_ADDR_DEFAULT, -1));
+
+    //add the address of the device on the master bus
+    ESP_ERROR_CHECK(i2c_master_bus_add_device(bus_handle, &dev_cfg, &dev_handle));
+
+    log_mqtt(LOG_INFO, TAG, true, "I²C initialized");
 }
 
 void ssd1306_setup()
 {
+
+    if( xMutex != NULL )
+    {
+        return;
+    }
+
+    xMutex = xSemaphoreCreateMutex();
+
+    if( xMutex == NULL )
+    {
+        return;
+    }
+
+    i2c_init();
+
     uint8_t init_cmds[] = {
         0xAE,       // Display OFF
         0x20, 0x00, // Horizontal addressing mode
@@ -254,29 +293,26 @@ void ssd1306_setup()
     log_mqtt(LOG_INFO, TAG, true, "ssd1306 initialized");
 }
 
-// --------- I2C Init et Scan ---------
-void i2c_init()
-{
-    //config of i2c registers, gpio, start
-    ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_mst_config, &bus_handle));
-
-    //check if the adress is known
-    ESP_ERROR_CHECK(i2c_master_probe(bus_handle, OLED_ADDR_DEFAULT, -1));
-
-    //add the address of the device on the master bus
-    ESP_ERROR_CHECK(i2c_master_bus_add_device(bus_handle, &dev_cfg, &dev_handle));
-
-    log_mqtt(LOG_INFO, TAG, true, "I²C initialized");
-}
-
 void screen_full_on() {
-    memset(screen, 0xFF, sizeof(screen));   //pixels on
-    ssd1306_flush_screen();
-    log_mqtt(LOG_INFO, TAG, true, "Screen full on set");
+    if (xMutex == NULL) {
+        return;
+    }
+
+    if (xSemaphoreTake(xMutex, portMAX_DELAY) == pdTRUE) {
+        memset(screen, 0xFF, sizeof(screen));   //pixels on
+        ssd1306_flush_screen();
+        log_mqtt(LOG_INFO, TAG, true, "Screen full on set");
+    }
 }
 
 void screen_full_off() {
-    memset(screen, 0x00, sizeof(screen));   //pixels off
-    ssd1306_flush_screen();
-    log_mqtt(LOG_INFO, TAG, true, "Screen full off set");
+    if (xMutex == NULL) {
+        return;
+    }
+
+    if (xSemaphoreTake(xMutex, portMAX_DELAY) == pdTRUE) {
+        memset(screen, 0x00, sizeof(screen));   //pixels off
+        ssd1306_flush_screen();
+        log_mqtt(LOG_INFO, TAG, true, "Screen full off set");
+    }
 }

@@ -4,13 +4,12 @@
 #include <stdio.h>
 #include <inttypes.h>
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "driver/i2c_master.h"
 #include "esp_system.h"
 #include "esp_log.h"
 #include "mqttLib.h"
-
-void i2c_init();
 
 void ssd1306_setup();
 

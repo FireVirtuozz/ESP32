@@ -28,6 +28,7 @@
 #include "efuseLib.h"
 #include "otaLib.h"
 #include "wifiLib.h"
+#include "screenLib.h"
 
 typedef enum {
     LOG_INFO,

@@ -34,7 +34,6 @@ void app_main()
     
     led_init(); //init led
 
-    i2c_init();
     ssd1306_setup();
 
     screen_full_off();

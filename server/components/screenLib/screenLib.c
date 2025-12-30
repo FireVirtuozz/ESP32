@@ -259,13 +259,13 @@ void i2c_init()
 }
 
 void screen_full_on() {
-    uint8_t buffer_on[128*8];
-    memset(buffer_on, 0xFF, sizeof(buffer_on));   //pixels on
-    ssd1306_send_data(dev_handle, buffer_on, sizeof(buffer_on));
+    memset(screen, 0xFF, sizeof(screen));   //pixels on
+    ssd1306_send_data(dev_handle, screen, sizeof(screen));
+    log_mqtt(LOG_INFO, TAG, true, "Screen full on set");
 }
 
 void screen_full_off() {
-    uint8_t buffer_off[128*8];
-    memset(buffer_off, 0xFF, sizeof(buffer_off));   //pixels on
-    ssd1306_send_data(dev_handle, buffer_off, sizeof(buffer_off));
+    memset(screen, 0x00, sizeof(screen));   //pixels on
+    ssd1306_send_data(dev_handle, screen, sizeof(screen));
+    log_mqtt(LOG_INFO, TAG, true, "Screen full off set");
 }

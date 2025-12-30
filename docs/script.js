@@ -6,8 +6,8 @@ const BROKER_USER = "ESP32";
 const BROKER_PASS = "BigEspGigaChad32";
 
 // Topics
-const TOPIC_LOGS = "esp32/logs/qos0";
-const TOPIC_CMD  = "esp32/commands";
+const TOPIC_LOGS = "/logs/qos0";
+const TOPIC_CMD  = "/commands";
 
 // =======================
 // UI

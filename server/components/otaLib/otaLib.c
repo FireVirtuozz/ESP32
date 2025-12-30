@@ -17,6 +17,8 @@
 
 static const char *TAG = "ota_library";
 
+static bool ota_running = false;
+
 #define EXAMPLE_FIRMWARE_UPGRADE_URL \
 "https://raw.githubusercontent.com/FireVirtuozz/ESP32/main/server/build/server.bin"
 
@@ -37,25 +39,25 @@ static void event_handler(void* arg, esp_event_base_t event_base,
                 log_mqtt(LOG_INFO, TAG, true, "OTA started");
                 break;
             case ESP_HTTPS_OTA_CONNECTED:
-                log_mqtt(LOG_INFO, TAG, false, "Connected to server");
+                log_mqtt(LOG_INFO, TAG, true, "Connected to server");
                 break;
             case ESP_HTTPS_OTA_GET_IMG_DESC:
-                log_mqtt(LOG_INFO, TAG, false, "Reading Image Description");
+                log_mqtt(LOG_INFO, TAG, true, "Reading Image Description");
                 break;
             case ESP_HTTPS_OTA_VERIFY_CHIP_ID:
-                log_mqtt(LOG_INFO, TAG, false, "Verifying chip id of new image: %d", *(esp_chip_id_t *)event_data);
+                log_mqtt(LOG_INFO, TAG, true, "Verifying chip id of new image: %d", *(esp_chip_id_t *)event_data);
                 break;
             case ESP_HTTPS_OTA_VERIFY_CHIP_REVISION:
-                log_mqtt(LOG_INFO, TAG, false, "Verifying chip revision of new image: %d", *(esp_chip_id_t *)event_data);
+                log_mqtt(LOG_INFO, TAG, true, "Verifying chip revision of new image: %d", *(esp_chip_id_t *)event_data);
                 break;
             case ESP_HTTPS_OTA_DECRYPT_CB:
-                log_mqtt(LOG_INFO, TAG, false, "Callback to decrypt function");
+                log_mqtt(LOG_INFO, TAG, true, "Callback to decrypt function");
                 break;
             case ESP_HTTPS_OTA_WRITE_FLASH:
-                log_mqtt(LOG_DEBUG, TAG, false, "Writing to flash: %d written", *(int *)event_data);
+                log_mqtt(LOG_DEBUG, TAG, true, "Writing to flash: %d written", *(int *)event_data);
                 break;
             case ESP_HTTPS_OTA_UPDATE_BOOT_PARTITION:
-                log_mqtt(LOG_INFO, TAG, false, "Boot partition updated. Next Partition: %d", *(esp_partition_subtype_t *)event_data);
+                log_mqtt(LOG_INFO, TAG, true, "Boot partition updated. Next Partition: %d", *(esp_partition_subtype_t *)event_data);
                 break;
             case ESP_HTTPS_OTA_FINISH:
                 log_mqtt(LOG_INFO, TAG, true, "OTA finish");
@@ -76,8 +78,8 @@ static esp_err_t validate_image_header(esp_app_desc_t *new_app_info)
     const esp_partition_t *running = esp_ota_get_running_partition();
     esp_app_desc_t running_app_info;
     if (esp_ota_get_partition_description(running, &running_app_info) == ESP_OK) {
-        log_mqtt(LOG_INFO, TAG, false, "Running firmware version: %s", running_app_info.version);
-        log_mqtt(LOG_INFO, TAG, false, "New firmware version: %s", new_app_info->version);
+        log_mqtt(LOG_INFO, TAG, true, "Running firmware version: %s", running_app_info.version);
+        log_mqtt(LOG_INFO, TAG, true, "New firmware version: %s", new_app_info->version);
     }
 
 #if !EXAMPLE_SKIP_VERSION_CHECK
@@ -121,6 +123,7 @@ void advanced_ota_example_task(void *pvParameter)
     err = esp_https_ota_begin(&ota_config, &https_ota_handle);
     if (err != ESP_OK) {
         log_mqtt(LOG_ERROR, TAG, true, "ESP HTTPS OTA Begin failed");
+        ota_running = false;
         vTaskDelete(NULL);
     }
 
@@ -168,6 +171,7 @@ void advanced_ota_example_task(void *pvParameter)
             }
 
             log_mqtt(LOG_ERROR, TAG, true, "ESP_HTTPS_OTA upgrade failed 0x%x", ota_finish_err);
+            ota_running = false;
             vTaskDelete(NULL);
         }
     }
@@ -175,10 +179,14 @@ void advanced_ota_example_task(void *pvParameter)
 ota_end:
     esp_https_ota_abort(https_ota_handle);
     log_mqtt(LOG_ERROR, TAG, true, "ESP_HTTPS_OTA upgrade failed");
+    ota_running = false;
     vTaskDelete(NULL);
 }
 
 void ota_init() {
+
+    if (!ota_running) {
+    ota_running = true;
     log_mqtt(LOG_INFO, TAG, false, "OTA example app_main start");
 
     //ESP_ERROR_CHECK(esp_event_loop_create_default());
@@ -190,4 +198,8 @@ void ota_init() {
 
     xTaskCreate(&advanced_ota_example_task,
         "advanced_ota_example_task", 1024 * 8, NULL, 5, NULL);
+        
+    } else {
+        log_mqtt(LOG_WARN, TAG, true, "OTA already updating");
+    }
 }

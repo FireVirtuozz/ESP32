@@ -77,6 +77,9 @@ static void handle_commands(char * data) {
     } else if (strcmp(data, "LIST_NVS_STORAGE") == 0) {
         log_mqtt(LOG_INFO, TAG, true, "Listing NVS storage");
         list_storage();
+    } else if (strcmp(data, "OTA_UPDATE") == 0) {
+        log_mqtt(LOG_INFO, TAG, true, "Starting OTA update");
+        ota_init();
     } else {
         log_mqtt(LOG_INFO, TAG, true, "Event unkown");
     }

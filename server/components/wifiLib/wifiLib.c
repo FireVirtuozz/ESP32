@@ -1286,56 +1286,65 @@ const char* wifi_get_ip(void)
     return s_ip_str;
 }
 
+bool is_scanning() {
+    return scanning;
+}
+
+void wifi_scan_task(void *pvParameter) {
+
+    sta_info_strings_t *info;
+
+    log_mqtt(LOG_INFO, TAG, true, "=============== Scanning APs ===============");
+
+    wifi_scan_default_params_t params;
+    esp_err_t err = esp_wifi_get_scan_parameters(&params);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error on getting scan parameters : %d", err);
+    } else {
+        info = get_scan_params_info(params);
+        for (int i = 0; i < info->count; i++) {
+            log_mqtt(LOG_INFO, TAG, true, "scan params [%d] : %s", i, info->lines[i]);
+        }
+    }
+
+    // init info array
+    uint16_t number = DEFAULT_SCAN_LIST_SIZE;
+    wifi_ap_record_t ap_info[DEFAULT_SCAN_LIST_SIZE];
+    uint16_t ap_count = 0;
+    memset(ap_info, 0, sizeof(ap_info));
+
+    // launch scan
+    err = esp_wifi_scan_start(NULL, true); // blocking
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Scan failed: %d", err);
+        return;
+    }
+
+    // if fail : esp_wifi_clear_ap_list
+
+    log_mqtt(LOG_INFO, TAG, true, "Max AP number ap_info can hold = %u",
+        number);
+
+    // get num & records of scan
+    ESP_ERROR_CHECK(esp_wifi_scan_get_ap_num(&ap_count));
+    ESP_ERROR_CHECK(esp_wifi_scan_get_ap_records(&number, ap_info));
+    log_mqtt(LOG_INFO, TAG, true, "Total APs scanned = %u, actual AP number ap_info holds = %u",
+        ap_count, number);
+
+    // go through each record and print authmode, ssid, rssi, cipher, channel..
+    for (int i = 0; i < number; i++) {
+        print_record(ap_info[i]);
+    }
+    scanning = false;
+    vTaskDelete(NULL);
+}
+
 void wifi_scan_aps() {
 
     if (!scanning) {
         scanning = true;
 
-        sta_info_strings_t *info;
-
-        log_mqtt(LOG_INFO, TAG, true, "=============== Scanning APs ===============");
-
-        wifi_scan_default_params_t params;
-        esp_err_t err = esp_wifi_get_scan_parameters(&params);
-        if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Error on getting scan parameters : %d", err);
-        } else {
-            info = get_scan_params_info(params);
-            for (int i = 0; i < info->count; i++) {
-                log_mqtt(LOG_INFO, TAG, true, "scan params [%d] : %s", i, info->lines[i]);
-            }
-        }
-
-        // init info array
-        uint16_t number = DEFAULT_SCAN_LIST_SIZE;
-        wifi_ap_record_t ap_info[DEFAULT_SCAN_LIST_SIZE];
-        uint16_t ap_count = 0;
-        memset(ap_info, 0, sizeof(ap_info));
-
-        // launch scan
-        err = esp_wifi_scan_start(NULL, true); // blocking
-        if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Scan failed: %d", err);
-            return;
-        }
-
-        // if fail : esp_wifi_clear_ap_list
-
-        log_mqtt(LOG_INFO, TAG, true, "Max AP number ap_info can hold = %u",
-            number);
-
-        // get num & records of scan
-        ESP_ERROR_CHECK(esp_wifi_scan_get_ap_num(&ap_count));
-        ESP_ERROR_CHECK(esp_wifi_scan_get_ap_records(&number, ap_info));
-        log_mqtt(LOG_INFO, TAG, true, "Total APs scanned = %u, actual AP number ap_info holds = %u",
-            ap_count, number);
-
-        // go through each record and print authmode, ssid, rssi, cipher, channel..
-        for (int i = 0; i < number; i++) {
-            print_record(ap_info[i]);
-        }
-
-        scanning = false;
+        xTaskCreate(&wifi_scan_task, "wifi_scan_task", 4096, NULL, 5, NULL);
 
     } else {
         log_mqtt(LOG_WARN, TAG, true, "Already scanning Wifi");

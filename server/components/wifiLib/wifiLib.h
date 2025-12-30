@@ -33,4 +33,7 @@ void wifi_scan_esp();
 //get current AP info
 void get_ap_info();
 
+//check if there already is a wifi scan
+bool is_scanning();
+
 #endif

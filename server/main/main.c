@@ -37,7 +37,8 @@ void app_main()
     i2c_init();
     ssd1306_setup();
 
-    screen_full_off();
+    //screen_full_off();
+    screen_full_on();
 
     ssd1306_draw_string("miaou", 0, 0);
 

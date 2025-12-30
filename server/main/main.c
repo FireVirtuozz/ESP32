@@ -6,6 +6,7 @@
 #include "efuseLib.h"
 #include "otaLib.h"
 #include "mqttLib.h"
+#include "screenLib.h"
 #include <stdarg.h>
 
 //static const char * TAG = "main";
@@ -32,6 +33,13 @@ void app_main()
     mqtt_app_start();
     
     led_init(); //init led
+
+    i2c_init();
+    ssd1306_setup();
+
+    screen_full_off();
+
+    ssd1306_draw_string("miaou", 0, 0);
 
     //ota_init();
 

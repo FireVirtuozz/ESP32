@@ -484,3 +484,22 @@ void list_storage() {
         xSemaphoreGive(xMutex);
     }
 }
+
+void show_nvs_stats() {
+
+    log_mqtt(LOG_INFO, TAG, true, "==================== NVS statistics ====================");
+
+    nvs_stats_t nvs_stats;
+    esp_err_t ret = nvs_get_stats(NVS_DEFAULT_PART_NAME, &nvs_stats);
+    if (ret != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) getting NVS statistics!", esp_err_to_name(ret));
+    }
+
+    log_mqtt(LOG_INFO, TAG, true, "Used NVS entries: %u", nvs_stats.used_entries);
+    log_mqtt(LOG_INFO, TAG, true, "Free NVS entries: %u", nvs_stats.free_entries);
+    log_mqtt(LOG_INFO, TAG, true, "Available NVS entries: %u", nvs_stats.available_entries);
+    log_mqtt(LOG_INFO, TAG, true, "Total NVS entries: %u", nvs_stats.total_entries);
+    log_mqtt(LOG_INFO, TAG, true, "Namespace count: %u", nvs_stats.namespace_count);
+
+    log_mqtt(LOG_INFO, TAG, true, "==================== NVS statistics end ====================");
+}

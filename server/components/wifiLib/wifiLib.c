@@ -1788,7 +1788,7 @@ void wifi_scan_esp() {
         if (err != ESP_OK) {
             log_mqtt(LOG_ERROR, TAG, true, "Error on getting used phymode STA %d", err);
         } else {
-            log_mqtt(LOG_INFO, TAG, true, "Negotiated phymode : %d", get_phy_str(phymode));
+            log_mqtt(LOG_INFO, TAG, true, "Negotiated phymode : %s", get_phy_str(phymode));
         }
     }
 

@@ -37,4 +37,7 @@ void list_storage();
 //Function to close nvs
 void close_nvs();
 
+//FUnction to print general NVS statistics
+void show_nvs_stats();
+
 #endif

@@ -98,6 +98,9 @@ static void handle_mqtt_data(const char *data, size_t len) {
     } else if (strcmp(cmd->valuestring, "LIST_NVS_STORAGE") == 0) {
         log_mqtt(LOG_INFO, TAG, true, "Listing NVS storage");
         list_storage();
+    } else if (strcmp(cmd->valuestring, "NVS_STATS") == 0) {
+        log_mqtt(LOG_INFO, TAG, true, "Showing NVS statistics");
+        show_nvs_stats();
     } else if (strcmp(cmd->valuestring, "OTA_UPDATE") == 0) {
         log_mqtt(LOG_INFO, TAG, true, "Starting OTA update");
         ota_init();

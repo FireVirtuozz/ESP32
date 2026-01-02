@@ -31,20 +31,41 @@
 
   <section>
     <h2>Send manual command</h2>
-    <input id="cmdInput" type="text" placeholder="ex: scan_wifi" />
+    <input id="cmdInput" type="text" placeholder="ex: LED_ON" />
     <button id="sendBtn">Send</button>
   </section>
 
   <section>
+    <h2>Write to OLED Screen</h2>
+    <div id="oled-controls">
+      <label>
+        Text:
+        <input id="oledText" type="text" placeholder="Hello world" />
+      </label>
+      <label>
+        X Offset:
+        <input id="oledX" type="number" min="0" max="127" value="0" />
+      </label>
+      <label>
+        Page:
+        <input id="oledPage" type="number" min="0" max="7" value="0" />
+      </label>
+      <button id="oledSendBtn">Send to Screen</button>
+    </div>
+  </section>
+
+
+  <section>
     <h2>Available Commands</h2>
     <ul id="commandsList">
-      <li>LED_ON : Turn the LED on <button onclick="sendCommand('LED_ON')">Send</button></li>
-      <li>LED_OFF : Turn the LED off <button onclick="sendCommand('LED_OFF')">Send</button></li>
-      <li>LED_TOGGLE : Toggle the LED state <button onclick="sendCommand('LED_TOGGLE')">Send</button></li>
-      <li>WIFI_SCAN : Scan available Wi-Fi networks <button onclick="sendCommand('WIFI_SCAN')">Send</button></li>
-      <li>ESP_WIFI_INFO : Get detailed ESP32 Wi-Fi info <button onclick="sendCommand('ESP_WIFI_INFO')">Send</button></li>
-      <li>CHIP_INFO : Print chip info <button onclick="sendCommand('CHIP_INFO')">Send</button></li>
-      <li>LIST_NVS_STORAGE : List NVS storage keys <button onclick="sendCommand('LIST_NVS_STORAGE')">Send</button></li>
+      <li>LED_ON : Turn the LED on <button onclick="sendCommandJSON('LED_ON')">Send</button></li>
+      <li>LED_OFF : Turn the LED off <button onclick="sendCommandJSON('LED_OFF')">Send</button></li>
+      <li>LED_TOGGLE : Toggle the LED state <button onclick="sendCommandJSON('LED_TOGGLE')">Send</button></li>
+      <li>WIFI_SCAN : Scan available Wi-Fi networks <button onclick="sendCommandJSON('WIFI_SCAN')">Send</button></li>
+      <li>ESP_WIFI_INFO : Get detailed ESP32 Wi-Fi info <button onclick="sendCommandJSON('ESP_WIFI_INFO')">Send</button></li>
+      <li>CHIP_INFO : Print chip info <button onclick="sendCommandJSON('CHIP_INFO')">Send</button></li>
+      <li>LIST_NVS_STORAGE : List NVS storage keys <button onclick="sendCommandJSON('LIST_NVS_STORAGE')">Send</button></li>
+      <li>CLEAR_SCREEN : Clear oled screen <button onclick="sendCommandJSON('CLEAR_SCREEN')">Send</button></li>
     </ul>
   </section>
 

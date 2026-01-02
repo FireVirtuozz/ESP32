@@ -34,12 +34,7 @@ void app_main()
     
     led_init(); //init led
 
-    ssd1306_setup();
-
-    screen_full_off();
-    //screen_full_on();
-
-    ssd1306_draw_string("fonctionne stp", 0, 0);
+    ssd1306_setup(); //init oled screen
 
     //ota_init();
 

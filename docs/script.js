@@ -18,6 +18,11 @@ const statusEl = document.getElementById("status");
 const cmdInput = document.getElementById("cmdInput");
 const sendBtn  = document.getElementById("sendBtn");
 
+const oledTextInput = document.getElementById("oledText");
+const oledXInput    = document.getElementById("oledX");
+const oledPageInput = document.getElementById("oledPage");
+const oledSendBtn   = document.getElementById("oledSendBtn");
+
 // =======================
 // MQTT CONNECT
 // =======================
@@ -95,17 +100,45 @@ function appendLog(text) {
 // =======================
 // SEND COMMAND
 // =======================
-sendBtn.onclick = () => {
-  const cmd = cmdInput.value.trim();
-  if (!cmd) return;
 
-  client.publish(TOPIC_CMD, cmd, { qos: 1 });
+// manual input
+sendBtn.onclick = () => {
+  const command = cmdInput.value.trim();
+  if (!command) return;
+
+  sendCommandJSON(command);
   cmdInput.value = "";
 };
 
-function sendCommand(cmd) {
-  client.publish(TOPIC_CMD, cmd, { qos: 1 });
+// write screen command
+function sendWriteScreenCommand(text, x, page) {
+    const msg = {
+        command: "WRITE_SCREEN",
+        text: text,
+        x: x,
+        page: page
+    };
+
+    client.publish(TOPIC_CMD, JSON.stringify(msg), { qos: 1 });
 }
+
+// commands only
+function sendCommandJSON(command) {
+    const msg = { command };
+    client.publish(TOPIC_CMD, JSON.stringify(msg), { qos: 1 });
+}
+
+// oled screen send
+oledSendBtn.onclick = () => {
+    const text = oledTextInput.value.trim();
+    const x    = parseInt(oledXInput.value);
+    const page = parseInt(oledPageInput.value);
+
+    if (!text) return;
+
+    sendWriteScreenCommand(text, x, page);
+    console.log("Sent OLED command:", msg);
+};
 
 // =======================
 // TOGGLE LOGS

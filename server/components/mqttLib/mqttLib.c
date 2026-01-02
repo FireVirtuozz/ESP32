@@ -28,6 +28,7 @@
 #include "otaLib.h"
 #include "wifiLib.h"
 #include "screenLib.h"
+#include "cJSON.h"
 
 //mqtt through websocket secure
 
@@ -57,50 +58,71 @@ typedef struct {
     bool retain;
 } mqtt_msg_t;
 
-static void handle_commands(char * data) {
-    //compare messages to give instructions
-    if (strcmp(data, "LED_ON") == 0) {
+static void handle_mqtt_data(const char *data, size_t len) {
+    char buf[256];
+    if (len >= sizeof(buf)) len = sizeof(buf)-1;
+    memcpy(buf, data, len);
+    buf[len] = '\0';
+
+    cJSON *root = cJSON_Parse(buf);
+    if (!root) {
+        log_mqtt(LOG_ERROR, TAG, true, "JSON parse error");
+        return;
+    }
+
+    cJSON *cmd = cJSON_GetObjectItem(root, "command");
+    if (!cJSON_IsString(cmd)) {
+        log_mqtt(LOG_ERROR, TAG, true, "No command string found");
+        cJSON_Delete(root);
+        return;
+    }
+
+    if (strcmp(cmd->valuestring, "LED_ON") == 0) {
         log_mqtt(LOG_INFO, TAG, true, "Start Led On");
         led_on();
-    } else if (strcmp(data, "LED_OFF") == 0) {
+    } else if (strcmp(cmd->valuestring, "LED_OFF") == 0) {
         log_mqtt(LOG_INFO, TAG, true, "Start Led Off");
         led_off();
-    } else if (strcmp(data, "LED_TOGGLE") == 0) {
+    } else if (strcmp(cmd->valuestring, "LED_TOGGLE") == 0) {
         log_mqtt(LOG_INFO, TAG, true, "Toggling LED");
         led_toggle();
-    } else if (strcmp(data, "WIFI_SCAN") == 0) {
+    } else if (strcmp(cmd->valuestring, "WIFI_SCAN") == 0) {
         log_mqtt(LOG_INFO, TAG, true, "Starting Wifi Scan");
         wifi_scan_aps();
-    } else if (strcmp(data, "ESP_WIFI_INFO") == 0) {
+    } else if (strcmp(cmd->valuestring, "ESP_WIFI_INFO") == 0) {
         log_mqtt(LOG_INFO, TAG, true, "Starting ESP Scan");
         wifi_scan_esp();
-    } else if (strcmp(data, "CHIP_INFO") == 0) {
+    } else if (strcmp(cmd->valuestring, "CHIP_INFO") == 0) {
         log_mqtt(LOG_INFO, TAG, true, "Printing chip info");
         print_chip_info();
-    } else if (strcmp(data, "LIST_NVS_STORAGE") == 0) {
+    } else if (strcmp(cmd->valuestring, "LIST_NVS_STORAGE") == 0) {
         log_mqtt(LOG_INFO, TAG, true, "Listing NVS storage");
         list_storage();
-    } else if (strcmp(data, "OTA_UPDATE") == 0) {
+    } else if (strcmp(cmd->valuestring, "OTA_UPDATE") == 0) {
         log_mqtt(LOG_INFO, TAG, true, "Starting OTA update");
         ota_init();
-    } else if (strncmp(data, "WRITE_SCREEN:", 13) == 0) {
-        char text[64];
-        int x, page;
+    } else if (strcmp(cmd->valuestring, "CLEAR_SCREEN") == 0) {
+        log_mqtt(LOG_INFO, TAG, true, "Clearing screen");
+        screen_full_off();
+    } else if (strcmp(cmd->valuestring, "WRITE_SCREEN") == 0) {
+        cJSON *text = cJSON_GetObjectItem(root, "text");
+        cJSON *x = cJSON_GetObjectItem(root, "x");
+        cJSON *page = cJSON_GetObjectItem(root, "page");
 
-        if (sscanf(data, "WRITE_SCREEN:%63[^/]/%d/%d", text, &x, &page) == 3) {
-            log_mqtt(LOG_INFO, TAG, true, 
-                "Write screen: '%s' at x=%d page=%d", text, x, page);
-
-            ssd1306_draw_string(text, x, page);
+        if (cJSON_IsString(text) && cJSON_IsNumber(x) && cJSON_IsNumber(page)) {
+            log_mqtt(LOG_INFO, TAG, true, "Write screen: '%s' at x=%d page=%d",
+                     text->valuestring, x->valueint, page->valueint);
+            ssd1306_draw_string(text->valuestring, x->valueint, page->valueint);
         } else {
-            log_mqtt(LOG_INFO, TAG, true, "Wrong format screen");
+            log_mqtt(LOG_ERROR, TAG, true, "Invalid WRITE_SCREEN JSON");
         }
-
     } else {
         log_mqtt(LOG_INFO, TAG, true, "Event unkown");
     }
-    
+
+    cJSON_Delete(root);
 }
+
 
 
 static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
@@ -108,7 +130,6 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
     client = event->client;
     int msg_id;
     char topic[event->topic_len + 1];
-    char data[event->data_len + 1];
     // your_context_t *context = event->context;
     switch (event->event_id) {
     case MQTT_EVENT_CONNECTED:
@@ -150,12 +171,7 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
         memcpy(topic, event->topic, event->topic_len);
         topic[event->topic_len] = '\0';
         if (strcmp(topic, "/commands") == 0) {
-            
-            memcpy(data, event->data, event->data_len);
-            data[event->data_len] = '\0';
-            log_mqtt(LOG_INFO, TAG, true,
-                "commands event : %s", data);
-            handle_commands(data);
+            handle_mqtt_data(event->data, event->data_len);
         }
         break;
     case MQTT_EVENT_ERROR:

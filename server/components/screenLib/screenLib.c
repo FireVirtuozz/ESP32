@@ -8,6 +8,7 @@
 #include "esp_system.h"
 #include "esp_log.h"
 #include "mqttLib.h"
+#include "nvsLib.h"
 
 // I2C pins
 #define I2C_MASTER_SDA_IO 22
@@ -199,6 +200,7 @@ static void ssd1306_flush_screen()
             return;
         }
     }
+    save_nvs_blob("screen", screen, sizeof(screen));
 }
 
 // transmit one buffer data : sending 5 commands in a row
@@ -327,6 +329,10 @@ void ssd1306_setup()
         log_mqtt(LOG_ERROR, TAG, true, "Error (%s) sending command", esp_err_to_name(err));
         return;
     }
+
+    memset(screen, 0x00, sizeof(screen));
+    load_nvs_blob("screen", screen, sizeof(screen));
+    ssd1306_flush_screen();
 
     log_mqtt(LOG_INFO, TAG, true, "ssd1306 initialized");
 }

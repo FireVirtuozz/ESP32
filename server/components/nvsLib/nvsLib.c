@@ -167,6 +167,205 @@ esp_err_t load_nvs_int(const char *key, int *val) {
 }
 
 /**
+ * Function to load a string in nvs
+ * -Take mutex, read nvs and handle return value, init if needed
+ * @param key str key
+ * @param val int in/out value updated*
+ * @param length length of string (0 auto calculated)
+ */
+esp_err_t load_nvs_blob(const char *key, uint8_t *val, size_t length) {
+
+    int need_init = 0;
+
+    //if mutex destroyed or not initialized
+    if (xMutex == NULL) {
+        log_mqtt(LOG_ERROR, TAG, true, "Mutex not initalized!");
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    esp_err_t err = ESP_ERR_TIMEOUT;
+
+    //wait to take mutex
+    if (xSemaphoreTake(xMutex, portMAX_DELAY) == pdTRUE) {
+
+        size_t required_size = 0;
+
+        log_mqtt(LOG_INFO, TAG, false, "Reading blob %s from NVS...", key);
+        err = nvs_get_blob(my_handle, key, NULL, &required_size);
+        if (err == ESP_OK) {
+            uint8_t* tmp = malloc(required_size);
+            if (!tmp) {
+                log_mqtt(LOG_ERROR, TAG, true, "Memory allocation failed for blob %s", key);
+                xSemaphoreGive(xMutex);
+                return ESP_ERR_NO_MEM;
+            }
+            err = nvs_get_blob(my_handle, key, tmp, &required_size);
+            if (err == ESP_OK) {
+                memcpy(val, tmp, required_size < length ? required_size : length);
+            }
+            free(tmp);
+        } else if (err == ESP_ERR_NVS_NOT_FOUND) {
+            need_init = 1;
+            log_mqtt(LOG_WARN, TAG, true, "The blob is not initialized yet!");
+        } else {
+            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) reading!", esp_err_to_name(err));
+        }
+        //free mutex
+        xSemaphoreGive(xMutex);
+    }
+
+    //if init is needed (here because avoids deadlock mutex)
+    if (need_init) {
+        return save_nvs_blob(key, val, length);
+    }
+
+    return err;
+}
+
+/**
+ * Function to save a string in nvs
+ * -Take mutex, set nvs value and commit changes to handle
+ * @param key key string of value
+ * @param value const str value to save
+ */
+esp_err_t save_nvs_blob(const char *key, uint8_t* value, size_t length) {
+
+    if (xMutex == NULL) {
+        log_mqtt(LOG_ERROR, TAG, true, "Mutex not initalized!");
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    if (xSemaphoreTake(xMutex, portMAX_DELAY) == pdTRUE) {
+        
+        log_mqtt(LOG_INFO, TAG, true, "Writing blob %s to NVS...", key);
+        // Store blob
+        esp_err_t err = nvs_set_blob(my_handle, key, value, length);
+        if (err != ESP_OK) {
+            log_mqtt(LOG_ERROR, TAG, true, "Failed to write blob %s!", key);
+            xSemaphoreGive(xMutex);
+            return err;
+        }
+
+        // Commit changes
+        // After setting any values, nvs_commit() must be called to ensure changes are written
+        // to flash storage. Implementations may write to storage at other times,
+        // but this is not guaranteed.
+        log_mqtt(LOG_INFO, TAG, true, "Committing updates in NVS...");
+        err = nvs_commit(my_handle);
+        if (err != ESP_OK) {
+            log_mqtt(LOG_ERROR, TAG, true, "Failed to commit NVS changes!");
+        }
+        xSemaphoreGive(xMutex);
+        return err;
+    }
+    return ESP_ERR_INVALID_STATE;
+}
+
+/**
+ * Function to load a string in nvs
+ * -Take mutex, read nvs and handle return value, init if needed
+ * @param key str key
+ * @param val int in/out value updated*
+ * @param length length of string (0 auto calculated)
+ */
+esp_err_t load_nvs_str(const char *key, char *val) {
+
+    int need_init = 0;
+
+    //if mutex destroyed or not initialized
+    if (xMutex == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    esp_err_t err = ESP_ERR_TIMEOUT;
+
+    //wait to take mutex
+    if (xSemaphoreTake(xMutex, portMAX_DELAY) == pdTRUE) {
+
+        size_t required_size = 0;
+
+        log_mqtt(LOG_INFO, TAG, false, "Reading %s from NVS...", key);
+        err = nvs_get_str(my_handle, key, NULL, &required_size);
+        if (err == ESP_OK) {
+            char* tmp = malloc(required_size);
+            if (!tmp) {
+                xSemaphoreGive(xMutex);
+                return ESP_ERR_NO_MEM;
+            }
+            err = nvs_get_str(my_handle, key, tmp, &required_size);
+            if (err == ESP_OK) {
+                strncpy(val, tmp, required_size);
+                val[required_size-1] = '\0';
+            }
+            free(tmp);
+        }
+
+        //switch on return read value
+        switch (err) {
+            // ok : update value
+            case ESP_OK:
+                log_mqtt(LOG_INFO, TAG, true, "Read %s = %s", key, val);
+                break;
+            // not found : initialize value to 0 (default)
+            case ESP_ERR_NVS_NOT_FOUND:
+                need_init = 1;
+                log_mqtt(LOG_WARN, TAG, true, "The value is not initialized yet!");
+                break;
+            //other : error
+            default:
+                log_mqtt(LOG_ERROR, TAG, true, "Error (%s) reading!", esp_err_to_name(err));
+        }
+        //free mutex
+        xSemaphoreGive(xMutex);
+    }
+
+    //if init is needed (here because avoids deadlock mutex)
+    if (need_init) {
+        val[0] = '\0';
+        return save_nvs_str(key, val); // Init key to 0 (default)
+    }
+
+    return err;
+}
+
+/**
+ * Function to save a string in nvs
+ * -Take mutex, set nvs value and commit changes to handle
+ * @param key key string of value
+ * @param value const str value to save
+ */
+esp_err_t save_nvs_str(const char *key, const char* value) {
+
+    if (xMutex == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+
+    if (xSemaphoreTake(xMutex, portMAX_DELAY) == pdTRUE) {
+        
+        log_mqtt(LOG_INFO, TAG, true, "Writing %s to NVS...", key);
+        // Store an integer value
+        esp_err_t err = nvs_set_str(my_handle, key, value);
+        if (err != ESP_OK) {
+            log_mqtt(LOG_ERROR, TAG, true, "Failed to write %s!", key);
+        }
+
+        // Commit changes
+        // After setting any values, nvs_commit() must be called to ensure changes are written
+        // to flash storage. Implementations may write to storage at other times,
+        // but this is not guaranteed.
+        log_mqtt(LOG_INFO, TAG, true, "Committing updates in NVS...");
+        err = nvs_commit(my_handle);
+        if (err != ESP_OK) {
+            log_mqtt(LOG_ERROR, TAG, true, "Failed to commit NVS changes!");
+        }
+        xSemaphoreGive(xMutex);
+        return err;
+    }
+    return ESP_ERR_INVALID_STATE;
+}
+
+/**
  * Function to save an int in nvs
  * -Take mutex, set nvs value and commit changes to handle
  * @param key key string of value

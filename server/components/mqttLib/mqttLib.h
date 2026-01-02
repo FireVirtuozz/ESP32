@@ -29,6 +29,7 @@
 #include "otaLib.h"
 #include "wifiLib.h"
 #include "screenLib.h"
+#include "cJSON.h"
 
 typedef enum {
     LOG_INFO,

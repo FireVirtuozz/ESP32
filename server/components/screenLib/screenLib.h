@@ -10,6 +10,7 @@
 #include "esp_system.h"
 #include "esp_log.h"
 #include "mqttLib.h"
+#include "nvsLib.h"
 
 void ssd1306_setup();
 

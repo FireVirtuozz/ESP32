@@ -17,6 +17,8 @@
 
 static const char *TAG = "ota_library";
 
+//mutex for running, because r/w in multiple tasks.
+//here it is still ok, not spamming..
 static bool ota_running = false;
 
 #define EXAMPLE_FIRMWARE_UPGRADE_URL \
@@ -186,16 +188,21 @@ ota_end:
 void ota_init() {
 
     if (!ota_running) {
-    ota_running = true;
-    log_mqtt(LOG_INFO, TAG, false, "OTA example app_main start");
+        ota_running = true;
+        log_mqtt(LOG_INFO, TAG, false, "OTA start");
 
-    ESP_ERROR_CHECK(esp_event_handler_register(ESP_HTTPS_OTA_EVENT,
-        ESP_EVENT_ANY_ID, &event_handler, NULL));
+        esp_err_t err = esp_event_handler_register(ESP_HTTPS_OTA_EVENT,
+            ESP_EVENT_ANY_ID, &event_handler, NULL);
+        if (err != ESP_OK) {
+            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) registering handler", esp_err_to_name(err));
+            ota_running = false;
+            return;
+        }
 
-    // esp_wifi_set_ps(WIFI_PS_NONE);
+        // esp_wifi_set_ps(WIFI_PS_NONE);
 
-    xTaskCreate(&advanced_ota_example_task,
-        "advanced_ota_example_task", 1024 * 8, NULL, 5, NULL);
+        xTaskCreate(&advanced_ota_example_task,
+            "advanced_ota_example_task", 1024 * 8, NULL, 5, NULL);
 
     } else {
         log_mqtt(LOG_WARN, TAG, true, "OTA already updating");

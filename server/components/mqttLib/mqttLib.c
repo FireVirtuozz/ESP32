@@ -40,6 +40,8 @@
 
 #define QUEUE_SIZE 256
 
+#define USE_QUEUE_LOGS 0
+
 static const char *TAG = "mqtt_library";
 
 static esp_mqtt_client_handle_t client = NULL;
@@ -182,15 +184,31 @@ static void log_task(void *pvParameters) {
     mqtt_msg_t m;
 
     while (1) {
-        if (mqtt_connected) {
-            if (xQueueReceive(xQueue, &m, portMAX_DELAY) == pdTRUE) {
-                {
-                    //log_mqtt(LOG_INFO, TAG, false, "Trying MQQT publish: %s", m.payload);
+        if (mqtt_connected && xQueue != NULL) {
+            #if USE_QUEUE_LOGS 
+                if (xQueueReceive(xQueue, &m, portMAX_DELAY) == pdTRUE) {
+                //log_mqtt(LOG_INFO, TAG, false, "Trying MQQT publish: %s", m.payload);
                     if (esp_mqtt_client_publish(client, m.topic, m.payload, strlen(m.payload), m.qos, m.retain) < 0) {
-                        log_mqtt(LOG_WARN, TAG, false, "MQTT publish failed: %s", m.payload);
+                        ESP_LOGE(TAG, "MQTT publish failed: %s", m.payload);
                     }
                 }
-            }
+            #else
+                //empty the whole queue
+                while (xQueueReceive(xQueue, &m, 0) == pdTRUE) {
+                    if (esp_mqtt_client_publish(client, m.topic, m.payload,
+                                                strlen(m.payload), m.qos, m.retain) < 0) {
+                        ESP_LOGE(TAG, "MQTT publish failed: %s", m.payload);
+                    }
+                }
+
+                // if queue empty, delete task & queue
+                if (uxQueueMessagesWaiting(xQueue) == 0) {
+                    vQueueDelete(xQueue);
+                    xQueue = NULL;
+                    ESP_LOGI(TAG, "Queue deleted, all pending logs sent");
+                    vTaskDelete(NULL);
+                }
+            #endif
         }
         vTaskDelay((TickType_t)5);
     }
@@ -219,10 +237,22 @@ void log_mqtt(mqtt_log_level lvl, const char * tag, bool mqtt, const char* fmt, 
         m.retain = false;
         snprintf(m.topic, sizeof(m.topic), "/logs/%s", tag);
         snprintf(m.payload, sizeof(m.payload), "[%s] %.200s", tag, buf);
-
-        if (xQueueSend(xQueue, &m, 0) != pdTRUE) {
-            log_mqtt(LOG_ERROR, TAG, false, "Fail to send message to Queue");
-        }
+        #if USE_QUEUE_LOGS
+            if (xQueueSend(xQueue, &m, 0) != pdTRUE) {
+                ESP_LOGE(TAG, "Fail to send message to Queue");
+            }
+        #else
+            if (!mqtt_connected) {
+                if (xQueueSend(xQueue, &m, 0) != pdTRUE) {
+                    ESP_LOGE(TAG, "Fail to send message to Queue");
+                }
+            } else {
+                if (esp_mqtt_client_publish(client, m.topic, m.payload, strlen(m.payload), m.qos, m.retain) < 0) {
+                    ESP_LOGE(TAG, "MQTT publish failed: %s", m.payload);
+                }
+            }
+        #endif
+        
     }
 }
 

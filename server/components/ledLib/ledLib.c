@@ -6,12 +6,13 @@
 #include "nvsLib.h"
 #include "mqttLib.h"
 #include <stdarg.h>
+#include <esp_err.h>
 
 static SemaphoreHandle_t xMutex = NULL;
 
 static const char *TAG = "led_library";
 
-static int led_state;
+static int led_state = 0;
 
 /**
  * Initalize led
@@ -24,6 +25,7 @@ void led_init() {
 
     if( xMutex != NULL )
     {
+        log_mqtt(LOG_WARN, TAG, true, "Mutex already initialized");
         return;
     }
 
@@ -31,17 +33,35 @@ void led_init() {
 
     if( xMutex == NULL )
     {
+        log_mqtt(LOG_ERROR, TAG, true, "Error on mutex creation");
         return;
     }
 
     //reset gpio pin
-    gpio_reset_pin(LED_PIN);
+    esp_err_t err = gpio_reset_pin(LED_PIN);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) resetting pin %d", esp_err_to_name(err), LED_PIN);
+        return;
+    }
+
     //set output mode for gpio
-    gpio_set_direction(LED_PIN, GPIO_MODE_OUTPUT);
+    err = gpio_set_direction(LED_PIN, GPIO_MODE_OUTPUT);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) setting direction pin %d", esp_err_to_name(err), LED_PIN);
+        return;
+    }
 
     //load led state in nvs and apply it to gpio
-    ESP_ERROR_CHECK(load_nvs_int("led_state", &led_state));
-    gpio_set_level(LED_PIN, led_state);
+    err = load_nvs_int("led_state", &led_state);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) loading nvs int : led_state", esp_err_to_name(err));
+        return;
+    }
+    err = gpio_set_level(LED_PIN, led_state);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) setting level on pin : %d", esp_err_to_name(err), LED_PIN);
+        return;
+    }
 
     //ESP_LOGI(TAG, "Led initialized on pin %d", LED_PIN);
     log_mqtt(LOG_INFO, TAG, true, "Led initialized on pin %d", LED_PIN);
@@ -54,14 +74,25 @@ void led_init() {
 void led_on() {
 
     if (xMutex == NULL) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error on mutex creation");
         return;
     }
 
     if (xSemaphoreTake(xMutex, portMAX_DELAY) == pdTRUE) {
         if (led_state == 0) {
             led_state = 1;
-            gpio_set_level(LED_PIN, led_state);
-            save_nvs_int("led_state", led_state);
+            esp_err_t err = gpio_set_level(LED_PIN, led_state);
+            if (err != ESP_OK) {
+                log_mqtt(LOG_ERROR, TAG, true, "Error (%s) setting level on pin : %d", esp_err_to_name(err), LED_PIN);
+                xSemaphoreGive(xMutex);
+                return;
+            }
+            err = save_nvs_int("led_state", led_state);
+            if (err != ESP_OK) {
+                log_mqtt(LOG_ERROR, TAG, true, "Error (%s) loading saving led_state in nvs", esp_err_to_name(err));
+                xSemaphoreGive(xMutex);
+                return;
+            }
             //ESP_LOGI(TAG, "Led on");
             log_mqtt(LOG_INFO, TAG, true, "Led on");
         }
@@ -75,14 +106,25 @@ void led_on() {
 void led_off() {
 
     if (xMutex == NULL) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error on mutex creation");
         return;
     }
 
     if (xSemaphoreTake(xMutex, portMAX_DELAY) == pdTRUE) {
         if (led_state != 0) {
             led_state = 0;
-            gpio_set_level(LED_PIN, led_state);
-            save_nvs_int("led_state", led_state);
+            esp_err_t err = gpio_set_level(LED_PIN, led_state);
+            if (err != ESP_OK) {
+                log_mqtt(LOG_ERROR, TAG, true, "Error (%s) setting level on pin : %d", esp_err_to_name(err), LED_PIN);
+                xSemaphoreGive(xMutex);
+                return;
+            }
+            err = save_nvs_int("led_state", led_state);
+            if (err != ESP_OK) {
+                log_mqtt(LOG_ERROR, TAG, true, "Error (%s) loading saving led_state in nvs", esp_err_to_name(err));
+                xSemaphoreGive(xMutex);
+                return;
+            }
             log_mqtt(LOG_INFO, TAG, true, "Led off");
         }
         xSemaphoreGive(xMutex);
@@ -95,13 +137,24 @@ void led_off() {
 void led_toggle() {
 
     if (xMutex == NULL) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error on mutex creation");
         return;
     }
 
     if (xSemaphoreTake(xMutex, portMAX_DELAY) == pdTRUE) {
         led_state = !led_state;
-        gpio_set_level(LED_PIN, led_state);
-        save_nvs_int("led_state", led_state);
+        esp_err_t err = gpio_set_level(LED_PIN, led_state);
+        if (err != ESP_OK) {
+            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) setting level on pin : %d", esp_err_to_name(err), LED_PIN);
+            xSemaphoreGive(xMutex);
+            return;
+        }
+        err = save_nvs_int("led_state", led_state);
+        if (err != ESP_OK) {
+            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) loading saving led_state in nvs", esp_err_to_name(err));
+            xSemaphoreGive(xMutex);
+            return;
+        }
         //ESP_LOGI(TAG, "Led toggled to : %d", led_state);
         log_mqtt(LOG_INFO, TAG, true, "Led toggled to : %d", led_state);
         xSemaphoreGive(xMutex);
@@ -115,6 +168,7 @@ void led_toggle() {
 void close_led() {
 
     if (xMutex == NULL) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error on mutex creation");
         return;
     }
 
@@ -133,6 +187,7 @@ int get_led_state() {
     int led = -1;
 
     if (xMutex == NULL) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error on mutex creation");
         return led;
     }
 

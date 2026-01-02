@@ -22,6 +22,8 @@ static uint8_t screen[128*8];
 
 static SemaphoreHandle_t xMutex = NULL;
 
+static bool i2c_initialized = false;
+
 // Police 5x8 pour A-Z (chaque caractère = 5 colonnes)
 const uint8_t font5x8[64][5] = {
     {0x7C,0x12,0x11,0x12,0x7C}, // A
@@ -185,8 +187,17 @@ static void ssd1306_flush_screen()
 {
     for (int page = 0; page < 8; page++) {
         uint8_t cmd[] = {0xB0 | page, 0x00, 0x10};
-        ssd1306_send_cmd(dev_handle, cmd, sizeof(cmd));
-        ssd1306_send_data(dev_handle, &screen[page * 128], 128);
+        esp_err_t err = ssd1306_send_cmd(dev_handle, cmd, sizeof(cmd));
+        if (err != ESP_OK) {
+            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) sending command", esp_err_to_name(err));
+            return;
+        }
+
+        err = ssd1306_send_data(dev_handle, &screen[page * 128], 128);
+        if (err != ESP_OK) {
+            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) sending data", esp_err_to_name(err));
+            return;
+        }
     }
 }
 
@@ -217,6 +228,7 @@ static void ssd1306_draw_char(char c, int x, int page) {
 
 void ssd1306_draw_string(const char *str, int x, int page) {
     if (xMutex == NULL) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error on mutex creation");
         return;
     }
 
@@ -236,17 +248,36 @@ void ssd1306_draw_string(const char *str, int x, int page) {
     }
 }
 
-// --------- I2C Init et Scan ---------
+// --------- I2C Init & Scan ---------
 static void i2c_init()
 {
+    if (i2c_initialized) {
+        log_mqtt(LOG_WARN, TAG, true, "I2C already initialized");
+        return;
+    }
+
+    i2c_initialized = true;
+
     //config of i2c registers, gpio, start
-    ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_mst_config, &bus_handle));
+    esp_err_t err = i2c_new_master_bus(&i2c_mst_config, &bus_handle);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) allocating I²C master bus", esp_err_to_name(err));
+        return;
+    }
 
     //check if the adress is known
-    ESP_ERROR_CHECK(i2c_master_probe(bus_handle, OLED_ADDR_DEFAULT, -1));
+    err = i2c_master_probe(bus_handle, OLED_ADDR_DEFAULT, -1);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) finding screen address", esp_err_to_name(err));
+        return;
+    }
 
     //add the address of the device on the master bus
-    ESP_ERROR_CHECK(i2c_master_bus_add_device(bus_handle, &dev_cfg, &dev_handle));
+    err = i2c_master_bus_add_device(bus_handle, &dev_cfg, &dev_handle);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) adding device to master bus", esp_err_to_name(err));
+        return;
+    }
 
     log_mqtt(LOG_INFO, TAG, true, "I²C initialized");
 }
@@ -256,6 +287,7 @@ void ssd1306_setup()
 
     if( xMutex != NULL )
     {
+        log_mqtt(LOG_WARN, TAG, true, "Mutex already initialized");
         return;
     }
 
@@ -263,6 +295,7 @@ void ssd1306_setup()
 
     if( xMutex == NULL )
     {
+        log_mqtt(LOG_ERROR, TAG, true, "Error on mutex creation");
         return;
     }
 
@@ -289,7 +322,11 @@ void ssd1306_setup()
         0xAF        // Display ON
     };
 
-    ESP_ERROR_CHECK(ssd1306_send_cmd(dev_handle, init_cmds, sizeof(init_cmds)));
+    esp_err_t err = ssd1306_send_cmd(dev_handle, init_cmds, sizeof(init_cmds));
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) sending command", esp_err_to_name(err));
+        return;
+    }
 
     log_mqtt(LOG_INFO, TAG, true, "ssd1306 initialized");
 }

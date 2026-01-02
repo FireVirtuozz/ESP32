@@ -907,12 +907,13 @@ USEFUL FUNCTIONS
 
 static void first_scan() {
 
+    esp_err_t err;
     sta_info_strings_t *info;
 
     log_mqtt(LOG_INFO, TAG, false, "=============== First scan APs ===============");
 
     wifi_scan_default_params_t params;
-    esp_err_t err = esp_wifi_get_scan_parameters(&params);
+    err = esp_wifi_get_scan_parameters(&params);
     if (err != ESP_OK) {
         log_mqtt(LOG_ERROR, TAG, true, "Error on getting scan parameters : %d", err);
     } else {
@@ -935,7 +936,7 @@ static void first_scan() {
     //launch scan
     err = esp_wifi_scan_start(NULL, true); //blocking
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Scan failed: %d", err);
+        log_mqtt(LOG_ERROR, TAG, true, "Scan failed: %s", esp_err_to_name(err));
         return;
     }
 
@@ -944,8 +945,18 @@ static void first_scan() {
     log_mqtt(LOG_INFO, TAG, false, "Max AP number ap_info can hold = %u", number);
 
     //get num & records of scan
-    ESP_ERROR_CHECK(esp_wifi_scan_get_ap_num(&ap_count));
-    ESP_ERROR_CHECK(esp_wifi_scan_get_ap_records(&number, ap_info));
+    err = esp_wifi_scan_get_ap_num(&ap_count);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) getting AP number", esp_err_to_name(err));
+        return;
+    }
+    
+    err = esp_wifi_scan_get_ap_records(&number, ap_info);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) getting AP records", esp_err_to_name(err));
+        return;
+    }
+
     log_mqtt(LOG_INFO, TAG, true, "Total APs scanned = %u, actual AP number ap_info holds = %u", ap_count, number);
 
     wifi_network_t *wifi_credentials = NULL;
@@ -990,7 +1001,11 @@ static void first_scan() {
         (const char *)wifi_credentials->password, sizeof(wifi_sta_config.sta.password));
 
     //Apply station config to ESP
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_sta_config) );
+    err = esp_wifi_set_config(WIFI_IF_STA, &wifi_sta_config);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) setting wifi config", esp_err_to_name(err));
+        return;
+    }
 
     log_mqtt(LOG_INFO, TAG, false, "=============== First Scan End ===============");
 }
@@ -1008,14 +1023,21 @@ static void first_scan() {
 static void wifi_event_handler(void* arg, esp_event_base_t event_base,
                                int32_t event_id, void* event_data)
 {
+    esp_err_t err;
     //if wifi starting event
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         first_scan();
-        esp_wifi_connect(); // Start wifi connection : send request to router
+        err = esp_wifi_connect(); // Start wifi connection : send request to router
+        if (err != ESP_OK) {
+            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) connecting wifi", esp_err_to_name(err));
+        }
     //if wifi disconnect event, trying to reconnect
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         log_mqtt(LOG_INFO, TAG, true, "Disconnected, trying to reconnect..");
-        esp_wifi_connect();
+        err = esp_wifi_connect();
+        if (err != ESP_OK) {
+            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) connecting wifi", esp_err_to_name(err));
+        }
         //maximum retry?
     //if router assigned an IP address to ESP (triggered by DHCP netif when connection ok by router)
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
@@ -1063,7 +1085,11 @@ esp_netif_t *wifi_init_softap_netif(void)
     };
 
     //apply config AP to ESP
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_ap_config));
+    esp_err_t err = esp_wifi_set_config(WIFI_IF_AP, &wifi_ap_config);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) setting wifi config", esp_err_to_name(err));
+        return esp_netif_ap;
+    }
 
     log_mqtt(LOG_INFO, TAG, true, "wifi_init_softap finished. SSID:%s password:%s",
              ESP_SSID, ESP_PASS);
@@ -1082,24 +1108,51 @@ static void softap_set_dns_addr(esp_netif_t *esp_netif_ap, esp_netif_t *esp_neti
     esp_netif_dns_info_t dns;
 
     //getting dns info of ESP STA mode (MAIN DNS)
-    esp_netif_get_dns_info(esp_netif_sta, ESP_NETIF_DNS_MAIN, &dns);
+    esp_err_t err = esp_netif_get_dns_info(esp_netif_sta, ESP_NETIF_DNS_MAIN, &dns);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) getting DNS info", esp_err_to_name(err));
+        return;
+    }
 
     //Option for DHCP server of AP; offers DNS to clients when they ask for an IP
     uint8_t dhcps_offer_option = DHCPS_OFFER_DNS;
 
     //Stops DHCP server to apply a new config
-    ESP_ERROR_CHECK_WITHOUT_ABORT(esp_netif_dhcps_stop(esp_netif_ap));
+    err = esp_netif_dhcps_stop(esp_netif_ap);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) stopping DHCP", esp_err_to_name(err));
+        return;
+    }
 
     //Config DHCP of AP to offer DNS to clients
     //when a client connects, this will tell him which DNS address to use
-    ESP_ERROR_CHECK(esp_netif_dhcps_option(esp_netif_ap, ESP_NETIF_OP_SET, ESP_NETIF_DOMAIN_NAME_SERVER,
-        &dhcps_offer_option, sizeof(dhcps_offer_option)));
+    err = esp_netif_dhcps_option(esp_netif_ap, ESP_NETIF_OP_SET, ESP_NETIF_DOMAIN_NAME_SERVER,
+        &dhcps_offer_option, sizeof(dhcps_offer_option));
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) getting DHCP option", esp_err_to_name(err));
+        err = esp_netif_dhcps_start(esp_netif_ap);
+        if (err != ESP_OK) {
+            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) starting DHCP", esp_err_to_name(err));
+        }
+        return;
+    }
 
     //Set DNS got from STA to AP
-    ESP_ERROR_CHECK(esp_netif_set_dns_info(esp_netif_ap, ESP_NETIF_DNS_MAIN, &dns));
+    err = esp_netif_set_dns_info(esp_netif_ap, ESP_NETIF_DNS_MAIN, &dns);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) setting DNS info", esp_err_to_name(err));
+        err = esp_netif_dhcps_start(esp_netif_ap);
+        if (err != ESP_OK) {
+            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) starting DHCP", esp_err_to_name(err));
+        }
+        return;
+    }
 
     //Restart DHCP server with new config
-    ESP_ERROR_CHECK_WITHOUT_ABORT(esp_netif_dhcps_start(esp_netif_ap));
+    err = esp_netif_dhcps_start(esp_netif_ap);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) starting DHCP", esp_err_to_name(err));
+    }
 }
 
 /**
@@ -1113,36 +1166,66 @@ static void softap_set_dns_addr(esp_netif_t *esp_netif_ap, esp_netif_t *esp_neti
  */
 void wifi_init_sta(void)
 {
+    esp_err_t err;
+
     //Create global handler events for wifi
     s_wifi_event_group = xEventGroupCreate();
 
     //Initialize netif TCP/IP
-    ESP_ERROR_CHECK(esp_netif_init());
+    err = esp_netif_init();
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) init netif", esp_err_to_name(err));
+        return;
+    }
     
     //Create system event loop
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    err = esp_event_loop_create_default();
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) creating event loop", esp_err_to_name(err));
+        return;
+    }
 
     //Load default config and initialize driver
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    err = esp_wifi_init(&cfg);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) allocating wifi resources", esp_err_to_name(err));
+        return;
+    }
 
     //register handler for all wifi events
     esp_event_handler_instance_t instance_any_id;
     //register handler for IP event (GOT_IP)
     esp_event_handler_instance_t instance_got_ip;
-    esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
+    err = esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
                                         &wifi_event_handler, NULL, &instance_any_id);
-    esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) register any handler", esp_err_to_name(err));
+        return;
+    }
+    err = esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
                                         &wifi_event_handler, NULL, &instance_got_ip);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) register IP handler", esp_err_to_name(err));
+        return;
+    }
 
     //Configure esp in station mode
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    err = esp_wifi_set_mode(WIFI_MODE_STA);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) setting wifi mode", esp_err_to_name(err));
+        return;
+    }
     
     //esp_netif_t *esp_netif_sta = esp_netif_create_default_wifi_sta();
     esp_netif_create_default_wifi_sta();
 
     //start wifi : triggers WIFI_EVENT_STA_START handler
-    ESP_ERROR_CHECK(esp_wifi_start());
+    err = esp_wifi_start();
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) starting wifi", esp_err_to_name(err));
+        return;
+    }
 
     //debug
     log_mqtt(LOG_INFO, TAG, false, "Connection to ...");
@@ -1152,7 +1235,7 @@ void wifi_init_sta(void)
                         pdFALSE, pdTRUE, portMAX_DELAY);
 
     if (bits & WIFI_CONNECTED_BIT) {
-        log_mqtt(LOG_INFO, TAG, true, "connected to ap");
+        log_mqtt(LOG_INFO, TAG, true, "Connected to AP");
     } else {
         log_mqtt(LOG_ERROR, TAG, true, "UNEXPECTED EVENT");
         return;
@@ -1170,30 +1253,55 @@ void wifi_init_sta(void)
  */
 void wifi_init_ap(void)
 {
+    esp_err_t err;
 
     //Initialize netif TCP/IP
-    ESP_ERROR_CHECK(esp_netif_init());
+    err = esp_netif_init();
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) init netif", esp_err_to_name(err));
+        return;
+    }
     
     //Create system event loop
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    err = esp_event_loop_create_default();
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) creating event loop", esp_err_to_name(err));
+        return;
+    }
 
     //Load default config and initialize driver
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    err = esp_wifi_init(&cfg);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) allocating wifi resources", esp_err_to_name(err));
+        return;
+    }
 
     //register handler for all wifi events
     esp_event_handler_instance_t instance_any_id;
-    esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
+    err = esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
                                         &wifi_event_handler, NULL, &instance_any_id);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) register any handler", esp_err_to_name(err));
+        return;
+    }
 
     //Configure esp in AP mode
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
+    err = esp_wifi_set_mode(WIFI_MODE_AP);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) setting wifi mode", esp_err_to_name(err));
+        return;
+    }
 
     //esp_netif_t * netif_ap = wifi_init_softap_netif();
     wifi_init_softap_netif();
 
     //start wifi : triggers WIFI_EVENT_STA_START handler
-    ESP_ERROR_CHECK(esp_wifi_start());
+    err = esp_wifi_start();
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) starting wifi", esp_err_to_name(err));
+        return;
+    }
 
     //debug
     log_mqtt(LOG_INFO, TAG, true, "Wifi Soft-AP initialized; SSID : %s, PASS : %s", ESP_SSID, ESP_PASS);
@@ -1212,35 +1320,65 @@ void wifi_init_apsta(void)
 {
     s_wifi_event_group = xEventGroupCreate();
 
+    esp_err_t err;
+
     //Initialize netif TCP/IP
-    ESP_ERROR_CHECK(esp_netif_init());
+    err = esp_netif_init();
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) init netif", esp_err_to_name(err));
+        return;
+    }
     
     //Create system event loop
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    err = esp_event_loop_create_default();
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) creating event loop", esp_err_to_name(err));
+        return;
+    }
 
     //Load default config and initialize driver
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    err = esp_wifi_init(&cfg);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) allocating wifi resources", esp_err_to_name(err));
+        return;
+    }
 
     //register handler for all wifi events
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
+    err = esp_event_handler_instance_register(WIFI_EVENT,
                     ESP_EVENT_ANY_ID,
                     &wifi_event_handler,
                     NULL,
-                    NULL));
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT,
+                    NULL);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) register any handler", esp_err_to_name(err));
+        return;
+    }
+    err = esp_event_handler_instance_register(IP_EVENT,
                     IP_EVENT_STA_GOT_IP,
                     &wifi_event_handler,
                     NULL,
-                    NULL));
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT,
+                    NULL);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) register got IP handler", esp_err_to_name(err));
+        return;
+    }
+    err = esp_event_handler_instance_register(IP_EVENT,
                     IP_EVENT_ASSIGNED_IP_TO_CLIENT,
                     &wifi_event_handler,
                     NULL,
-                    NULL));
+                    NULL);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) register IP assigned handler", esp_err_to_name(err));
+        return;
+    }
 
-    //Configure esp in AP mode
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
+    //Configure esp in APSTA mode
+    err = esp_wifi_set_mode(WIFI_MODE_APSTA);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) setting wifi mode", esp_err_to_name(err));
+        return;
+    }
 
      /* Initialize AP */
     esp_netif_t *esp_netif_ap = wifi_init_softap_netif();
@@ -1249,7 +1387,11 @@ void wifi_init_apsta(void)
     esp_netif_t *esp_netif_sta = esp_netif_create_default_wifi_sta();
 
     //start wifi : triggers WIFI_EVENT_STA_START handler
-    ESP_ERROR_CHECK(esp_wifi_start());
+    err = esp_wifi_start();
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) starting wifi", esp_err_to_name(err));
+        return;
+    }
 
     //Waiting for connection until WIFI_CONNECTED_BIT is activated (if init in main, it will wait..)
     EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_BIT,
@@ -1269,7 +1411,11 @@ void wifi_init_apsta(void)
 
     /* Set sta as the default interface */
     //every Internet request will go through ESP STA mode (not AP)
-    esp_netif_set_default_netif(esp_netif_sta);
+    err = esp_netif_set_default_netif(esp_netif_sta);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) setting default netif", esp_err_to_name(err));
+        return;
+    }
 
     /* Enable napt on the AP netif */
     //transform private IPs of clients from ESP AP to public IP of ESP STA (NAT)
@@ -1325,9 +1471,19 @@ void wifi_scan_task(void *pvParameter) {
     log_mqtt(LOG_INFO, TAG, true, "Max AP number ap_info can hold = %u",
         number);
 
-    // get num & records of scan
-    ESP_ERROR_CHECK(esp_wifi_scan_get_ap_num(&ap_count));
-    ESP_ERROR_CHECK(esp_wifi_scan_get_ap_records(&number, ap_info));
+    //get num & records of scan
+    err = esp_wifi_scan_get_ap_num(&ap_count);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) getting AP number", esp_err_to_name(err));
+        return;
+    }
+    
+    err = esp_wifi_scan_get_ap_records(&number, ap_info);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) getting AP records", esp_err_to_name(err));
+        return;
+    }
+    
     log_mqtt(LOG_INFO, TAG, true, "Total APs scanned = %u, actual AP number ap_info holds = %u",
         ap_count, number);
 

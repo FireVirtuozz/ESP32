@@ -87,10 +87,21 @@ esp_err_t nvs_init() {
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         // NVS partition was truncated and needs to be erased
         // Retry nvs_flash_init
-        ESP_ERROR_CHECK(nvs_flash_erase());
+        esp_err_t err = nvs_flash_erase();
+        if (err != ESP_OK) {
+            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) erase nvs flash", esp_err_to_name(err));
+            return err;
+        }
         err = nvs_flash_init();
+        if (err != ESP_OK) {
+            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) initiating flash after erase", esp_err_to_name(err));
+            return err;
+        }
     }
-    ESP_ERROR_CHECK(err);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) initiating flash", esp_err_to_name(err));
+        return err;
+    }
 
     // Open NVS handle
     log_mqtt(LOG_INFO, TAG, true, "Opening Non-Volatile Storage (NVS) handle...");

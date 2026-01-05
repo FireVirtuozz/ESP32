@@ -1,5 +1,5 @@
 idf_component_register(
     SRCS "efuseLib.c"
     INCLUDE_DIRS "."
-    REQUIRES mqttLib
+    REQUIRES mqttLib esp_app_format
 )

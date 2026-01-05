@@ -1,5 +1,5 @@
 idf_component_register(
     SRCS "ledLib.c"
     INCLUDE_DIRS "."
-    REQUIRES esp_driver_gpio freertos nvsLib mqttLib
+    REQUIRES esp_driver_gpio freertos nvsLib mqttLib esp_driver_ledc
 )

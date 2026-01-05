@@ -1,3 +1,5 @@
 **/build/
+controller_win/
+mqtt_paho/
 
 !server/build/server.bin

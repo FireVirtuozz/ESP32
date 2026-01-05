@@ -23,6 +23,12 @@ const oledXInput    = document.getElementById("oledX");
 const oledPageInput = document.getElementById("oledPage");
 const oledSendBtn   = document.getElementById("oledSendBtn");
 
+const servoDutyInput    = document.getElementById("servoDuty");
+const servoSendBtn      = document.getElementById("servoSendBtn");
+
+const sliderAngleServo = document.getElementById("servoSlider");
+const labelAngleServo = document.getElementById("angleLabel");
+
 // =======================
 // MQTT CONNECT
 // =======================
@@ -122,6 +128,26 @@ function sendWriteScreenCommand(text, x, page) {
     client.publish(TOPIC_CMD, JSON.stringify(msg), { qos: 1 });
 }
 
+// servo duty command
+function sendServoDutyCommand(duty) {
+    const msg = {
+        command: "SERVO_DUTY",
+        duty: duty
+    };
+
+    client.publish(TOPIC_CMD, JSON.stringify(msg), { qos: 1 });
+}
+
+// servo angle command
+function sendServoAngleCommand(angle) {
+    const msg = {
+        command: "SET_ANGLE",
+        angle: angle
+    };
+
+    client.publish(TOPIC_CMD, JSON.stringify(msg), { qos: 1 });
+}
+
 // commands only
 function sendCommandJSON(command) {
     const msg = { command };
@@ -138,6 +164,26 @@ oledSendBtn.onclick = () => {
 
     sendWriteScreenCommand(text, x, page);
     console.log("Sent OLED command:", msg);
+};
+
+// servo send
+servoSendBtn.onclick = () => {
+    const duty  = parseInt(servoDutyInput.value);
+
+    sendServoDutyCommand(duty);
+    console.log("Sent servo duty:", msg);
+};
+
+// slider for servo angle
+sliderAngleServo.oninput = () => {
+    labelAngleServo.innerText = sliderAngleServo.value + "°";
+};
+
+sliderAngleServo.onchange = () => {
+  const angle    = parseInt(sliderAngleServo.value);
+
+  sendServoAngleCommand(angle);
+  console.log("Sent servo angle:", msg);
 };
 
 // =======================

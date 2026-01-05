@@ -86,6 +86,28 @@ static void handle_mqtt_data(const char *data, size_t len) {
     } else if (strcmp(cmd->valuestring, "LED_TOGGLE") == 0) {
         log_mqtt(LOG_INFO, TAG, true, "Toggling LED");
         led_toggle();
+    } else if (strcmp(cmd->valuestring, "SERVO_DUTY") == 0) {
+        cJSON *duty = cJSON_GetObjectItem(root, "duty");
+
+        if (cJSON_IsNumber(duty)) {
+            log_mqtt(LOG_INFO, TAG, true, "Updating servo duty : %d",
+                     duty->valueint);
+            ledc_duty(duty->valueint);
+        } else {
+            log_mqtt(LOG_ERROR, TAG, true, "Invalid SERVO_DUTY JSON");
+        }
+
+    } else if (strcmp(cmd->valuestring, "SET_ANGLE") == 0) {
+        cJSON *angle = cJSON_GetObjectItem(root, "angle");
+
+        if (cJSON_IsNumber(angle)) {
+            log_mqtt(LOG_INFO, TAG, true, "Updating servo angle : %d",
+                     angle->valueint);
+            ledc_angle(angle->valueint);
+        } else {
+            log_mqtt(LOG_ERROR, TAG, true, "Invalid SET_ANGLE JSON");
+        }
+
     } else if (strcmp(cmd->valuestring, "WIFI_SCAN") == 0) {
         log_mqtt(LOG_INFO, TAG, true, "Starting Wifi Scan");
         wifi_scan_aps();
@@ -119,6 +141,7 @@ static void handle_mqtt_data(const char *data, size_t len) {
         } else {
             log_mqtt(LOG_ERROR, TAG, true, "Invalid WRITE_SCREEN JSON");
         }
+        
     } else {
         log_mqtt(LOG_INFO, TAG, true, "Event unkown");
     }

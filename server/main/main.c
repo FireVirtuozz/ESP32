@@ -32,25 +32,12 @@ void app_main()
 
     mqtt_app_start();
     
-    led_init(); //init led
+    led_init(); //init led pin 2
 
     ssd1306_setup(); //init oled screen
 
-    //ota_init();
+    init_ledc(); //init pwm pin 4
 
-    //list_storage(); //list used keys of type i32 in nvs
-
-    //wifi_scan_aps(); //scan APs
-
-    //wifi_scan_esp();
-
-    //print_chip_info();
-
-    /*
-    while(1) {
-        vTaskDelay(pdMS_TO_TICKS(1000)); // keep main alive
-    }
-        */
-    
+    //print_esp_info_ledc();
 
 }

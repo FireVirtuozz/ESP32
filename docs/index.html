@@ -36,6 +36,20 @@
   </section>
 
   <section>
+    <h2>Servo controls</h2>
+    <label>
+      Duty:
+      <input id="servoDuty" type="number" value="600" />
+    </label>
+    <button id="servoSendBtn">Send</button>
+    <label>
+      Angle:
+      <input type="range" min="0" max="180" value="90" id="servoSlider">
+    </label>
+    <span id="angleLabel">90°</span>
+  </section>
+
+  <section>
     <h2>Write to OLED Screen</h2>
     <div id="oled-controls">
       <label>

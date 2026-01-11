@@ -1,4 +1,7 @@
 **/build/
+**/target/
+**/dist/
+
 controller_win/
 mqtt_paho/
 

@@ -159,3 +159,106 @@ section h2 {
   cursor: pointer;
 }
 
+/* ===========================
+   Controller Section (revamp)
+   =========================== */
+#controller {
+  display: flex;
+  gap: 60px;
+  flex-wrap: wrap;
+  justify-content: start;
+  margin-top: 20px;
+}
+
+/* Axes box */
+#axes {
+  background: #0f1117;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 15px;
+  min-width: 220px;
+  font-family: monospace;
+}
+
+#axes h3 {
+  margin-top: 0;
+  margin-bottom: 12px;
+  color: #7dd3fc;
+  text-align: center; /* centered */
+}
+
+/* Each axis as a bar */
+.axis {
+  margin-bottom: 10px;
+}
+
+.axis-label {
+  margin-bottom: 4px;
+  font-weight: bold;
+  display: block;
+  color: #fef3c7;
+}
+
+.axis-bar {
+  background: #1e293b;
+  border-radius: 6px;
+  height: 18px;
+  position: relative;
+  overflow: hidden;
+}
+
+.axis-fill {
+  background: #2563eb;
+  height: 100%;
+  width: 50%; /* middle by default */
+  text-align: right;
+  color: #fff;
+  padding-right: 6px;
+  line-height: 18px;
+  font-size: 0.8em;
+  font-weight: bold;
+  transition: width 0.05s linear;
+}
+
+/* Buttons box */
+#buttons {
+  background: #0f1117;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 15px;
+  min-width: 140px;
+}
+
+#buttons h3 {
+  margin-top: 0;
+  margin-bottom: 12px;
+  color: #7dd3fc;
+  text-align: center; /* centered */
+}
+
+/* Grid for buttons below h3 */
+.button-grid {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap; /* si tu ajoutes plus de boutons */
+}
+
+#buttons span {
+  width: 40px;
+  height: 40px;
+  line-height: 40px;
+  border-radius: 50%;
+  text-align: center;
+  font-weight: bold;
+  background-color: #f87171; /* rouge par défaut */
+  color: #0f1117;
+  transition: all 0.15s;
+  font-size: 1em;
+  cursor: default;
+}
+
+#buttons span.pressed {
+  background-color: #34d399; /* vert quand pressé */
+  color: #0f1117;
+}

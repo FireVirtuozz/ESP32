@@ -8,6 +8,7 @@ const BROKER_PASS = "BigEspGigaChad32";
 // Topics
 const TOPIC_CMD = "/commands"
 const TOPICS = [
+  "windowscontrols/gamepad",
   "/logs/#"
 ];
 
@@ -79,8 +80,35 @@ client.on("error", (err) => {
 // =======================
 // RECEIVE MESSAGES
 // =======================
+
+function signedByte(b) {
+    return b > 127 ? b - 256 : b;
+}
+
+function updateAxis(id, value) {
+  const el = document.getElementById(id);
+  if (!el) return;
+
+  el.textContent = value; // affiche la valeur
+  // width : -100 → 0%, 0 → 50%, 100 → 100%
+  const percent = (value + 100) / 200 * 100;
+  el.style.width = percent + "%";
+}
+
 client.on("message", (topic, payload) => {
+
+  console.log("Received topic:", topic, "payload:", payload);
+
   const msg = payload.toString();
+  
+  let data;
+  if (payload instanceof ArrayBuffer) {
+      data = new Uint8Array(payload);
+  } else if (payload instanceof Uint8Array) {
+      data = payload;
+  } else {
+      data = new Uint8Array(payload.buffer);
+  }
   
   if (topic.startsWith("/logs/")) {
     const libName = topic.split("/")[2]; // wifi_library, led_library, etc.
@@ -96,6 +124,44 @@ client.on("message", (topic, payload) => {
       allEl.scrollTop = allEl.scrollHeight;
     }
   }
+
+  if (topic.startsWith("windowscontrols/gamepad")) {
+    // byte array
+    if (data.length < 7) return; // security
+
+    const axes = [
+      signedByte(data[0]), // LEFT_X
+      signedByte(data[1]), // LEFT_Y
+      signedByte(data[2]), // RIGHT_X
+      signedByte(data[3]), // RIGHT_Y
+      signedByte(data[4]), // LEFT_TRIGGER
+      signedByte(data[5]), // RIGHT_TRIGGER
+    ];
+
+    // Buttons 
+    const buttons = {
+      a: (data[6] & 0b0001) !== 0,
+      b: (data[6] & 0b0010) !== 0,
+      x: (data[6] & 0b0100) !== 0,
+      y: (data[6] & 0b1000) !== 0
+    };
+
+    // Update axes
+    updateAxis("axis-left-x", axes[0]);
+    updateAxis("axis-left-y", axes[1]);
+    updateAxis("axis-right-x", axes[2]);
+    updateAxis("axis-right-y", axes[3]);
+    updateAxis("axis-left-trigger", axes[4]);
+    updateAxis("axis-right-trigger", axes[5]);
+
+    // Update buttons
+    ["a","b","x","y"].forEach(btn => {
+      const el = document.getElementById("btn-" + btn);
+      if (!el) return;
+      el.classList.toggle("pressed", buttons[btn]);
+    });
+    }
+
 });
 
 function appendLog(text) {

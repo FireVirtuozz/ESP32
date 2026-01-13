@@ -92,9 +92,31 @@ static void handle_mqtt_data(const char *data, size_t len) {
         if (cJSON_IsNumber(duty)) {
             log_mqtt(LOG_INFO, TAG, true, "Updating servo duty : %d",
                      duty->valueint);
-            ledc_duty(duty->valueint);
+            ledc_duty(duty->valueint, DIRECTION_IDX);
         } else {
             log_mqtt(LOG_ERROR, TAG, true, "Invalid SERVO_DUTY JSON");
+        }
+
+    } else if (strcmp(cmd->valuestring, "MOTOR_DUTY_FWD") == 0) {
+        cJSON *duty = cJSON_GetObjectItem(root, "duty");
+
+        if (cJSON_IsNumber(duty)) {
+            log_mqtt(LOG_INFO, TAG, true, "Updating motor fwd duty : %d",
+                     duty->valueint);
+            ledc_duty(duty->valueint, MOTOR_IDX_FWD);
+        } else {
+            log_mqtt(LOG_ERROR, TAG, true, "Invalid MOTOR_DUTY_FWD JSON");
+        }
+
+    } else if (strcmp(cmd->valuestring, "MOTOR_DUTY_BWD") == 0) {
+        cJSON *duty = cJSON_GetObjectItem(root, "duty");
+
+        if (cJSON_IsNumber(duty)) {
+            log_mqtt(LOG_INFO, TAG, true, "Updating motor bwd duty : %d",
+                     duty->valueint);
+            ledc_duty(duty->valueint, MOTOR_IDX_BWD);
+        } else {
+            log_mqtt(LOG_ERROR, TAG, true, "Invalid MOTOR_DUTY_BWD JSON");
         }
 
     } else if (strcmp(cmd->valuestring, "SET_ANGLE") == 0) {

@@ -26,9 +26,13 @@ const oledSendBtn   = document.getElementById("oledSendBtn");
 
 const servoDutyInput    = document.getElementById("servoDuty");
 const servoSendBtn      = document.getElementById("servoSendBtn");
-
 const sliderAngleServo = document.getElementById("servoSlider");
 const labelAngleServo = document.getElementById("angleLabel");
+
+const motorFwdDutyInput    = document.getElementById("motorFwdDuty");
+const motorFwdSendBtn      = document.getElementById("motorFwdSendBtn");
+const motorBwdDutyInput    = document.getElementById("motorBwdDuty");
+const motorBwdSendBtn      = document.getElementById("motorBwdSendBtn");
 
 // =======================
 // MQTT CONNECT
@@ -195,13 +199,26 @@ function sendWriteScreenCommand(text, x, page) {
 }
 
 // servo duty command
-function sendServoDutyCommand(duty) {
+function sendDutyCommand(cmd, duty) {
     const msg = {
-        command: "SERVO_DUTY",
+        command: cmd,
         duty: duty
     };
 
     client.publish(TOPIC_CMD, JSON.stringify(msg), { qos: 1 });
+}
+
+// servo duty command
+function sendServoDutyCommand(duty) {
+  sendDutyCommand("SERVO_DUTY", duty);
+}
+
+function sendMotorFwdCommand(duty) {
+  sendDutyCommand("MOTOR_DUTY_FWD", duty);
+}
+
+function sendMotorBwdCommand(duty) {
+  sendDutyCommand("MOTOR_DUTY_BWD", duty);
 }
 
 // servo angle command
@@ -220,6 +237,10 @@ function sendCommandJSON(command) {
     client.publish(TOPIC_CMD, JSON.stringify(msg), { qos: 1 });
 }
 
+/*
+Oled
+*/
+
 // oled screen send
 oledSendBtn.onclick = () => {
     const text = oledTextInput.value.trim();
@@ -231,6 +252,10 @@ oledSendBtn.onclick = () => {
     sendWriteScreenCommand(text, x, page);
     console.log("Sent OLED command:", msg);
 };
+
+/*
+Servo
+*/
 
 // servo send
 servoSendBtn.onclick = () => {
@@ -250,6 +275,24 @@ sliderAngleServo.onchange = () => {
 
   sendServoAngleCommand(angle);
   console.log("Sent servo angle:", msg);
+};
+
+/*
+Motor
+*/
+
+motorFwdSendBtn.onclick = () => {
+    const duty  = parseInt(motorFwdDutyInput.value);
+
+    sendMotorFwdDutyCommand(duty);
+    console.log("Sent motor fwd duty:", msg);
+};
+
+motorBwdSendBtn.onclick = () => {
+    const duty  = parseInt(motorBwdDutyInput.value);
+
+    sendMotorBwdDutyCommand(duty);
+    console.log("Sent motor bwd duty:", msg);
 };
 
 // =======================

@@ -15,6 +15,10 @@
 
 #define LED_PIN 2  //LED pin connected on breadboard
 
+#define DIRECTION_IDX 0
+#define MOTOR_IDX_FWD 1
+#define MOTOR_IDX_BWD 2
+
 //Initialize led pin
 void led_init();
 
@@ -40,13 +44,16 @@ void print_esp_info_ledc();
 void init_ledc();
 
 //apply duty with fade
-void ledc_duty_fade(const uint32_t duty);
+void ledc_duty_fade(const uint32_t duty, const uint8_t idx);
 
 //apply duty directly
-void ledc_duty(const uint32_t duty);
+void ledc_duty(const uint32_t duty, const uint8_t idx);
 
 //apply angle to servo
 void ledc_angle(int16_t angle);
+
+//apply percent to motor (h-bridge)
+void ledc_motor(int16_t motor_percent);
 
 //get current servo angle
 uint8_t get_servo_angle();

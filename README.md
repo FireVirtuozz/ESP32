@@ -48,6 +48,16 @@ https://cdn-shop.adafruit.com/datasheets/SSD1306.pdf
 
 Works with I²C; See for server/components/screenLib for use.
 
+## H-Bridge BTS7960
+
+https://www.handsontec.com/dataspecs/module/BTS7960%20Motor%20Driver.pdf
+
+## Servo MG996R
+
+https://www.handsontec.com/dataspecs/motor_fan/MG996R.pdf
+
+Works with ledc component.
+
 ## ESP-IDF Components
 
 ### System
@@ -207,6 +217,7 @@ OTA HTTPS
 
 Edit partitions to a custom partition in menuconfig
 
+```
 # Name, Type, SubType, Offset, Size, Flags
 nvs,      data, nvs,       , 0x6000
 otadata,  data, ota,       , 0x2000
@@ -215,6 +226,7 @@ factory,  app,  factory,   , 1M
 ota_0,    app,  ota_0,     , 1M
 ota_1,    app,  ota_1,     , 1M
 spiffs,   data, spiffs,    , 1M
+```
 
 --> ota 0 & 1 & data : for OTA
 --> Spiffs : web pages
@@ -235,6 +247,22 @@ activate websocket support
 ### ESP log & err
 
 Useful logging;
+
+# Java windows controller & wss mqtt
+
+**Workflow** : Get inputs with LWJGL, stack into bytes and publish them to HiveMQ WSS MQTT brocker. Using bytes for better performance than JSON with **jackson** (rate reduced by ~10).
+
+## Controller input : LWJGL
+
+## MQTT client : HiveMQ
+
+## Websocket : Netty
+
+# Backend to hid credential 
+
+## Node.js 
+
+Maybe useful to hid credentials.
 
 # Git
 

@@ -33,6 +33,8 @@ const motorFwdDutyInput    = document.getElementById("motorFwdDuty");
 const motorFwdSendBtn      = document.getElementById("motorFwdSendBtn");
 const motorBwdDutyInput    = document.getElementById("motorBwdDuty");
 const motorBwdSendBtn      = document.getElementById("motorBwdSendBtn");
+const sliderMotorPercent = document.getElementById("motorSlider");
+const labelMotorPercent = document.getElementById("motorLabel");
 
 // =======================
 // MQTT CONNECT
@@ -213,11 +215,11 @@ function sendServoDutyCommand(duty) {
   sendDutyCommand("SERVO_DUTY", duty);
 }
 
-function sendMotorFwdCommand(duty) {
+function sendMotorFwdDutyCommand(duty) {
   sendDutyCommand("MOTOR_DUTY_FWD", duty);
 }
 
-function sendMotorBwdCommand(duty) {
+function sendMotorBwdDutyCommand(duty) {
   sendDutyCommand("MOTOR_DUTY_BWD", duty);
 }
 
@@ -226,6 +228,16 @@ function sendServoAngleCommand(angle) {
     const msg = {
         command: "SET_ANGLE",
         angle: angle
+    };
+
+    client.publish(TOPIC_CMD, JSON.stringify(msg), { qos: 1 });
+}
+
+// motor percent command
+function sendMotorPercentCommand(percent) {
+    const msg = {
+        command: "SET_MOTOR",
+        percent: percent
     };
 
     client.publish(TOPIC_CMD, JSON.stringify(msg), { qos: 1 });
@@ -293,6 +305,18 @@ motorBwdSendBtn.onclick = () => {
 
     sendMotorBwdDutyCommand(duty);
     console.log("Sent motor bwd duty:", msg);
+};
+
+// slider for motor percent
+sliderMotorPercent.oninput = () => {
+    labelMotorPercent.innerText = sliderMotorPercent.value + "%";
+};
+
+sliderMotorPercent.onchange = () => {
+  const percent    = parseInt(sliderMotorPercent.value);
+
+  sendMotorPercentCommand(percent);
+  console.log("Sent motor percent:", msg);
 };
 
 // =======================

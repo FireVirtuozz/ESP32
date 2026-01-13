@@ -159,6 +159,27 @@ section h2 {
   cursor: pointer;
 }
 
+#motorSlider {
+  -webkit-appearance: none;
+  width: 200px;
+  height: 8px;
+  background: #334155;
+  border-radius: 4px;
+  outline: none;
+  vertical-align: middle;
+  margin-top: 0px;
+}
+
+#motorSlider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  height: 20px;
+  width: 20px;
+  background: #2563eb;
+  border-radius: 50%;
+  border: 2px solid #1d4ed8;
+  cursor: pointer;
+}
+
 /* ===========================
    Controller Section (revamp)
    =========================== */

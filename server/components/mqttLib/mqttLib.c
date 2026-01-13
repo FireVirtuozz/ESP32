@@ -119,6 +119,17 @@ static void handle_mqtt_data(const char *data, size_t len) {
             log_mqtt(LOG_ERROR, TAG, true, "Invalid MOTOR_DUTY_BWD JSON");
         }
 
+    } else if (strcmp(cmd->valuestring, "SET_MOTOR") == 0) {
+        cJSON *percent = cJSON_GetObjectItem(root, "percent");
+
+        if (cJSON_IsNumber(percent)) {
+            log_mqtt(LOG_INFO, TAG, true, "Updating motor percent : %d",
+                     percent->valueint);
+            ledc_motor(percent->valueint);
+        } else {
+            log_mqtt(LOG_ERROR, TAG, true, "Invalid SET_MOTOR JSON");
+        }
+
     } else if (strcmp(cmd->valuestring, "SET_ANGLE") == 0) {
         cJSON *angle = cJSON_GetObjectItem(root, "angle");
 

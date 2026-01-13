@@ -21,9 +21,9 @@
 #define LEDC_LS_MODE           LEDC_LOW_SPEED_MODE
 #define LEDC_LS_CH2_GPIO       (4)
 #define LEDC_LS_CH2_CHANNEL    LEDC_CHANNEL_2
-#define LEDC_LS_CH3_GPIO       (5)
+#define LEDC_LS_CH3_GPIO       (32)
 #define LEDC_LS_CH3_CHANNEL    LEDC_CHANNEL_3
-#define LEDC_LS_CH4_GPIO       (6)
+#define LEDC_LS_CH4_GPIO       (33)
 #define LEDC_LS_CH4_CHANNEL    LEDC_CHANNEL_4
 
 #define LEDC_TEST_FADE_TIME    (3000)
@@ -32,10 +32,10 @@
 
 //bts7960
 #define DEADZONE_MOTOR 5
-#define MIN_MOTOR_DUTY_FWD 230
-#define MAX_MOTOR_DUTY_FWD 1030
-#define MIN_MOTOR_DUTY_BWD 230
-#define MAX_MOTOR_DUTY_BWD 1030
+#define MIN_MOTOR_DUTY_FWD 0
+#define MAX_MOTOR_DUTY_FWD 8192
+#define MIN_MOTOR_DUTY_BWD 0
+#define MAX_MOTOR_DUTY_BWD 8192
 
 //mg996r
 #define MIN_SERVO_DUTY 230
@@ -390,14 +390,14 @@ void ledc_duty(const uint32_t duty, const uint8_t idx) {
     err = ledc_set_duty(ledc_channel[idx].speed_mode, ledc_channel[idx].channel, duty);
     if (err != ESP_OK) {
         log_mqtt(LOG_ERROR, TAG, true, "Error (%s) setting duty %d pin %d",
-            esp_err_to_name(err), duty, LEDC_LS_CH2_GPIO);
+            esp_err_to_name(err), duty, idx);
         return;
     }
 
     err = ledc_update_duty(ledc_channel[idx].speed_mode, ledc_channel[idx].channel);
     if (err != ESP_OK) {
         log_mqtt(LOG_ERROR, TAG, true, "Error (%s) updating duty %d pin %d",
-            esp_err_to_name(err), duty, LEDC_LS_CH2_GPIO);
+            esp_err_to_name(err), duty, idx);
         return;
     }
 

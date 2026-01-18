@@ -184,20 +184,20 @@ static void handle_mqtt_data(const char *data, size_t len) {
 
 static void handle_mqtt_controller(const char *data, size_t len) {
     int8_t *payload = (int8_t *)data; /*from -128 to 127*/
-    log_mqtt(LOG_DEBUG, TAG, true, "Gamepad axes raw: [%d,%d,%d,%d,%d,%d]", 
+    log_mqtt(LOG_DEBUG, TAG, false, "Gamepad axes raw: [%d,%d,%d,%d,%d,%d]", 
          payload[0], payload[1], payload[2], payload[3], payload[4], payload[5]);
-    log_mqtt(LOG_DEBUG, TAG, true, "Gamepad button raw: [%d,%d,%d,%d,%d,%d,%d,%d]", 
+    log_mqtt(LOG_DEBUG, TAG, false, "Gamepad button raw: [%d,%d,%d,%d,%d,%d,%d,%d]", 
         (payload[6] & 0x01) ? 1 : 0, (payload[6] & 0x02) ? 1 : 0,
         (payload[6] & 0x04) ? 1 : 0, (payload[6] & 0x08) ? 1 : 0,
         (payload[6] & 0x10) ? 1 : 0, (payload[6] & 0x20) ? 1 : 0,
         (payload[6] & 0x40) ? 1 : 0, (payload[6] & 0x80) ? 1 : 0);
 
-    ledc_angle((int)(0.9*(payload[0]))); /*left_x*/
+    ledc_angle((int)(0.9f*((float)payload[0] + 100.0f))); /*left_x*/
     /*
     if (payload[5] > -95) {
-        ledc_motor((int)(0.5*(payload[5] + 100))); //right_trigger
+        ledc_motor((int)(0.5f*((float)payload[5] + 100))); //right_trigger
     } else if (payload[4] > -95) {
-        ledc_motor((int)(-0.5*(payload[4] + 100))); //left_trigger
+        ledc_motor((int)(-0.5f*((float)payload[4] + 100))); //left_trigger
     } else {
         ledc_motor(0);
     }

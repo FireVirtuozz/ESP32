@@ -401,7 +401,7 @@ void ledc_duty(const uint32_t duty, const uint8_t idx) {
         return;
     }
 
-    log_mqtt(LOG_INFO, TAG, true, "Duty : %d, on pin %d", duty, idx);
+    log_mqtt(LOG_DEBUG, TAG, false, "Duty : %d, on pin %d", duty, idx);
 }
 
 uint8_t get_servo_angle() {
@@ -418,7 +418,7 @@ void ledc_angle(int16_t angle) {
         ledc_duty(
             MIN_SERVO_DUTY + ((MAX_SERVO_DUTY - MIN_SERVO_DUTY) * angle) / 180, DIRECTION_IDX
         );
-        log_mqtt(LOG_INFO, TAG, true, "Angle : %d, on pin %d", angle, LEDC_LS_CH2_GPIO);
+        log_mqtt(LOG_DEBUG, TAG, false, "Angle : %d, on pin %d", angle, LEDC_LS_CH2_GPIO);
     }
     
 }
@@ -454,7 +454,7 @@ void ledc_motor(int16_t motor_percent) {
             ledc_duty(0, MOTOR_IDX_BWD);
         }
         
-        log_mqtt(LOG_INFO, TAG, true, "Motor : %d", current_motor);
+        log_mqtt(LOG_DEBUG, TAG, false, "Motor : %d", current_motor);
     }
     
 }

@@ -43,6 +43,8 @@
 
 #define USE_QUEUE_LOGS 0
 
+#define LOG_LEVEL LOG_INFO
+
 static const char *TAG = "mqtt_library";
 
 static esp_mqtt_client_handle_t client = NULL;
@@ -192,16 +194,16 @@ static void handle_mqtt_controller(const char *data, size_t len) {
         (payload[6] & 0x10) ? 1 : 0, (payload[6] & 0x20) ? 1 : 0,
         (payload[6] & 0x40) ? 1 : 0, (payload[6] & 0x80) ? 1 : 0);
 
-    ledc_angle((int)(0.9f*((float)payload[0] + 100.0f))); /*left_x*/
-    /*
+    ledc_angle((int16_t)((payload[0] + 100) * 9 / 10)); /*left_x*/
+    
     if (payload[5] > -95) {
-        ledc_motor((int)(0.5f*((float)payload[5] + 100))); //right_trigger
+        ledc_motor((int16_t)((payload[5] + 100) / 2)); //right_trigger
     } else if (payload[4] > -95) {
-        ledc_motor((int)(-0.5f*((float)payload[4] + 100))); //left_trigger
+        ledc_motor((int16_t)((payload[4] + 100) / (-2))); //left_trigger
     } else {
         ledc_motor(0);
     }
-    */
+    
 }
 
 
@@ -316,8 +318,12 @@ static void log_task(void *pvParameters) {
 
 void log_mqtt(mqtt_log_level lvl, const char * tag, bool mqtt, const char* fmt, ...) {
     char buf[256];
-
     va_list args;
+
+    if (lvl <= LOG_LEVEL) {
+        return;
+    }
+
     va_start(args, fmt);
     vsnprintf(buf, sizeof(buf), fmt, args);
     va_end(args);

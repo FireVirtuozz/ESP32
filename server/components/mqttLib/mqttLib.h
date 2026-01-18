@@ -32,10 +32,10 @@
 #include "cJSON.h"
 
 typedef enum {
-    LOG_INFO,
-    LOG_WARN,
-    LOG_ERROR,
-    LOG_DEBUG
+    LOG_INFO = 1,
+    LOG_WARN = 2,
+    LOG_ERROR = 3,
+    LOG_DEBUG = 0
 } mqtt_log_level;
 
 //init queue for debug messages

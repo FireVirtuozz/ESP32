@@ -2,6 +2,8 @@
 **/target/
 **/dist/
 
+3dPrinting/
+
 controller_win/
 mqtt_paho/
 

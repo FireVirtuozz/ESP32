@@ -182,6 +182,27 @@ static void handle_mqtt_data(const char *data, size_t len) {
     cJSON_Delete(root);
 }
 
+static void handle_mqtt_controller(const char *data, size_t len) {
+    int8_t *payload = (int8_t *)data; /*from -128 to 127*/
+    log_mqtt(LOG_DEBUG, TAG, true, "Gamepad axes raw: [%d,%d,%d,%d,%d,%d]", 
+         payload[0], payload[1], payload[2], payload[3], payload[4], payload[5]);
+    log_mqtt(LOG_DEBUG, TAG, true, "Gamepad button raw: [%d,%d,%d,%d,%d,%d,%d,%d]", 
+        (payload[6] & 0x01) ? 1 : 0, (payload[6] & 0x02) ? 1 : 0,
+        (payload[6] & 0x04) ? 1 : 0, (payload[6] & 0x08) ? 1 : 0,
+        (payload[6] & 0x10) ? 1 : 0, (payload[6] & 0x20) ? 1 : 0,
+        (payload[6] & 0x40) ? 1 : 0, (payload[6] & 0x80) ? 1 : 0);
+
+    ledc_angle((int)(0.9*(payload[0]))); /*left_x*/
+    /*
+    if (payload[5] > -95) {
+        ledc_motor((int)(0.5*(payload[5] + 100))); //right_trigger
+    } else if (payload[4] > -95) {
+        ledc_motor((int)(-0.5*(payload[4] + 100))); //left_trigger
+    } else {
+        ledc_motor(0);
+    }
+    */
+}
 
 
 static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
@@ -196,9 +217,11 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
         log_mqtt(LOG_INFO, TAG, false, "MQTT_EVENT_CONNECTED");
 
         msg_id = esp_mqtt_client_subscribe(client, "/commands/#", 0);
+        msg_id = esp_mqtt_client_subscribe(client, "windowscontrols/gamepad", 0);
         //ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
         //esp_mqtt_client_publish(client, "/commands/qos1", "commence", 0, 1, 0);
         log_mqtt(LOG_INFO, TAG, true, "Sent subscribe to /commands/# successful, msg_id=%d", msg_id);
+        log_mqtt(LOG_INFO, TAG, true, "Sent subscribe to windowscontrols/gamepad successful, msg_id=%d", msg_id);
 
         break;
     case MQTT_EVENT_DISCONNECTED:
@@ -231,6 +254,8 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
         topic[event->topic_len] = '\0';
         if (strcmp(topic, "/commands") == 0) {
             handle_mqtt_data(event->data, event->data_len);
+        } else if (strcmp(topic, "windowscontrols/gamepad") == 0 ){
+            handle_mqtt_controller(event->data, event->data_len);
         }
         break;
     case MQTT_EVENT_ERROR:

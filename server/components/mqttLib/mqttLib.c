@@ -320,7 +320,7 @@ void log_mqtt(mqtt_log_level lvl, const char * tag, bool mqtt, const char* fmt, 
     char buf[256];
     va_list args;
 
-    if (lvl <= LOG_LEVEL) {
+    if (lvl < LOG_LEVEL) {
         return;
     }
 

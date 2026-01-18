@@ -17,8 +17,8 @@ public class Main {
             return;
         }
 
-        // 60 Hz loop
-        final long frameTimeMs = 1000 / 60;
+        // 40 Hz loop
+        final long frameTimeMs = 1000 / 40;
 
         while (true) {
             long start = System.currentTimeMillis();

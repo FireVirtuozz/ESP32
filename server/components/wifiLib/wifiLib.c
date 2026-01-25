@@ -1294,7 +1294,7 @@ void wifi_init_ap(void)
     }
 
     //esp_netif_t * netif_ap = wifi_init_softap_netif();
-    wifi_init_softap_netif();
+    esp_netif_t *netif_ap = wifi_init_softap_netif();
 
     //start wifi : triggers WIFI_EVENT_STA_START handler
     err = esp_wifi_start();
@@ -1303,8 +1303,16 @@ void wifi_init_ap(void)
         return;
     }
 
+    /*wifi has to be started*/
+    esp_netif_ip_info_t ip_info;
+    esp_netif_get_ip_info(netif_ap, &ip_info);
+
+    snprintf(s_ip_str, sizeof(s_ip_str),
+                 IPSTR, IP2STR(&ip_info.ip));
+
     //debug
-    log_mqtt(LOG_INFO, TAG, true, "Wifi Soft-AP initialized; SSID : %s, PASS : %s", ESP_SSID, ESP_PASS);
+    log_mqtt(LOG_INFO, TAG, true, "Wifi Soft-AP initialized; SSID : %s, PASS : %s, IP : " IPSTR,
+        ESP_SSID, ESP_PASS, s_ip_str);
 }
 
 /**

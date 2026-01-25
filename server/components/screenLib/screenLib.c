@@ -127,7 +127,7 @@ i2c_master_dev_handle_t dev_handle;
 i2c_device_config_t dev_cfg = {
     .dev_addr_length = I2C_ADDR_BIT_LEN_7, //length of i2c address
     .device_address = OLED_ADDR_DEFAULT, //address of device
-    .scl_speed_hz = 800000, //i2c bus frequency
+    .scl_speed_hz = 400000, //i2c bus frequency
 };
 
 /*
@@ -200,7 +200,7 @@ static void ssd1306_flush_screen()
             return;
         }
     }
-    save_nvs_blob("screen", screen, sizeof(screen));
+    //save_nvs_blob("screen", screen, sizeof(screen));
 }
 
 // transmit one buffer data : sending 5 commands in a row
@@ -235,7 +235,12 @@ void ssd1306_draw_string(const char *str, int x, int page) {
     }
 
     if (xSemaphoreTake(xMutex, portMAX_DELAY) == pdTRUE) {
-        log_mqtt(LOG_INFO, TAG, true, "Drawing : %s, offset %d, page %d", str, x, page);
+        log_mqtt(LOG_DEBUG, TAG, true, "Drawing : %s, offset %d, page %d", str, x, page); 
+        uint8_t a = 0;
+        while (a < 128) {
+            screen[page * 128 + a] = 0x00;
+            a++;
+        }
         while (*str) {
             char c = *str++;
             if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
@@ -245,6 +250,7 @@ void ssd1306_draw_string(const char *str, int x, int page) {
             x += 6; // 5 pixels de largeur + 1 pixel d'espacement
             if (x > 127) break;
         }
+
         ssd1306_flush_screen();
         xSemaphoreGive(xMutex);
     }

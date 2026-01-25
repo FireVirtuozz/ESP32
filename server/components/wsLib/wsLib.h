@@ -6,7 +6,7 @@
 #include "ledLib.h"
 
 // Initialize websocket server
-void ws_server_init(void);
+void ws_server_init();
 
 // Send a message to all clients
 esp_err_t ws_send_text(const char *msg);

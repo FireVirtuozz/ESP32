@@ -49,9 +49,11 @@ static const char *TAG = "mqtt_library";
 
 static esp_mqtt_client_handle_t client = NULL;
 
-static QueueHandle_t xQueue;
+static QueueHandle_t xQueue = NULL;
 
 static bool mqtt_connected = false;
+
+static bool initialized = 0;
 
 typedef struct {
     char topic[64];
@@ -338,21 +340,39 @@ void log_mqtt(mqtt_log_level lvl, const char * tag, bool mqtt, const char* fmt, 
 
     // Send MQTT if activated
     if (mqtt) {
-        mqtt_msg_t m;
-        m.qos = 0;
-        m.retain = false;
-        snprintf(m.topic, sizeof(m.topic), "/logs/%s", tag);
-        snprintf(m.payload, sizeof(m.payload), "[%s] %.200s", tag, buf);
         #if USE_QUEUE_LOGS
-            if (xQueueSend(xQueue, &m, 0) != pdTRUE) {
-                ESP_LOGE(TAG, "Fail to send message to Queue");
-            }
-        #else
-            if (!mqtt_connected) {
+            if (xQueue != NULL) {
+                mqtt_msg_t m;
+                m.qos = 0;
+                m.retain = false;
+                snprintf(m.topic, sizeof(m.topic), "/logs/%s", tag);
+                snprintf(m.payload, sizeof(m.payload), "[%s] %.200s", tag, buf);
                 if (xQueueSend(xQueue, &m, 0) != pdTRUE) {
                     ESP_LOGE(TAG, "Fail to send message to Queue");
                 }
             } else {
+                ESP_LOGW(TAG, "Queue not initialized");
+            }
+        #else
+            if (!mqtt_connected) {
+                if (xQueue != NULL) {
+                    mqtt_msg_t m;
+                    m.qos = 0;
+                    m.retain = false;
+                    snprintf(m.topic, sizeof(m.topic), "/logs/%s", tag);
+                    snprintf(m.payload, sizeof(m.payload), "[%s] %.200s", tag, buf);
+                    if (xQueueSend(xQueue, &m, 0) != pdTRUE) {
+                        ESP_LOGE(TAG, "Fail to send message to Queue");
+                    }
+                } else {
+                    ESP_LOGW(TAG, "Queue not initialized");
+                }
+            } else {
+                mqtt_msg_t m;
+                m.qos = 0;
+                m.retain = false;
+                snprintf(m.topic, sizeof(m.topic), "/logs/%s", tag);
+                snprintf(m.payload, sizeof(m.payload), "[%s] %.200s", tag, buf);
                 if (esp_mqtt_client_publish(client, m.topic, m.payload, strlen(m.payload), m.qos, m.retain) < 0) {
                     ESP_LOGE(TAG, "MQTT publish failed: %s", m.payload);
                 }
@@ -364,6 +384,12 @@ void log_mqtt(mqtt_log_level lvl, const char * tag, bool mqtt, const char* fmt, 
 
 void mqtt_app_start()
 {
+
+    if (initialized) {
+        return;
+    }
+    initialized = 1;
+
     const esp_mqtt_client_config_t mqtt_cfg = {
         .broker.address.uri = BROKER_URI,
         .credentials.username = BROKER_USER,
@@ -380,9 +406,15 @@ void mqtt_app_start()
     esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
 
     esp_mqtt_client_start(client);
+
+    //TODO : error check here
 }
 
 void init_queue_mqtt() {
+
+    if (xQueue != NULL) {
+        return;
+    }
 
     xQueue = xQueueCreate(QUEUE_SIZE, sizeof(mqtt_msg_t));
     if (xQueue == NULL) {

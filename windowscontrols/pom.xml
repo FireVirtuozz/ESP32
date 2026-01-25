@@ -14,17 +14,46 @@
     <description>Windows gamepad input using LWJGL (GLFW) and MQTT WSS publishing via HiveMQ</description>
 
     <properties>
+        <tyrus.version>2.2.0</tyrus.version>
         <java.version>25</java.version>
 
         <!-- LWJGL -->
         <lwjgl.version>3.3.4</lwjgl.version>
         <lwjgl.natives>windows</lwjgl.natives>
 
-        <maven.compiler.release>${java.version}</maven.compiler.release>
+        <maven.compiler.source>${java.version}</maven.compiler.source>
+		<maven.compiler.target>${java.version}</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
+    <dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>org.glassfish.tyrus.bundles</groupId>
+				<artifactId>tyrus-bundles</artifactId>
+				<version>${tyrus.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+        </dependencies>
+	</dependencyManagement>
+
+
     <dependencies>
+
+        <!-- ===================== -->
+        <!-- Tyrus Local Websocket -->
+        <!-- ===================== -->
+
+        <dependency>
+			<groupId>org.glassfish.tyrus</groupId>
+			<artifactId>tyrus-client</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.glassfish.tyrus</groupId>
+			<artifactId>tyrus-container-grizzly-client</artifactId>
+		</dependency>
+
 
         <!-- ===================== -->
         <!-- 🎮 LWJGL (Gamepad) -->

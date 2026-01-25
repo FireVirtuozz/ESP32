@@ -419,6 +419,10 @@ void ledc_angle(int16_t angle) {
             MIN_SERVO_DUTY + ((MAX_SERVO_DUTY - MIN_SERVO_DUTY) * angle) / 180, DIRECTION_IDX
         );
         log_mqtt(LOG_DEBUG, TAG, false, "Angle : %d, on pin %d", angle, LEDC_LS_CH2_GPIO);
+
+        char tmp[30];
+        snprintf(tmp, sizeof(tmp), "Angle : %d", current_angle);
+        ssd1306_draw_string(tmp, 0, 2);
     }
     
 }
@@ -455,6 +459,10 @@ void ledc_motor(int16_t motor_percent) {
         }
         
         log_mqtt(LOG_DEBUG, TAG, false, "Motor : %d", current_motor);
+
+        char tmp[30];
+        snprintf(tmp, sizeof(tmp), "Motor : %d", current_motor);
+        ssd1306_draw_string(tmp, 0, 4);
     }
     
 }

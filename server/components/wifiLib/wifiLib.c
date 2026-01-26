@@ -715,7 +715,7 @@ static sta_info_strings_t *get_config_ap_info(wifi_ap_config_t ap) {
     sta_info_strings_t *info = get_bss_info(ap.bss_max_idle_cfg);
     for (int i = 0; i < info->count; i++) {
         snprintf(out.lines[out.count++], sizeof(out.lines[0]),
-             "BSS [%d]: %s", i, info->lines[i]);
+             "BSS [%d]: %.100s", i, info->lines[i]);
     }
 
     // last line : GTK rekey
@@ -757,7 +757,7 @@ static sta_info_strings_t *get_config_sta_info(wifi_sta_config_t sta) {
     sta_info_strings_t *info = get_scan_threshold_info(sta.threshold);
     for (int i = 0; i < info->count; i++) {
         snprintf(out.lines[out.count++], sizeof(out.lines[0]),
-             "Threshold [%d]: %s", i, info->lines[i]);
+             "Threshold [%d]: %.100s", i, info->lines[i]);
     }
 
     snprintf(out.lines[out.count++], sizeof(out.lines[0]),

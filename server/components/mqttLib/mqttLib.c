@@ -351,7 +351,7 @@ void log_mqtt(mqtt_log_level lvl, const char * tag, bool mqtt, const char* fmt, 
                     ESP_LOGE(TAG, "Fail to send message to Queue");
                 }
             } else {
-                ESP_LOGW(TAG, "Queue not initialized");
+                ESP_LOGD(TAG, "Queue not initialized");
             }
         #else
             if (!mqtt_connected) {
@@ -365,7 +365,7 @@ void log_mqtt(mqtt_log_level lvl, const char * tag, bool mqtt, const char* fmt, 
                         ESP_LOGE(TAG, "Fail to send message to Queue");
                     }
                 } else {
-                    ESP_LOGW(TAG, "Queue not initialized");
+                    ESP_LOGD(TAG, "Queue not initialized");
                 }
             } else {
                 mqtt_msg_t m;

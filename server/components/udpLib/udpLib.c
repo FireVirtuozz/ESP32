@@ -9,6 +9,8 @@
 #include "lwip/sys.h"
 #include <lwip/netdb.h>
 
+#include "esp_timer.h"
+
 #define PORT 3333
 
 /**
@@ -28,12 +30,18 @@ static const char *TAG = "udp_library"; // tag of this library
 
 static void udp_server_task(void *pvParameters)
 {
-    int8_t temp_buffer[7];
+    int8_t temp_buffer[8];
     int addr_family = (int)pvParameters;
     int ip_protocol = 0;
     struct sockaddr_in6 dest_addr;
 
+    static int nb_packets_received = 0;
+
     while (1) {
+
+        int64_t last_packet_time = 0;
+        int64_t sum_intervals = 0;
+        int packet_count = 0;
 
         //if ipv4
         if (addr_family == AF_INET) {
@@ -79,37 +87,69 @@ static void udp_server_task(void *pvParameters)
                 break;
             } else { // Data received
 
-                log_mqtt(LOG_DEBUG, TAG, false, "Received %d bytes:", len);
+                int64_t current_time = esp_timer_get_time(); // ms
+                if (last_packet_time != 0) {
+                    int64_t delta = current_time - last_packet_time; // delta us
+                    sum_intervals += delta;
+                    packet_count++;
+
+                    int64_t average_interval = sum_intervals / packet_count; // average in us
+                    log_mqtt(LOG_INFO, TAG, false, "Interval: %lld us, Average: %lld us", delta, average_interval);
+                }
+                last_packet_time = current_time;
+
+                nb_packets_received++;
+
+                uint8_t type = temp_buffer[0];
+
+                log_mqtt(LOG_DEBUG, TAG, false, "Received %d bytes: packet number : %d",
+                    len, nb_packets_received);
+
+                switch (type) {
+                    case 0: //gamepad type control
+                        log_mqtt(LOG_DEBUG, TAG, false, "Gamepad axes raw: [%d,%d,%d,%d,%d,%d]", 
+                            temp_buffer[1], temp_buffer[2], temp_buffer[3],
+                            temp_buffer[4], temp_buffer[5], temp_buffer[6]);
+                        log_mqtt(LOG_DEBUG, TAG, false, "Gamepad button raw: [%d,%d,%d,%d,%d,%d,%d,%d]", 
+                            (temp_buffer[7] & 0x01) ? 1 : 0, (temp_buffer[7] & 0x02) ? 1 : 0,
+                            (temp_buffer[7] & 0x04) ? 1 : 0, (temp_buffer[7] & 0x08) ? 1 : 0,
+                            (temp_buffer[7] & 0x10) ? 1 : 0, (temp_buffer[7] & 0x20) ? 1 : 0,
+                            (temp_buffer[7] & 0x40) ? 1 : 0, (temp_buffer[7] & 0x80) ? 1 : 0);
+
+                        ledc_angle((int16_t)((temp_buffer[1] + 100) * 9 / 10)); //left_x
+            
+                        if (temp_buffer[6] > -95) {
+                            ledc_motor((int16_t)((temp_buffer[6] + 100) / 2)); //right_trigger
+                        } else if (temp_buffer[5] > -95) {
+                            ledc_motor((int16_t)((temp_buffer[5] + 100) / (-2))); //left_trigger
+                        } else {
+                            ledc_motor(0);
+                        }
+                        break;
+                    
+                    case 1: //android type control
+                        log_mqtt(LOG_DEBUG, TAG, false, "Android axes raw: [%d,%d]", 
+                            temp_buffer[1], temp_buffer[2]);
+                        
+                        ledc_angle((int16_t)((temp_buffer[2] + 100) * 9 / 10)); //direction
+                        ledc_motor((int16_t)(temp_buffer[1])); //accel
+                        
+                        break;
+                    
+                    default:
+                        break;
+                }
+            }
                 
-                log_mqtt(LOG_DEBUG, TAG, false, "Gamepad axes raw: [%d,%d,%d,%d,%d,%d]", 
-                    temp_buffer[0], temp_buffer[1], temp_buffer[2],
-                    temp_buffer[3], temp_buffer[4], temp_buffer[5]);
-                log_mqtt(LOG_DEBUG, TAG, false, "Gamepad button raw: [%d,%d,%d,%d,%d,%d,%d,%d]", 
-                    (temp_buffer[6] & 0x01) ? 1 : 0, (temp_buffer[6] & 0x02) ? 1 : 0,
-                    (temp_buffer[6] & 0x04) ? 1 : 0, (temp_buffer[6] & 0x08) ? 1 : 0,
-                    (temp_buffer[6] & 0x10) ? 1 : 0, (temp_buffer[6] & 0x20) ? 1 : 0,
-                    (temp_buffer[6] & 0x40) ? 1 : 0, (temp_buffer[6] & 0x80) ? 1 : 0);
+            }
 
-                }
-
-                ledc_angle((int16_t)((temp_buffer[0] + 100) * 9 / 10)); //left_x
-    
-                if (temp_buffer[5] > -95) {
-                    ledc_motor((int16_t)((temp_buffer[5] + 100) / 2)); //right_trigger
-                } else if (temp_buffer[4] > -95) {
-                    ledc_motor((int16_t)((temp_buffer[4] + 100) / (-2))); //left_trigger
-                } else {
-                    ledc_motor(0);
-                }
+            //shutdown socket if error
+            if (sock != -1) {
+                log_mqtt(LOG_ERROR, TAG, true, "Shutting down socket and restarting...");
+                shutdown(sock, 0);
+                close(sock);
+            }
         }
-
-        //shutdown socket if error
-        if (sock != -1) {
-            log_mqtt(LOG_ERROR, TAG, true, "Shutting down socket and restarting...");
-            shutdown(sock, 0);
-            close(sock);
-        }
-    }
     vTaskDelete(NULL);
 }
 
@@ -119,5 +159,5 @@ static void udp_server_task(void *pvParameters)
  */
 void udp_server_init()
 {
-    xTaskCreate(udp_server_task, "udp_server", 4096, (void*)AF_INET, 5, NULL);
+    xTaskCreatePinnedToCore(udp_server_task, "udp_server", 8192, (void*)AF_INET, 15, NULL, 1);
 }

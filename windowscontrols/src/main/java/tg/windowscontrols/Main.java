@@ -4,6 +4,7 @@ import java.net.URI;
 
 import tg.windowscontrols.gamepad.GamepadService;
 import tg.windowscontrols.mqtt.MqttPublisher;
+import tg.windowscontrols.tcp.TcpClientEsp;
 import tg.windowscontrols.udp.UdpClientEsp;
 import tg.windowscontrols.ws.endpoint.ClientEndpointEsp;
 
@@ -11,7 +12,9 @@ public class Main {
 
     private static Boolean useMqtt = false;
     private static Boolean useWs = false;
-    private static long frameTimeMs = 1000 / 20;
+    private static Boolean useUdp = false;
+    private static Boolean useTcp = true; 
+    private static long frameTimeMs = 1000 / 30;
     private static Integer numDataSent = 0;
 
     public static void main(String[] args) throws InterruptedException {
@@ -67,9 +70,9 @@ public class Main {
                     Thread.sleep(sleep);
                 }
             }
-        } else {
+        } else if (useUdp) {
             try {
-                UdpClientEsp clientUdpEsp = new UdpClientEsp("10.122.242.17", 3333);
+                UdpClientEsp clientUdpEsp = new UdpClientEsp("10.122.242.90", 3334);
 
                 while (true) {
                 long start = System.currentTimeMillis();
@@ -77,6 +80,30 @@ public class Main {
                 byte[] state = gamepadService.pollCompressed();
                 if (state != null) {
                     clientUdpEsp.send(state);
+                    numDataSent++;
+                    System.out.println(numDataSent);
+                }
+
+                long elapsed = System.currentTimeMillis() - start;
+                long sleep = frameTimeMs - elapsed;
+                if (sleep > 0) {
+                    Thread.sleep(sleep);
+                }
+            }
+            } catch (Exception e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+            }
+        } else if (useTcp) {
+            try {
+                TcpClientEsp clientTcpEsp = new TcpClientEsp("10.122.242.90", 3334);
+
+                while (true) {
+                long start = System.currentTimeMillis();
+
+                byte[] state = gamepadService.pollCompressed();
+                if (state != null) {
+                    clientTcpEsp.send(state);
                     numDataSent++;
                     System.out.println(numDataSent);
                 }

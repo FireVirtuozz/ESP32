@@ -41,6 +41,6 @@ fun ControlSliders(
             direction = it
             notify()
         },
-        valueRange = -100f..100f
+        valueRange = -40f..40f
     )
 }

@@ -1,6 +1,7 @@
 package com.tg.esp32controller
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -17,12 +18,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.lifecycle.lifecycleScope
 import com.tg.esp32controller.components.ControlSliders
+import com.tg.esp32controller.components.GamepadValues
+import com.tg.esp32controller.gamepad.GamepadData
+import com.tg.esp32controller.tcp.TcpServer
 import com.tg.esp32controller.udp.UdpSender
+import com.tg.esp32controller.udp.UdpServer
 import com.tg.esp32controller.ui.theme.ESP32ControllerTheme
+import kotlinx.coroutines.launch
 
 // const : static, val : final
-const val frameRate = 1000L / 1 // 30 Hz
+const val frameRate = 1000L / 30 // 60 Hz
 
 //public by default
 val constant = 10 //constant (final)
@@ -33,9 +40,17 @@ internal var variable = 20 //variable
 //extends equivalent
 class MainActivity : ComponentActivity() {
 
+    private var gamepadData = GamepadData()
+
     //lateinit : describes that the variable will be init later
     //no lateinit if init directly
     private lateinit var udpSender: UdpSender
+
+    //private var udpServer = UdpServer(3334, gamepadData)
+
+    private var tcpServer = TcpServer(3334, gamepadData)
+
+    private var nbPackets by mutableStateOf(0)
 
     //override : @Override
     //fun : function, void etc (just return, no type)
@@ -49,7 +64,23 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         //init UdpSender class
-        //udpSender = UdpSender("10.122.242.17", 3333)
+        udpSender = UdpSender("10.122.242.17", 3333)
+
+        //start suspend function needs to be in coroutine
+        lifecycleScope.launch {
+            /*
+            udpServer.start { data, sender, n ->
+                Log.i("server", "packet received : ${data.joinToString()}")
+                nbPackets = n
+            }
+            */
+            tcpServer.start { data, sender, n ->
+                Log.i("server", "packet received : ${data.joinToString()}")
+                nbPackets = n }
+        }
+
+        //val phoneIp = udpServer.getPhoneIp()
+        val phoneIp = tcpServer.getPhoneIp()
 
         //setContent : set content UI
         setContent {
@@ -65,6 +96,8 @@ class MainActivity : ComponentActivity() {
             //mutable because at DisplayValues, init these to 0 if they are not remembered
             var accelSend by remember { mutableStateOf(0) }
             var directionSend by remember { mutableStateOf(0) }
+
+            var nbPacketsSent by remember { mutableStateOf(0) }
 
             //from ui.theme, Theme.kt
             ESP32ControllerTheme {
@@ -87,12 +120,17 @@ class MainActivity : ComponentActivity() {
                             direction = b
                         }
 
+                        GamepadValues(
+                            gamepadData
+                        )
+
                         // coroutine 30 Hz linked to UI
                         LaunchedEffect(Unit) {
                             while (true) {
-                                //udpSender.send(accel, direction)
+                                udpSender.send(accel, direction)
                                 accelSend = accel
                                 directionSend = direction
+                                nbPacketsSent++
                                 kotlinx.coroutines.delay(frameRate)
                             }
                         }
@@ -101,6 +139,18 @@ class MainActivity : ComponentActivity() {
                         DisplayValues(
                             a = accelSend,
                             b = directionSend
+                        )
+
+                        Text(
+                            text = "number of packets sent : $nbPacketsSent"
+                        )
+
+                        Text(
+                            text = "Phone's IP : $phoneIp on port 3334"
+                        )
+
+                        Text(
+                            text = "number of packets received : $nbPackets"
                         )
                     }
                 }

@@ -13,19 +13,6 @@
 
 #define PORT 3333
 
-/**
- * How it works:
- * 
- * handler for server : initialize it with default config, port 80 and register uri handlers
- * 
- * uri handlers : declare them with a struct and a function associated
- * 
- * function handler : method type, get frame length first then payload, give instructions by payload
- * and return response to client
- * 
- * function send text : initialize frame and to send all clients, use send frame with server handler as request
- */
-
 static const char *TAG = "udp_library"; // tag of this library
 
 static void udp_server_task(void *pvParameters)
@@ -52,9 +39,14 @@ static void udp_server_task(void *pvParameters)
             ip_protocol = IPPROTO_IP; //setting ip protocol
         }
 
-        int sock = socket(addr_family, SOCK_DGRAM, ip_protocol); //create socket
+        //create socket 
+        //inline : implemented in lwip's socket header for better performance
+        //addr family : ipv4
+        //sock_dgram : udp
+        //ip protocol : auto
+        int sock = socket(addr_family, SOCK_DGRAM, ip_protocol); //create socket    
         if (sock < 0) {
-            log_mqtt(LOG_ERROR, TAG, true, "Unable to create socket: errno %d", errno);
+            log_mqtt(LOG_ERROR, TAG, true, "Unable to create socket: %d, %s", errno, strerror(errno));
             break;
         }
         log_mqtt(LOG_INFO, TAG, true, "Socket created");
@@ -64,6 +56,43 @@ static void udp_server_task(void *pvParameters)
         timeout.tv_sec = 10;
         timeout.tv_usec = 0;
         setsockopt (sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout); //socket option timeout
+
+        int val;
+        if (getsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &val, sizeof val) == 0) {
+            log_mqtt(LOG_INFO, TAG, true, "Reuse address : %d", val);
+        } else {
+            log_mqtt(LOG_ERROR, TAG, true, "Error getting reuse address option socket info");
+        }
+        if (getsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, &val, sizeof val) == 0) {
+            log_mqtt(LOG_INFO, TAG, true, "Keep alive : %d", val);
+        } else {
+            log_mqtt(LOG_ERROR, TAG, true, "Error getting keep alive option socket info");
+        }
+        if (getsockopt(sock, SOL_SOCKET, SO_BROADCAST, &val, sizeof val) == 0) {
+            log_mqtt(LOG_INFO, TAG, true, "Broadcast : %d", val);
+        } else {
+            log_mqtt(LOG_ERROR, TAG, true, "Error getting broadcast option socket info");
+        }
+        if (getsockopt(sock, SOL_SOCKET, SO_RCVBUF, &val, sizeof val) == 0) {
+            log_mqtt(LOG_INFO, TAG, true, "Receive buffer size : %d", val);
+        } else {
+            log_mqtt(LOG_ERROR, TAG, true, "Error getting receive buffer option socket info");
+        }
+
+        if (getsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof timeout) == 0) {
+            //log_mqtt(LOG_INFO, TAG, true, "Receive buffer size : %d", strtime); print str time?
+        } else {
+            log_mqtt(LOG_ERROR, TAG, true, "Error getting send timeout option socket info");
+        }
+        if (getsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout) == 0) {
+            //log_mqtt(LOG_INFO, TAG, true, "Receive buffer size : %d", strtime); print str time?
+        } else {
+            log_mqtt(LOG_ERROR, TAG, true, "Error getting receive timeout option socket info");
+        }
+        //options handled by lwip socket (see in header)
+        //setsockopt (sock, SOL_SOCKET, SO_ERROR); socket error handling
+        //setsockopt (sock, SOL_SOCKET, SO_TYPE); set socket type?
+        //setsockopt (sock, SOL_SOCKET, SO_NO_CHECK); no checksum of packet for udp?
 
         //bind socket to port
         int err = bind(sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
@@ -155,7 +184,7 @@ static void udp_server_task(void *pvParameters)
 
 /**
  * Function to init server : 
- * Init server handler with default config on port 80 and register uri handlers
+ * Create task udp server with 15 priority & on core 1
  */
 void udp_server_init()
 {

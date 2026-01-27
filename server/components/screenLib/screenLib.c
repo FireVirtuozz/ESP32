@@ -11,8 +11,8 @@
 #include "nvsLib.h"
 
 // I2C pins
-#define I2C_MASTER_SDA_IO 22
-#define I2C_MASTER_SCL_IO 21
+#define I2C_MASTER_SDA_IO 21
+#define I2C_MASTER_SCL_IO 22
 
 // SSD1306 address
 #define OLED_ADDR_DEFAULT 0x3C

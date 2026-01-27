@@ -12,7 +12,7 @@
 
 //static const char * TAG = "main";
 
-#define IN_AP_MODE 0
+#define IN_AP_MODE 1
 
 void app_main()
 {
@@ -28,7 +28,8 @@ void app_main()
 
     #if IN_AP_MODE
         wifi_init_ap();
-        ws_server_init();
+        //ws_server_init();
+        udp_server_init();
     #else
         wifi_init_sta();
         udp_server_init();

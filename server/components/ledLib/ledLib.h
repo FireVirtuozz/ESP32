@@ -1,25 +1,23 @@
 #ifndef LEDLIB_H_
 #define LEDLIB_H_
 
-#include "driver/gpio.h"
-#include <esp_err.h>
-#include <esp_log.h>
 #include <inttypes.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/semphr.h"
-#include "nvsLib.h"
-#include "mqttLib.h"
-#include "driver/ledc.h"
-#include "soc/soc_caps.h"
 
-#define LED_PIN 2  //LED pin connected on breadboard
+#define DEBUG_GPIO 0
+#define DEBUG_LEDC 0
 
-#define DIRECTION_IDX 0
-#define MOTOR_IDX_FWD 1
-#define MOTOR_IDX_BWD 2
+#define WRITE_MOTOR_SCREEN 1
+#define WRITE_ANGLE_SCREEN 1
 
-//Initialize led pin
+//idx for channels
+#define MOTOR_IDX_FWD  0
+#define MOTOR_IDX_BWD  1
+#define DIRECTION_IDX  2
+
+//init ledc & led gpio
+void init_all_gpios();
+
+//Initialize led gpio basic
 void led_init();
 
 //Activate led
@@ -31,14 +29,21 @@ void led_off();
 //Toggle led
 void led_toggle();
 
-//Close led
+//Close led gpio & ledc
 void close_led();
 
 //Get led state
 int get_led_state();
 
+#if DEBUG_LEDC || DEBUG_GPIO
 //Print info on pwm signals ledc
 void print_esp_info_ledc();
+#endif
+
+#if DEBUG_GPIO
+//dump gpio on stdout
+void dump_gpio_stats();
+#endif
 
 //init ledc for pwm signals
 void init_ledc();

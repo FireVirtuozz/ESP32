@@ -8,15 +8,22 @@
 #include <esp_log.h>
 #include <esp_err.h>
 
+#define NVS_DEBUG 0
+
 //Mutex to access nvs
 static SemaphoreHandle_t xMutex = NULL;
 
 //Tag for logs
 static const char *TAG = "nvs_library";
 
+//NVS properties
+static const char* namespace = "storage";
+static const char* partition_name = "nvs"; //name from custom partition
+
 //handle to access nvs
 static nvs_handle_t my_handle;
 
+#if NVS_DEBUG
 //struct to convert types into string to print them
 typedef struct {
     nvs_type_t type;
@@ -56,12 +63,13 @@ static const char *type_to_str(nvs_type_t type) {
 
     return "Unknown";
 }
+#endif
 
 /**
  * Initalize NVS
  * -Create Mutex (do it once)
- * -NVS flash init
- * -Open NVS handle
+ * -NVS flash init, erase and retry init if failed
+ * -Open NVS handle of specified namespace
  */
 esp_err_t nvs_init() {
 
@@ -104,8 +112,10 @@ esp_err_t nvs_init() {
     }
 
     // Open NVS handle
+#if NVS_DEBUG
     log_mqtt(LOG_INFO, TAG, true, "Opening Non-Volatile Storage (NVS) handle...");
-    err = nvs_open("storage", NVS_READWRITE, &my_handle);
+#endif
+    err = nvs_open(namespace, NVS_READWRITE, &my_handle);
     if (err != ESP_OK) {
         log_mqtt(LOG_ERROR, TAG, true, "Error (%s) opening NVS handle!", esp_err_to_name(err));
     }
@@ -115,8 +125,9 @@ esp_err_t nvs_init() {
 /**
  * Function to load an int in nvs
  * -Take mutex, read nvs and handle return value, init if needed
+ * @details Using i32
  * @param key str key
- * @param val int in/out value updated*
+ * @param val int in/out value updated
  */
 esp_err_t load_nvs_int(const char *key, int *val) {
 
@@ -133,7 +144,9 @@ esp_err_t load_nvs_int(const char *key, int *val) {
     //wait to take mutex
     if (xSemaphoreTake(xMutex, portMAX_DELAY) == pdTRUE) {
 
+#if NVS_DEBUG
         log_mqtt(LOG_INFO, TAG, false, "Reading %s from NVS...", key);
+#endif
         //read value i32
         err = nvs_get_i32(my_handle, key, &read_val);
 
@@ -141,7 +154,9 @@ esp_err_t load_nvs_int(const char *key, int *val) {
         switch (err) {
             // ok : update value
             case ESP_OK:
+#if NVS_DEBUG
                 log_mqtt(LOG_INFO, TAG, true, "Read %s = %" PRIu32, key, read_val);
+#endif
                 *val = (int)read_val;
                 break;
             // not found : initialize value to 0 (default)
@@ -167,11 +182,12 @@ esp_err_t load_nvs_int(const char *key, int *val) {
 }
 
 /**
- * Function to load a string in nvs
- * -Take mutex, read nvs and handle return value, init if needed
+ * Function to load a blob in nvs
+ * -Take mutex, read nvs, get the size first to allocate memory of size needed, then the value, init if needed
+ * @details For u8 arrays
  * @param key str key
- * @param val int in/out value updated*
- * @param length length of string (0 auto calculated)
+ * @param val u8 pointer to update
+ * @param length length of blob (0 auto calculated)
  */
 esp_err_t load_nvs_blob(const char *key, uint8_t *val, size_t length) {
 
@@ -190,7 +206,10 @@ esp_err_t load_nvs_blob(const char *key, uint8_t *val, size_t length) {
 
         size_t required_size = 0;
 
+#if NVS_DEBUG
         log_mqtt(LOG_INFO, TAG, false, "Reading blob %s from NVS...", key);
+#endif
+        //get the required size
         err = nvs_get_blob(my_handle, key, NULL, &required_size);
         if (err == ESP_OK) {
             uint8_t* tmp = malloc(required_size);
@@ -199,8 +218,10 @@ esp_err_t load_nvs_blob(const char *key, uint8_t *val, size_t length) {
                 xSemaphoreGive(xMutex);
                 return ESP_ERR_NO_MEM;
             }
+            //get value
             err = nvs_get_blob(my_handle, key, tmp, &required_size);
             if (err == ESP_OK) {
+                // todo : clean method
                 memcpy(val, tmp, required_size < length ? required_size : length);
             }
             free(tmp);
@@ -223,10 +244,12 @@ esp_err_t load_nvs_blob(const char *key, uint8_t *val, size_t length) {
 }
 
 /**
- * Function to save a string in nvs
+ * Function to save a blob in nvs
  * -Take mutex, set nvs value and commit changes to handle
+ * @details Using u8 array
  * @param key key string of value
- * @param value const str value to save
+ * @param value u8 pointer to save
+ * @param length length of blob to put
  */
 esp_err_t save_nvs_blob(const char *key, uint8_t* value, size_t length) {
 
@@ -236,8 +259,10 @@ esp_err_t save_nvs_blob(const char *key, uint8_t* value, size_t length) {
     }
     
     if (xSemaphoreTake(xMutex, portMAX_DELAY) == pdTRUE) {
-        
+
+#if NVS_DEBUG
         log_mqtt(LOG_INFO, TAG, true, "Writing blob %s to NVS...", key);
+#endif
         // Store blob
         esp_err_t err = nvs_set_blob(my_handle, key, value, length);
         if (err != ESP_OK) {
@@ -250,7 +275,9 @@ esp_err_t save_nvs_blob(const char *key, uint8_t* value, size_t length) {
         // After setting any values, nvs_commit() must be called to ensure changes are written
         // to flash storage. Implementations may write to storage at other times,
         // but this is not guaranteed.
+#if NVS_DEBUG
         log_mqtt(LOG_INFO, TAG, true, "Committing updates in NVS...");
+#endif
         err = nvs_commit(my_handle);
         if (err != ESP_OK) {
             log_mqtt(LOG_ERROR, TAG, true, "Failed to commit NVS changes!");
@@ -263,9 +290,9 @@ esp_err_t save_nvs_blob(const char *key, uint8_t* value, size_t length) {
 
 /**
  * Function to load a string in nvs
- * -Take mutex, read nvs and handle return value, init if needed
+ * -Take mutex, read nvs, get the size first to allocate memory of size needed, then the value, init if needed
  * @param key str key
- * @param val int in/out value updated*
+ * @param val int in/out value updated
  * @param length length of string (0 auto calculated)
  */
 esp_err_t load_nvs_str(const char *key, char *val) {
@@ -284,7 +311,9 @@ esp_err_t load_nvs_str(const char *key, char *val) {
 
         size_t required_size = 0;
 
+#if NVS_DEBUG
         log_mqtt(LOG_INFO, TAG, false, "Reading %s from NVS...", key);
+#endif
         err = nvs_get_str(my_handle, key, NULL, &required_size);
         if (err == ESP_OK) {
             char* tmp = malloc(required_size);
@@ -294,6 +323,7 @@ esp_err_t load_nvs_str(const char *key, char *val) {
             }
             err = nvs_get_str(my_handle, key, tmp, &required_size);
             if (err == ESP_OK) {
+                //do not forget end character
                 strncpy(val, tmp, required_size);
                 val[required_size-1] = '\0';
             }
@@ -304,7 +334,9 @@ esp_err_t load_nvs_str(const char *key, char *val) {
         switch (err) {
             // ok : update value
             case ESP_OK:
+#if NVS_DEBUG
                 log_mqtt(LOG_INFO, TAG, true, "Read %s = %s", key, val);
+#endif
                 break;
             // not found : initialize value to 0 (default)
             case ESP_ERR_NVS_NOT_FOUND:
@@ -342,8 +374,10 @@ esp_err_t save_nvs_str(const char *key, const char* value) {
     
 
     if (xSemaphoreTake(xMutex, portMAX_DELAY) == pdTRUE) {
-        
+
+#if NVS_DEBUG
         log_mqtt(LOG_INFO, TAG, true, "Writing %s to NVS...", key);
+#endif
         // Store an integer value
         esp_err_t err = nvs_set_str(my_handle, key, value);
         if (err != ESP_OK) {
@@ -354,7 +388,9 @@ esp_err_t save_nvs_str(const char *key, const char* value) {
         // After setting any values, nvs_commit() must be called to ensure changes are written
         // to flash storage. Implementations may write to storage at other times,
         // but this is not guaranteed.
+#if NVS_DEBUG
         log_mqtt(LOG_INFO, TAG, true, "Committing updates in NVS...");
+#endif
         err = nvs_commit(my_handle);
         if (err != ESP_OK) {
             log_mqtt(LOG_ERROR, TAG, true, "Failed to commit NVS changes!");
@@ -381,7 +417,9 @@ esp_err_t save_nvs_int(const char *key, const int value) {
 
     if (xSemaphoreTake(xMutex, portMAX_DELAY) == pdTRUE) {
         
+#if NVS_DEBUG
         log_mqtt(LOG_INFO, TAG, true, "Writing %s to NVS...", key);
+#endif
         // Store an integer value
         esp_err_t err = nvs_set_i32(my_handle, key, val);
         if (err != ESP_OK) {
@@ -392,7 +430,9 @@ esp_err_t save_nvs_int(const char *key, const int value) {
         // After setting any values, nvs_commit() must be called to ensure changes are written
         // to flash storage. Implementations may write to storage at other times,
         // but this is not guaranteed.
+#if NVS_DEBUG
         log_mqtt(LOG_INFO, TAG, true, "Committing updates in NVS...");
+#endif
         err = nvs_commit(my_handle);
         if (err != ESP_OK) {
             log_mqtt(LOG_ERROR, TAG, true, "Failed to commit NVS changes!");
@@ -430,6 +470,7 @@ void close_nvs() {
  */
 void list_storage() {
 
+#if NVS_DEBUG
     if (xMutex == NULL) {
         return;
     }
@@ -440,7 +481,7 @@ void list_storage() {
         log_mqtt(LOG_INFO, TAG, true, "Finding keys in NVS...");
         nvs_iterator_t it = NULL;
         // Find keys in NVS and put it in the iterator
-        esp_err_t res = nvs_entry_find("nvs", "storage", NVS_TYPE_ANY, &it);
+        esp_err_t res = nvs_entry_find(partition_name, namespace, NVS_TYPE_ANY, &it);
 
         while(res == ESP_OK) {
 
@@ -483,14 +524,19 @@ void list_storage() {
         nvs_release_iterator(it);
         xSemaphoreGive(xMutex);
     }
+#else
+    log_mqtt(LOG_INFO, TAG, true, "NVS debug disabled : failed to list storage");
+#endif
 }
+
 
 void show_nvs_stats() {
 
+#if NVS_DEBUG
     log_mqtt(LOG_INFO, TAG, true, "==================== NVS statistics ====================");
 
     nvs_stats_t nvs_stats;
-    esp_err_t ret = nvs_get_stats(NVS_DEFAULT_PART_NAME, &nvs_stats);
+    esp_err_t ret = nvs_get_stats(partition_name, &nvs_stats);
     if (ret != ESP_OK) {
         log_mqtt(LOG_ERROR, TAG, true, "Error (%s) getting NVS statistics!", esp_err_to_name(ret));
     }
@@ -502,4 +548,7 @@ void show_nvs_stats() {
     log_mqtt(LOG_INFO, TAG, true, "Namespace count: %u", nvs_stats.namespace_count);
 
     log_mqtt(LOG_INFO, TAG, true, "==================== NVS statistics end ====================");
+#else
+    log_mqtt(LOG_INFO, TAG, true, "NVS debug disabled : failed to print stats");
+#endif
 }

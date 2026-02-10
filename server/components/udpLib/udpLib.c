@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include "ledLib.h"
+#include "mqttLib.h"
 
 #include "lwip/err.h"
 #include "lwip/sockets.h"
@@ -15,6 +16,8 @@
 #endif
 
 #define PORT 3333
+
+#define UDP_COMMANDS_TIMEOUT 500000 //us, no more than 1s = 1000000
 
 //TODO : IPv6 support, length commands buffer check, security
 
@@ -200,8 +203,8 @@ static void udp_server_task(void *pvParameters)
 
         // Set timeout : 10 seconds
         struct timeval timeout;
-        timeout.tv_sec = 10;
-        timeout.tv_usec = 0;
+        timeout.tv_sec = 0;
+        timeout.tv_usec = UDP_COMMANDS_TIMEOUT;
         setsockopt (sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout); //socket option timeout
 
 #if PACKET_DEBUG_ACTIVATED
@@ -438,6 +441,7 @@ static void udp_server_task(void *pvParameters)
                 log_mqtt(LOG_ERROR, TAG, true, "Shutting down socket and restarting...");
                 shutdown(sock, 0);
                 close(sock);
+                ledc_motor(0);
             }
         }
     vTaskDelete(NULL);

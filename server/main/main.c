@@ -16,6 +16,10 @@
 
 void app_main()
 {
+    
+#if DEBUG_GPIO
+    dump_gpio_stats();
+#endif
     //init_queue_mqtt();
 
     //ESP_LOGI(TAG, "[APP] Startup..");
@@ -38,14 +42,12 @@ void app_main()
     #endif
 
     //wifi_init_apsta(); useful only if esp32 = router
-    
-    led_init(); //init led pin 2
 
     ssd1306_setup(); //init oled screen
 
-    init_ledc(); //init pwm pin 4
-
     screen_full_off();
+
+    init_all_gpios();
 
     ssd1306_draw_string(wifi_get_ip(), 0, 0);
 

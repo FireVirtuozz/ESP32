@@ -453,11 +453,11 @@ static sta_info_strings_t *get_promiscuous_filter_info(wifi_promiscuous_filter_t
     for (int i = 0; i < 4; i++)
         out.lines[i][0] = '\0';
 
-    // ligne 0 = mask brut
+    // line 0 = raw mask
     snprintf(out.lines[0], sizeof(out.lines[0]), "Mask: 0x%08lX", filter.filter_mask);
     out.count = 1;
 
-    // ligne 1 = types capturés
+    // line 1 = captured types
     if (filter.filter_mask == WIFI_PROMIS_FILTER_MASK_ALL) {
         strcpy(out.lines[1], "All packet types");
         out.count = 2;
@@ -470,7 +470,7 @@ static sta_info_strings_t *get_promiscuous_filter_info(wifi_promiscuous_filter_t
         if (filter.filter_mask & WIFI_PROMIS_FILTER_MASK_DATA_AMPDU) strcat(out.lines[1], "AMPDU/");
         if (filter.filter_mask & WIFI_PROMIS_FILTER_MASK_FCSFAIL)    strcat(out.lines[1], "FCSFAIL/");
 
-        // enlever le dernier '/'
+        // remove the last '/'
         size_t len = strlen(out.lines[1]);
         if (len > 0 && out.lines[1][len-1] == '/') out.lines[1][len-1] = '\0';
 
@@ -489,11 +489,11 @@ static sta_info_strings_t *get_promiscuous_ctrl_filter_info(wifi_promiscuous_fil
     for (int i = 0; i < 4; i++)
         out.lines[i][0] = '\0';
 
-    // ligne 0 = mask brut
+    // line 0 = raw mask
     snprintf(out.lines[0], sizeof(out.lines[0]), "CTRL Mask: 0x%08lX", filter.filter_mask);
     out.count = 1;
 
-    // ligne 1 = types capturés
+    // line 1 = captured types
     if (filter.filter_mask == WIFI_PROMIS_CTRL_FILTER_MASK_ALL) {
         strcpy(out.lines[1], "All control packets");
         out.count = 2;
@@ -508,7 +508,7 @@ static sta_info_strings_t *get_promiscuous_ctrl_filter_info(wifi_promiscuous_fil
         if (filter.filter_mask & WIFI_PROMIS_CTRL_FILTER_MASK_CFEND)      strcat(out.lines[1], "CFEND/");
         if (filter.filter_mask & WIFI_PROMIS_CTRL_FILTER_MASK_CFENDACK)   strcat(out.lines[1], "CFENDACK/");
 
-        // enlever le dernier '/'
+        // remove the last '/'
         size_t len = strlen(out.lines[1]);
         if (len > 0 && out.lines[1][len-1] == '/') out.lines[1][len-1] = '\0';
 

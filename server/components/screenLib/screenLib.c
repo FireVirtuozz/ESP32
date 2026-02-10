@@ -11,8 +11,8 @@
 #include "nvsLib.h"
 
 // I2C pins
-#define I2C_MASTER_SDA_IO 21
-#define I2C_MASTER_SCL_IO 22
+#define I2C_MASTER_SDA_IO 22
+#define I2C_MASTER_SCL_IO 21
 
 // SSD1306 address
 #define OLED_ADDR_DEFAULT 0x3C
@@ -129,6 +129,20 @@ i2c_device_config_t dev_cfg = {
     .device_address = OLED_ADDR_DEFAULT, //address of device
     .scl_speed_hz = 400000, //i2c bus frequency
 };
+
+static void i2c_scan() {
+    esp_err_t err;
+    log_mqtt(LOG_INFO, TAG, true, "Starting I2C scan...");
+
+    for (uint8_t addr = 0x03; addr <= 0x77; addr++) { // valid range
+        err = i2c_master_probe(bus_handle, addr, 1000 / portTICK_PERIOD_MS);
+        if (err == ESP_OK) {
+            log_mqtt(LOG_INFO, TAG, true, "Device found at 0x%02X", addr);
+        }
+    }
+
+    log_mqtt(LOG_INFO, TAG, true, "I2C scan finished");
+}
 
 /*
 ================================================================
@@ -272,6 +286,8 @@ static void i2c_init()
         log_mqtt(LOG_ERROR, TAG, true, "Error (%s) allocating I²C master bus", esp_err_to_name(err));
         return;
     }
+
+    i2c_scan();
 
     //check if the adress is known
     err = i2c_master_probe(bus_handle, OLED_ADDR_DEFAULT, -1);

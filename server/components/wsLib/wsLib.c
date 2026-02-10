@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <esp_http_server.h>
 #include "ledLib.h"
+#include "mqttLib.h"
 
 /**
  * How it works:

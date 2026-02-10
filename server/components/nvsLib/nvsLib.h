@@ -10,34 +10,73 @@
 #include "freertos/semphr.h"
 #include "mqttLib.h"
 
-//Function to init nvs
+/**
+ * Initialize nvs
+ */
 esp_err_t nvs_init();
 
-//Function to load an nvs int with key and I/O value
+/**
+ * Load an int in NVS
+ * @details Using i32
+ * @param key key string nvs
+ * @param val int pointer to update value
+ */
 esp_err_t load_nvs_int(const char *key, int *val);
 
-//Function to save a value associated with key
+/**
+ * Save an int in NVS
+ * @details Using i32
+ * @param key key string nvs
+ * @param val int value to put
+ */
 esp_err_t save_nvs_int(const char *key, const int value);
 
-//Function to load an nvs string with key and I/O value
+/**
+ * Load string in NVS
+ * @param key key string nvs
+ * @param val string to update value
+ */
 esp_err_t load_nvs_str(const char *key, char *val);
 
-//Function to save a string value associated with key
+/**
+ * Save a str in NVS
+ * @param key key string nvs
+ * @param val string value to put
+ */
 esp_err_t save_nvs_str(const char *key, const char* value);
 
-//Function to load an nvs string with key and I/O value
+/**
+ * Save a blob in NVS
+ * @param key key string nvs
+ * @param val blob pointer to update
+ * @param length length of blob (useless here, keep 0)
+ */
 esp_err_t load_nvs_blob(const char *key, uint8_t *val, size_t length);
 
-//Function to save a string value associated with key
+/**
+ * Save a blob in NVS
+ * @details For u8 arrays
+ * @param key key string nvs
+ * @param val blob pointer to put
+ * @param length length of blob to put
+ */
 esp_err_t save_nvs_blob(const char *key, uint8_t * value, size_t length);
 
-//Function to list namespace "storage" in nvs (debug)
+/**
+ * Print a nvs namespace's list
+ * @details require debug
+ */
 void list_storage();
 
-//Function to close nvs
+/**
+ * Close nvs
+ */
 void close_nvs();
 
-//FUnction to print general NVS statistics
+/**
+ * Print all nvs statistics
+ * @details require debug
+ */
 void show_nvs_stats();
 
 #endif

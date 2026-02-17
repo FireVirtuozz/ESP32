@@ -285,11 +285,11 @@ static const char *get_bandwidth_str(int bandwidth) {
     switch(bandwidth) {
 
         // 20 MHz channel: HT20 (802.11n) or generic 20 MHz
-        case WIFI_BW_HT20: // same value as WIFI_BW20
+        case WIFI_BW20: // same value as WIFI_BW20
             return "20 MHz (HT20)";
 
         // 40 MHz channel: HT40 (802.11n) or generic 40 MHz
-        case WIFI_BW_HT40: // same value as WIFI_BW40
+        case WIFI_BW40: // same value as WIFI_BW40
             return "40 MHz (HT40)";
         
         //wifi 5-6 : below

@@ -6,7 +6,7 @@ By default, the NVS is allocating in RAM. If you want it to be on the SPIRAM, if
 
 Add a line *nvs* in partition.
 
-TODO : 
+## TODO : 
 - NVS Encryption
 - NVS for each int types, not only i32
 - Special default value

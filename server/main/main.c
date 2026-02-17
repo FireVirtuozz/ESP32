@@ -8,6 +8,7 @@
 #include "otaLib.h"
 #include "mqttLib.h"
 #include "screenLib.h"
+#include "lcdLib.h"
 #include <stdarg.h>
 
 //static const char * TAG = "main";
@@ -43,13 +44,14 @@ void app_main()
 
     //wifi_init_apsta(); useful only if esp32 = router
 
-    ssd1306_setup(); //init oled screen
+    //ssd1306_setup(); //init oled screen
 
-    screen_full_off();
+    //screen_full_off();
+    lcd_init();
 
     init_all_gpios();
 
-    ssd1306_draw_string(wifi_get_ip(), 0, 0);
+    //ssd1306_draw_string(wifi_get_ip(), 0, 0);
 
     //print_esp_info_ledc();
 

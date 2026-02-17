@@ -6,8 +6,8 @@
 #define DEBUG_GPIO 0
 #define DEBUG_LEDC 0
 
-#define WRITE_MOTOR_SCREEN 1
-#define WRITE_ANGLE_SCREEN 1
+#define WRITE_MOTOR_SCREEN 0
+#define WRITE_ANGLE_SCREEN 0
 
 //idx for channels
 #define MOTOR_IDX_FWD  0

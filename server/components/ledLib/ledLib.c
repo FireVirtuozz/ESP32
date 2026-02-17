@@ -9,6 +9,7 @@
 #include <stdarg.h>
 #include <esp_err.h>
 #include "driver/ledc.h"
+#include "lcdLib.h"
 
 #if DEBUG_GPIO || DEBUG_LEDC
 #include "soc/soc_caps.h"
@@ -722,6 +723,7 @@ void ledc_angle(int16_t angle) {
         snprintf(tmp, sizeof(tmp), "Angle : %d", current_angle);
         ssd1306_draw_string(tmp, 0, 2);
 #endif
+        set_bar_steer(current_angle * 100 / 180);
     }
     
 }
@@ -776,6 +778,7 @@ void ledc_motor(int16_t motor_percent) {
         snprintf(tmp, sizeof(tmp), "Motor : %d", current_motor);
         ssd1306_draw_string(tmp, 0, 4);
 #endif
+        set_bar_motor(current_motor);
     }
     
 }

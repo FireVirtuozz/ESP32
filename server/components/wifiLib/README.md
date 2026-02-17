@@ -72,3 +72,10 @@ ESP STA configuration:
 
 Mesh networking:
 - Nodes organized in parent / child topology
+
+# TODO
+
+* Explain ESP-WIFI more
+* Explain ESP-NETIF
+* Explain ESP-EVENT
+* Explain FreeRTOS groups

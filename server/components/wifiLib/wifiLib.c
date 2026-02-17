@@ -23,7 +23,7 @@
  *   - Handle IP address assigned by the router
  */
 
- //scan AP max number
+//scan AP max number
 #define DEFAULT_SCAN_LIST_SIZE 16
 
 //ESP AP Config
@@ -34,13 +34,15 @@
 /*DHCP server option flag*/
 #define DHCPS_OFFER_DNS             0x02
 
-#define MAX_STR_LINES 16
+#if DEBUG_WIFI
+#define MAX_STR_LINES 20
 #define MAX_LINE_LEN 128
 
 typedef struct {
     char lines[MAX_STR_LINES][MAX_LINE_LEN];
     int count;
 } sta_info_strings_t;
+#endif
 
 //wifi known networks
 typedef struct {
@@ -70,6 +72,7 @@ static const char *TAG = "wifi_library";
 //Buffer for IP address
 static char s_ip_str[16];
 
+#if DEBUG_WIFI
 /*
 =====================================================================
 FUNCTION CONVERT TO STR
@@ -77,7 +80,7 @@ FUNCTION CONVERT TO STR
 */
 
 //function to print the wifi authentication mode
-static const char *get_authmode_str(int authmode)
+static const char *get_authmode_str(wifi_auth_mode_t authmode)
 {
     switch (authmode) {
     case WIFI_AUTH_OPEN:
@@ -109,36 +112,8 @@ static const char *get_authmode_str(int authmode)
     }
 }
 
-//function to print cipher pair (encryption)
-static const char *get_cipher_pair_str(int pairwise) {
-    switch (pairwise) {
-    case WIFI_CIPHER_TYPE_NONE:
-        return "WIFI_CIPHER_TYPE_NONE";
-    case WIFI_CIPHER_TYPE_WEP40:
-        return "WIFI_CIPHER_TYPE_WEP40";
-    case WIFI_CIPHER_TYPE_WEP104:
-        return "WIFI_CIPHER_TYPE_WEP104";
-    case WIFI_CIPHER_TYPE_TKIP:
-        return "WIFI_CIPHER_TYPE_TKIP";
-    case WIFI_CIPHER_TYPE_CCMP:
-        return "WIFI_CIPHER_TYPE_CCMP";
-    case WIFI_CIPHER_TYPE_TKIP_CCMP:
-        return "WIFI_CIPHER_TYPE_TKIP_CCMP";
-    case WIFI_CIPHER_TYPE_AES_CMAC128:
-        return "WIFI_CIPHER_TYPE_AES_CMAC128";
-    case WIFI_CIPHER_TYPE_SMS4:
-        return "WIFI_CIPHER_TYPE_SMS4";
-    case WIFI_CIPHER_TYPE_GCMP:
-        return "WIFI_CIPHER_TYPE_GCMP";
-    case WIFI_CIPHER_TYPE_GCMP256:
-        return "WIFI_CIPHER_TYPE_GCMP256";
-    default:
-        return "WIFI_CIPHER_TYPE_UNKNOWN";
-    }
-}
-
 //function to print the cipher type
-static const char *get_cipher_type_str(int group_cipher)
+static const char *get_cipher_type_str(wifi_cipher_type_t group_cipher)
 {
     switch (group_cipher) {
     case WIFI_CIPHER_TYPE_NONE:
@@ -173,7 +148,7 @@ static const char *get_bssid_str(uint8_t bssid[6]) {
     return mac;
 }
 
-static const char *get_antenna_str(int ant) {
+static const char *get_antenna_str(wifi_ant_t ant) {
     switch (ant) {
     case WIFI_ANT_ANT0:
         return "wifi antenna 0";
@@ -214,6 +189,60 @@ static sta_info_strings_t *get_phy_info(wifi_ap_record_t record) {
     strcat(out.lines[1], record.ftm_initiator ? "initiator" : "");
 
     strcat(out.lines[2], record.wps ? "Yes" : "No");
+
+    return &out;
+}
+
+//function to print wifi init config
+static sta_info_strings_t *get_init_config(wifi_init_config_t init_cfg) {
+    static sta_info_strings_t out;
+    out.count = 19;
+
+    // init lines
+    for (int i = 0; i < 18; i++) {
+        out.lines[i][0] = '\0';
+    }
+
+    //init_cfg.wpa_crypto_funcs
+    //init_cfg.osi_funcs
+    snprintf(out.lines[0], sizeof(out.lines[0]), "Static / Dynamic RX buffer number : %d / %d",
+        init_cfg.static_rx_buf_num, init_cfg.dynamic_rx_buf_num);
+    snprintf(out.lines[1], sizeof(out.lines[1]), "RX MGMT buffer type / number : %d / %d",
+        init_cfg.rx_mgmt_buf_type, init_cfg.rx_mgmt_buf_num);
+    snprintf(out.lines[2], sizeof(out.lines[2]), "AMPDU RX enabled : %s",
+        init_cfg.ampdu_rx_enable ? "Yes" : "No");
+    snprintf(out.lines[3], sizeof(out.lines[3]), "Static / Dynamic / Cache TX buffer number : %d / %d / %d",
+        init_cfg.static_tx_buf_num, init_cfg.dynamic_tx_buf_num, init_cfg.cache_tx_buf_num);
+    snprintf(out.lines[4], sizeof(out.lines[4]), "TX buffer type : %d",
+        init_cfg.tx_buf_type);
+    snprintf(out.lines[5], sizeof(out.lines[5]), "AMPDU / AMSDU TX enabled : %s / %s",
+        init_cfg.ampdu_tx_enable ? "Yes" : "No", init_cfg.amsdu_tx_enable ? "Yes" : "No");
+    snprintf(out.lines[6], sizeof(out.lines[6]), "CSI enabled : %s",
+        init_cfg.csi_enable ? "Yes" : "No");
+    snprintf(out.lines[7], sizeof(out.lines[7]), "NVS enabled : %s",
+        init_cfg.nvs_enable ? "Yes" : "No");
+    snprintf(out.lines[8], sizeof(out.lines[8]), "Nano enabled : %s",
+        init_cfg.nano_enable ? "Yes" : "No");
+    snprintf(out.lines[9], sizeof(out.lines[9]), "Block ACK RX window size : %d",
+        init_cfg.rx_ba_win);
+    snprintf(out.lines[10], sizeof(out.lines[10]), "Wifi task core id : %d",
+        init_cfg.wifi_task_core_id);
+    snprintf(out.lines[11], sizeof(out.lines[11]), "AP beacon max length : %d",
+        init_cfg.beacon_max_len);
+    snprintf(out.lines[12], sizeof(out.lines[12]), "Management buffer number : %d",
+        init_cfg.mgmt_sbuf_num);
+    snprintf(out.lines[13], sizeof(out.lines[13]), "Feature & capabilities : %lld",
+        init_cfg.feature_caps);
+    snprintf(out.lines[14], sizeof(out.lines[14]), "Power management for STA at disconnected status : %s",
+        init_cfg.sta_disconnected_pm ? "Yes" : "No");
+    snprintf(out.lines[15], sizeof(out.lines[15]), "Max encrypt number of peers ESP-NOW : %d",
+        init_cfg.espnow_max_encrypt_num);
+    snprintf(out.lines[16], sizeof(out.lines[16]), "WiFi TX HE TB Queue number : %d",
+        init_cfg.tx_hetb_queue_num);
+    snprintf(out.lines[17], sizeof(out.lines[17]), "Dump sigb field enabled : %s",
+        init_cfg.dump_hesigb_enable ? "Yes" : "No");
+    snprintf(out.lines[18], sizeof(out.lines[18]), "Magic : %d",
+        init_cfg.magic);
 
     return &out;
 }
@@ -280,7 +309,7 @@ static sta_info_strings_t *get_he_info(wifi_he_ap_info_t he) {
 }
 
 // Function to print Wi-Fi channel bandwidth
-static const char *get_bandwidth_str(int bandwidth) {
+static const char *get_bandwidth_str(wifi_bandwidth_t bandwidth) {
 
     switch(bandwidth) {
 
@@ -372,7 +401,7 @@ static sta_info_strings_t *get_scan_params_info(wifi_scan_default_params_t param
 }
 
 // Function to print Wi-Fi mode of the ESP32
-static const char *get_wifi_mode_str(int mode) {
+static const char *get_wifi_mode_str(wifi_mode_t mode) {
     switch(mode) {
         case WIFI_MODE_NULL:
             return "null (disabled)";
@@ -392,7 +421,7 @@ static const char *get_wifi_mode_str(int mode) {
 }
 
 // Function to print Wi-Fi power save type
-static const char *get_ps_str(int ps) {
+static const char *get_ps_str(wifi_ps_type_t ps) {
     switch(ps) {
         case WIFI_PS_NONE:
             return "NONE (Wi-Fi always active)";
@@ -405,6 +434,20 @@ static const char *get_ps_str(int ps) {
             snprintf(buf, sizeof(buf), "UNKNOWN (%d)", ps);
             return buf;
         }
+    }
+}
+
+// Function to print Wi-Fi band
+static const char *get_band_mode_str(wifi_band_mode_t band) {
+    switch(band) {
+        case WIFI_BAND_MODE_2G_ONLY:
+            return "2.4G only";
+        case WIFI_BAND_MODE_5G_ONLY:
+            return "5G only";
+        case WIFI_BAND_MODE_AUTO:
+            return "Auto band";
+        default:
+            return "Unknown";
     }
 }
 
@@ -694,7 +737,7 @@ static sta_info_strings_t *get_config_ap_info(wifi_ap_config_t ap) {
     // line 3: Pairwise cipher and FTM responder
     snprintf(out.lines[out.count++], sizeof(out.lines[0]),
              "Pairwise: %s | FTM: %s",
-             get_cipher_pair_str(ap.pairwise_cipher),
+             get_cipher_type_str(ap.pairwise_cipher),
              ap.ftm_responder ? "Enabled" : "Disabled");
 
     // line 4: PMF required / capable
@@ -853,7 +896,7 @@ static void print_record(wifi_ap_record_t ap_info) {
 
     if (ap_info.authmode != WIFI_AUTH_WEP) {
         log_mqtt(LOG_INFO, TAG, true, "Cipher: Pair: %s / Type : %s",
-            get_cipher_pair_str(ap_info.pairwise_cipher), get_cipher_type_str(ap_info.group_cipher));
+            get_cipher_type_str(ap_info.pairwise_cipher), get_cipher_type_str(ap_info.group_cipher));
     }
 
     log_mqtt(LOG_INFO, TAG, true, "Channel : %d",
@@ -899,6 +942,8 @@ static void print_record(wifi_ap_record_t ap_info) {
         ap_info.ssid);
 }
 
+#endif
+
 /*
 =====================================================================
 USEFUL FUNCTIONS
@@ -908,7 +953,9 @@ USEFUL FUNCTIONS
 static void first_scan() {
 
     esp_err_t err;
+#if DEBUG_WIFI
     sta_info_strings_t *info;
+#endif
 
     log_mqtt(LOG_INFO, TAG, false, "=============== First scan APs ===============");
 
@@ -917,10 +964,12 @@ static void first_scan() {
     if (err != ESP_OK) {
         log_mqtt(LOG_ERROR, TAG, true, "Error on getting scan parameters : %d", err);
     } else {
+#if DEBUG_WIFI
         info = get_scan_params_info(params);
         for (int i = 0; i < info->count; i++) {
             log_mqtt(LOG_INFO, TAG, true, "scan params [%d] : %s", i, info->lines[i]);
         }
+#endif
     }
 
     //init info array
@@ -934,15 +983,17 @@ static void first_scan() {
     memset(ap_info, 0, sizeof(wifi_ap_record_t) * DEFAULT_SCAN_LIST_SIZE);
 
     //launch scan
-    err = esp_wifi_scan_start(NULL, true); //blocking
+    wifi_scan_config_t cfg = WIFI_SCAN_PARAMS_DEFAULT_CONFIG();
+    err = esp_wifi_scan_start(&cfg, true); //blocking
     if (err != ESP_OK) {
         log_mqtt(LOG_ERROR, TAG, true, "Scan failed: %s", esp_err_to_name(err));
         return;
     }
 
     //if fail : esp_wifi_clear_ap_list
-
+#if DEBUG_WIFI
     log_mqtt(LOG_INFO, TAG, false, "Max AP number ap_info can hold = %u", number);
+#endif
 
     //get num & records of scan
     err = esp_wifi_scan_get_ap_num(&ap_count);
@@ -957,12 +1008,16 @@ static void first_scan() {
         return;
     }
 
+#if DEBUG_WIFI
     log_mqtt(LOG_INFO, TAG, true, "Total APs scanned = %u, actual AP number ap_info holds = %u", ap_count, number);
+#endif
 
     wifi_network_t *wifi_credentials = NULL;
     //go through each record and compare ssid
     for (int i = 0; i < number; i++) {
+#if DEBUG_WIFI
         print_record(ap_info[i]);
+#endif
         for (int j = 0; j < sizeof(known_networks) / sizeof(known_networks[0]); j++) {
             if (strcmp((const char *)ap_info[i].ssid, known_networks[j].ssid) == 0) {
                 if (wifi_credentials == NULL) {
@@ -1024,6 +1079,14 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
                                int32_t event_id, void* event_data)
 {
     esp_err_t err;
+
+#if DEBUG_WIFI
+    if (event_base == WIFI_EVENT) {
+        wifi_event_t event_wifi = (wifi_event_t)event_id;
+        log_mqtt(LOG_INFO, TAG, true, "Wifi event id : %d", event_wifi);
+    }
+#endif
+    
     //if wifi starting event
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         first_scan();
@@ -1054,12 +1117,14 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
     } else if (event_id == WIFI_EVENT_AP_STACONNECTED) {
         wifi_event_ap_staconnected_t* event = (wifi_event_ap_staconnected_t*) event_data;
-        log_mqtt(LOG_INFO, TAG, true, "station " MACSTR " join, AID=%d",
-                 MAC2STR(event->mac), event->aid);
+        log_mqtt(LOG_INFO, TAG, true, "station " MACSTR " join, AID=%d, is mesh : %s",
+                 MAC2STR(event->mac), event->aid, event->is_mesh_child ? "Yes" : "No");
+
     } else if (event_id == WIFI_EVENT_AP_STADISCONNECTED) {
         wifi_event_ap_stadisconnected_t* event = (wifi_event_ap_stadisconnected_t*) event_data;
-        log_mqtt(LOG_INFO, TAG, true, "station " MACSTR " leave, AID=%d, reason=%d",
-                 MAC2STR(event->mac), event->aid, event->reason);
+        log_mqtt(LOG_INFO, TAG, true, "station " MACSTR " leave, AID=%d, reason=%d, is mesh : %s",
+                 MAC2STR(event->mac), event->aid, event->reason, event->is_mesh_child ? "Yes" : "No");
+
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_ASSIGNED_IP_TO_CLIENT) {
         const ip_event_assigned_ip_to_client_t *e = (const ip_event_assigned_ip_to_client_t *)event_data;
         log_mqtt(LOG_INFO, TAG, true, "Assigned IP to client: " IPSTR ", MAC=" MACSTR ", hostname='%s'",
@@ -1167,6 +1232,9 @@ static void softap_set_dns_addr(esp_netif_t *esp_netif_ap, esp_netif_t *esp_neti
 void wifi_init_sta(void)
 {
     esp_err_t err;
+#if DEBUG_WIFI
+    sta_info_strings_t *info;
+#endif
 
     //Create global handler events for wifi
     s_wifi_event_group = xEventGroupCreate();
@@ -1187,6 +1255,13 @@ void wifi_init_sta(void)
 
     //Load default config and initialize driver
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+#if DEBUG_WIFI
+    info = get_init_config(cfg);
+    for (int i = 0; i < info->count; i++) {
+        log_mqtt(LOG_INFO, TAG, true, "Config [%d] : %s",
+            i, info->lines[i]);
+    }
+#endif
     err = esp_wifi_init(&cfg);
     if (err != ESP_OK) {
         log_mqtt(LOG_ERROR, TAG, true, "Error (%s) allocating wifi resources", esp_err_to_name(err));
@@ -1227,8 +1302,9 @@ void wifi_init_sta(void)
         return;
     }
 
-    //debug
+#if DEBUG_WIFI
     log_mqtt(LOG_INFO, TAG, false, "Connection to ...");
+#endif
 
     //Waiting for connection until WIFI_CONNECTED_BIT is activated (if init in main, it will wait..)
     EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_BIT,
@@ -1254,6 +1330,9 @@ void wifi_init_sta(void)
 void wifi_init_ap(void)
 {
     esp_err_t err;
+#if DEBUG_WIFI
+    sta_info_strings_t *info;
+#endif
 
     //Initialize netif TCP/IP
     err = esp_netif_init();
@@ -1271,6 +1350,13 @@ void wifi_init_ap(void)
 
     //Load default config and initialize driver
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+#if DEBUG_WIFI
+    info = get_init_config(cfg);
+    for (int i = 0; i < info->count; i++) {
+        log_mqtt(LOG_INFO, TAG, true, "Config [%d] : %s",
+            i, info->lines[i]);
+    }
+#endif
     err = esp_wifi_init(&cfg);
     if (err != ESP_OK) {
         log_mqtt(LOG_ERROR, TAG, true, "Error (%s) allocating wifi resources", esp_err_to_name(err));
@@ -1329,6 +1415,9 @@ void wifi_init_apsta(void)
     s_wifi_event_group = xEventGroupCreate();
 
     esp_err_t err;
+#if DEBUG_WIFI
+    sta_info_strings_t *info;
+#endif
 
     //Initialize netif TCP/IP
     err = esp_netif_init();
@@ -1346,6 +1435,13 @@ void wifi_init_apsta(void)
 
     //Load default config and initialize driver
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+#if DEBUG_WIFI
+    info = get_init_config(cfg);
+    for (int i = 0; i < info->count; i++) {
+        log_mqtt(LOG_INFO, TAG, true, "Config [%d] : %s",
+            i, info->lines[i]);
+    }
+#endif
     err = esp_wifi_init(&cfg);
     if (err != ESP_OK) {
         log_mqtt(LOG_ERROR, TAG, true, "Error (%s) allocating wifi resources", esp_err_to_name(err));
@@ -1444,6 +1540,7 @@ bool is_scanning() {
     return scanning;
 }
 
+#if DEBUG_WIFI
 void wifi_scan_task(void *pvParameter) {
 
     sta_info_strings_t *info;
@@ -1468,6 +1565,7 @@ void wifi_scan_task(void *pvParameter) {
     memset(ap_info, 0, sizeof(ap_info));
 
     // launch scan
+    //null : a scan config is possible
     err = esp_wifi_scan_start(NULL, true); // blocking
     if (err != ESP_OK) {
         log_mqtt(LOG_ERROR, TAG, true, "Scan failed: %d", err);
@@ -1514,7 +1612,9 @@ void wifi_scan_aps() {
         log_mqtt(LOG_WARN, TAG, true, "Already scanning Wifi");
     }
 }
+#endif
 
+#if DEBUG_WIFI
 void get_ap_info() {
 
     wifi_ap_record_t ap_info;
@@ -1524,9 +1624,10 @@ void get_ap_info() {
     } else {
         print_record(ap_info);
     }
-
 }
+#endif
 
+#if DEBUG_WIFI
 void wifi_scan_esp() {
 
     // Launching scan
@@ -1548,6 +1649,15 @@ void wifi_scan_esp() {
         log_mqtt(LOG_ERROR, TAG, true, "Error on getting wifi power save type %d", err);
     } else {
         log_mqtt(LOG_INFO, TAG, true, "Power save : %s", get_ps_str(type));
+    }
+
+    // get wifi band
+    wifi_band_mode_t band;
+    err = esp_wifi_get_band_mode(&band);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error on getting wifi band mode %d", err);
+    } else {
+        log_mqtt(LOG_INFO, TAG, true, "Band mode : %s", get_band_mode_str(band));
     }
 
     wifi_protocols_t protocols;
@@ -1816,21 +1926,46 @@ void wifi_scan_esp() {
 
     log_mqtt(LOG_INFO, TAG, true, "=============== Getting ESP wifi info End ===============");
 }
+#endif
+
+//wifi not used
+//esp_wifi_deinit
+//esp_wifi_stop
+//esp_wifi_restore
+//esp_wifi_disconnect
+//esp_wifi_clear_fast_connect
+//esp_wifi_set_scan_parameters
+//esp_wifi_scan_stop
+//esp_wifi_set_ps
+//esp_wifi_set_protocol
+//esp_wifi_set_bandwidth
+//esp_wifi_set_channel
+//esp_wifi_set_promiscuous_rx_cb
+//esp_wifi_set_promiscuous
+//esp_wifi_set_storage
+//esp_wifi_set_vendor_ie
+//esp_wifi_set_vendor_ie_cb
+//esp_wifi_set_max_tx_power
+//esp_wifi_get_inactive_time
+//esp_wifi_set_rssi_threshold --> interesting for signal disconnection
+//esp_wifi_config_11b_rate
+//esp_wifi_connectionless_module_set_wake_interval
+//esp_wifi_set_band
+//esp_wifi_set_band_mode
 
 //ap mode :
-
-//kick one client from aid
+//-kick one client from aid
 //esp_wifi_deauth_sta
 
-//set mac address
+//-set mac address
 //esp_wifi_set_mac
-
-//esp_wifi_ap_get_sta_list
-//esp_wifi_ap_get_sta_aid
 
 //advanced functions :
 
 //ftm : determine position with wifi; see example
+//esp_wifi_ftm_initiate_session
+//esp_wifi_ftm_end_session
+//esp_wifi_ftm_resp_set_offset
 
 //force not getting wifi sleep mode
 //esp_wifi_force_wakeup_acquire
@@ -1841,9 +1976,14 @@ void wifi_scan_esp() {
 //esp_wifi_set_country; fill all values
 
 //low level : 
+//esp_wifi_80211_tx
+//esp_wifi_register_80211_tx_cb
 //esp_wifi_config_80211_tx_rate
 //esp_wifi_config_80211_tx
-//csi config
+//esp_wifi_set_csi_rx_cb
+//esp_wifi_set_csi_config
+//esp_wifi_get_csi_config
+//esp_wifi_set_csi
 //esp_wifi_action_tx_req
 
 //disable frame protection
@@ -1857,3 +1997,74 @@ void wifi_scan_esp() {
 
 
 //esp_eap_client? (wpa_supplicant)
+
+//events & structs
+//WIFI_EVENT_SCAN_DONE & wifi_event_sta_scan_done_t
+
+//sta mode
+//WIFI_EVENT_STA_CONNECTED  & wifi_event_sta_connected_t
+//WIFI_EVENT_STA_DISCONNECTED & wifi_event_sta_disconnected_t
+//WIFI_EVENT_STA_AUTHMODE_CHANGE  & wifi_event_sta_authmode_change_t
+//WIFI_EVENT_STA_WPS_ER_PIN & wifi_event_sta_wps_er_pin_t
+//WIFI_EVENT_STA_WPS_ER_SUCCESS & wifi_event_sta_wps_er_success_t
+//WIFI_EVENT_STA_BSS_RSSI_LOW & wifi_event_bss_rssi_low_t
+//WIFI_EVENT_STA_NEIGHBOR_REP 
+//WIFI_EVENT_STA_BEACON_OFFSET_UNSTABLE 
+
+//miscaellanous
+//WIFI_EVENT_HOME_CHANNEL_CHANGE & wifi_event_home_channel_change_t
+//WIFI_EVENT_FTM_REPORT & wifi_event_ftm_report_t
+//WIFI_EVENT_ACTION_TX_STATUS & wifi_event_action_tx_status_t
+//WIFI_EVENT_ROC_DONE & wifi_event_roc_done_t
+
+//ap mode
+//WIFI_EVENT_AP_STACONNECTED & wifi_event_ap_staconnected_t --> handled
+//WIFI_EVENT_AP_STADISCONNECTED & wifi_event_ap_stadisconnected_t --> handled
+//WIFI_EVENT_AP_PROBEREQRECVED & wifi_event_ap_probe_req_rx_t
+//WIFI_EVENT_AP_WPS_RG_PIN & wifi_event_ap_wps_rg_pin_t
+//WIFI_EVENT_AP_WPS_RG_FAILED & wifi_event_ap_wps_rg_fail_reason_t
+//WIFI_EVENT_AP_WPS_RG_SUCCESS & wifi_event_ap_wps_rg_success_t
+//WIFI_EVENT_AP_WRONG_PASSWORD 
+
+//nan
+//WIFI_EVENT_NAN_SVC_MATCH
+//WIFI_EVENT_NAN_REPLIED
+//WIFI_EVENT_NAN_RECEIVE 
+//WIFI_EVENT_NDP_INDICATION 
+//WIFI_EVENT_NDP_CONFIRM 
+//WIFI_EVENT_NDP_TERMINATED 
+
+//dpp (wps but qrcode)
+//WIFI_EVENT_DPP_FAIL 
+//WIFI_EVENT_DPP_CFG_RECVD 
+//WIFI_EVENT_DPP_URI_READY 
+
+//events
+//WIFI_EVENT_WIFI_READY
+//WIFI_EVENT_CONNECTIONLESS_MODULE_WAKE_INTERVAL_START
+
+//WIFI_EVENT_STA_STOP
+//WIFI_EVENT_STA_WPS_ER_FAILED
+//WIFI_EVENT_STA_WPS_ER_TIMEOUT
+//WIFI_EVENT_STA_WPS_ER_PBC_OVERLAP
+//WIFI_EVENT_STA_BEACON_TIMEOUT
+//WIFI_EVENT_STA_NEIGHBOR_REP
+//WIFI_EVENT_STA_BEACON_OFFSET_UNSTABLE
+
+//WIFI_EVENT_AP_START
+//WIFI_EVENT_AP_STOP
+//WIFI_EVENT_AP_WPS_RG_TIMEOUT
+//WIFI_EVENT_AP_WPS_RG_PBC_OVERLAP
+
+//WIFI_EVENT_ITWT_SETUP
+//WIFI_EVENT_ITWT_TEARDOWN
+//WIFI_EVENT_ITWT_PROBE
+//WIFI_EVENT_ITWT_SUSPEND
+//WIFI_EVENT_TWT_WAKEUP
+//WIFI_EVENT_BTWT_SETUP
+//WIFI_EVENT_BTWT_TEARDOWN
+
+//WIFI_EVENT_NAN_SYNC_STARTED
+//WIFI_EVENT_NAN_SYNC_STOPPED
+
+//WIFI_EVENT_DPP_FAILED

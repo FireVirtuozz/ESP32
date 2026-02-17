@@ -147,10 +147,18 @@ static void handle_mqtt_data(const char *data, size_t len) {
 
     } else if (strcmp(cmd->valuestring, "WIFI_SCAN") == 0) {
         log_mqtt(LOG_INFO, TAG, true, "Starting Wifi Scan");
+#if DEBUG_WIFI
         wifi_scan_aps();
+#else
+        log_mqtt(LOG_INFO, TAG, true, "Wifi debug not activated");
+#endif
     } else if (strcmp(cmd->valuestring, "ESP_WIFI_INFO") == 0) {
         log_mqtt(LOG_INFO, TAG, true, "Starting ESP Scan");
+#if DEBUG_WIFI
         wifi_scan_esp();
+#else
+        log_mqtt(LOG_INFO, TAG, true, "Wifi debug not activated");
+#endif
     } else if (strcmp(cmd->valuestring, "CHIP_INFO") == 0) {
         log_mqtt(LOG_INFO, TAG, true, "Printing chip info");
         print_chip_info();

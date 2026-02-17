@@ -12,6 +12,8 @@
 #include <esp_mac.h>
 #include "mqttLib.h"
 
+#define DEBUG_WIFI 0
+
 //Initialize wifi station, waiting to get IP from router
 void wifi_init_sta(void);
 
@@ -24,6 +26,7 @@ void wifi_init_apsta(void);
 //Get the IP address of ESP
 const char* wifi_get_ip(void);
 
+#if DEBUG_WIFI
 //get info of APs around
 void wifi_scan_aps();
 
@@ -32,6 +35,7 @@ void wifi_scan_esp();
 
 //get current AP info
 void get_ap_info();
+#endif
 
 //check if there already is a wifi scan
 bool is_scanning();

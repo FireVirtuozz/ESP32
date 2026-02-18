@@ -9,7 +9,10 @@
 #include <stdarg.h>
 #include <esp_err.h>
 #include "driver/ledc.h"
+
+#if USE_LVGL_SCREEN
 #include "lcdLib.h"
+#endif
 
 #if DEBUG_GPIO || DEBUG_LEDC
 #include "soc/soc_caps.h"
@@ -718,12 +721,16 @@ void ledc_angle(int16_t angle) {
         log_mqtt(LOG_DEBUG, TAG, true, "Angle : %d, on pin %d", angle, MG_GPIO);
 
 #if WRITE_ANGLE_SCREEN
+
+#if USE_LVGL_SCREEN
+        set_bar_steer((current_angle - 90) * 200 / 180);
+#else
         //print to screen
         char tmp[30];
         snprintf(tmp, sizeof(tmp), "Angle : %d", current_angle);
         ssd1306_draw_string(tmp, 0, 2);
 #endif
-        set_bar_steer(current_angle * 100 / 180);
+#endif
     }
     
 }
@@ -773,12 +780,16 @@ void ledc_motor(int16_t motor_percent) {
             current_motor, BTS_GPIO_FWD, BTS_GPIO_BWD);
 
 #if WRITE_MOTOR_SCREEN
+
+#if USE_LVGL_SCREEN
+        set_bar_motor(current_motor);
+#else
         //print to screen
         char tmp[30];
         snprintf(tmp, sizeof(tmp), "Motor : %d", current_motor);
         ssd1306_draw_string(tmp, 0, 4);
 #endif
-        set_bar_motor(current_motor);
+#endif
     }
     
 }

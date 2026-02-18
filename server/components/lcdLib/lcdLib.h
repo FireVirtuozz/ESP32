@@ -14,8 +14,10 @@
 
 void lcd_init();
 
-void set_bar_steer(int32_t v);
+void set_bar_steer(const int32_t v);
 
-void set_bar_motor(int32_t v);
+void set_bar_motor(const int32_t v);
+
+void set_label_ip(const char* ip_str);
 
 #endif

@@ -12,19 +12,16 @@
 #include <esp_mac.h>
 #include "mqttLib.h"
 
+#define WIFI_AP_MODE 0
+#define WIFI_STA_MODE 1
+
 #define DEBUG_WIFI 0
-
-//Initialize wifi station, waiting to get IP from router
-void wifi_init_sta(void);
-
-//Initialize ESP wifi on AP
-void wifi_init_ap(void);
-
-//Initialize ESP wifi on APSTA
-void wifi_init_apsta(void);
 
 //Get the IP address of ESP
 const char* wifi_get_ip(void);
+
+//Initialize wifi according to config (apsta, sta, ap)
+void wifi_init();
 
 #if DEBUG_WIFI
 //get info of APs around

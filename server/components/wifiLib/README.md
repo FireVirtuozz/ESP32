@@ -79,3 +79,4 @@ Mesh networking:
 * Explain ESP-NETIF
 * Explain ESP-EVENT
 * Explain FreeRTOS groups
+* Store "COUNT" in NVS for numbers of known networks

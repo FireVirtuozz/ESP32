@@ -41,6 +41,9 @@
 #define EXAMPLE_LVGL_TASK_MAX_DELAY_MS 500
 #define EXAMPLE_LVGL_TASK_MIN_DELAY_MS 1000 / CONFIG_FREERTOS_HZ
 
+#define MAX_VALUE 100
+#define MIN_VALUE -100
+
 // To use LV_COLOR_FORMAT_I1, we need an extra buffer to hold the converted data
 static uint8_t oled_buffer[EXAMPLE_LCD_H_RES * EXAMPLE_LCD_V_RES / 8];
 // LVGL library is not thread-safe, this example will call LVGL APIs from different tasks, so use a mutex to protect it
@@ -48,23 +51,42 @@ static _lock_t lvgl_api_lock;
 
 lv_obj_t * bar_motor = NULL;
 lv_obj_t * bar_steer = NULL;
+lv_obj_t * label_ip = NULL;
+
+volatile int32_t ui_bar_steer = 0;
+volatile int32_t ui_bar_motor = 0;
+int32_t last_ui_bar_steer = 0;
+int32_t last_ui_bar_motor = 0;
+
+volatile uint8_t label_ip_text_changed = 0;
+volatile char label_ip_text[32] = "Waiting for Wifi startup";
 
 static const char * TAG = "lcd_library";
 
-#define MAX_VALUE 100
-#define MIN_VALUE 0
-
-void set_bar_motor(int32_t v)
+void set_bar_motor(const int32_t v)
 {
     if (bar_motor != NULL){
-        lv_bar_set_value(bar_motor, v, LV_ANIM_OFF);
+        ui_bar_motor = v;
     }
 }
 
-void set_bar_steer(int32_t v)
+void set_bar_steer(const int32_t v)
 {
     if (bar_steer != NULL){
-        lv_bar_set_value(bar_steer, v, LV_ANIM_OFF);
+        ui_bar_steer = v;
+    }
+}
+
+void set_label_ip(const char* ip_str) {
+    if (label_ip != NULL) {
+        if (strcmp((char*)label_ip_text, ip_str) != 0) {
+            strncpy((char*)label_ip_text, ip_str, sizeof(label_ip_text));
+            label_ip_text[sizeof(label_ip_text) - 1] = '\0'; //security if out of bounds
+            label_ip_text_changed = 1;
+            _lock_acquire(&lvgl_api_lock);
+            lv_label_set_text(label_ip, (char*)label_ip_text);
+            _lock_release(&lvgl_api_lock);
+        }
     }
 }
 
@@ -74,7 +96,8 @@ static void event_cb(lv_event_t * e)
 
     lv_draw_label_dsc_t label_dsc;
     lv_draw_label_dsc_init(&label_dsc);
-    label_dsc.font = LV_FONT_DEFAULT;
+    label_dsc.font = &lv_font_unscii_8;
+    //label_dsc.font = LV_FONT_DEFAULT;
 
     char buf[8];
     lv_snprintf(buf, sizeof(buf), "%d", (int)lv_bar_get_value(obj));
@@ -89,22 +112,26 @@ static void event_cb(lv_event_t * e)
     txt_area.y1 = 0;
     txt_area.y2 = txt_size.y - 1;
 
+    //indicator text area
     lv_area_t indic_area;
     lv_obj_get_coords(obj, &indic_area);
-    lv_area_set_width(&indic_area, lv_area_get_width(&indic_area) * lv_bar_get_value(obj) / MAX_VALUE);
+    lv_area_set_width(&indic_area, lv_area_get_width(&indic_area) *
+        (lv_bar_get_value(obj) - MIN_VALUE) / (MAX_VALUE - MIN_VALUE));
 
     /*If the indicator is long enough put the text inside on the right*/
     if(lv_area_get_width(&indic_area) > txt_size.x + 20) {
-        lv_area_align(&indic_area, &txt_area, LV_ALIGN_RIGHT_MID, -10, 0);
-        label_dsc.color = lv_color_white();
+        lv_area_align(&indic_area, &txt_area, LV_ALIGN_RIGHT_MID, -3, 0);
+        label_dsc.color = lv_color_white(); //black on ssd1306
     }
     /*If the indicator is still short put the text out of it on the right*/
     else {
-        lv_area_align(&indic_area, &txt_area, LV_ALIGN_OUT_RIGHT_MID, 10, 0);
-        label_dsc.color = lv_color_black();
+        lv_area_align(&indic_area, &txt_area, LV_ALIGN_OUT_RIGHT_MID, 3, 0);
+        label_dsc.color = lv_color_black(); //white on ssd1306
     }
+    
     label_dsc.text = buf;
     label_dsc.text_local = true;
+
     lv_layer_t * layer = lv_event_get_layer(e);
     lv_draw_label(layer, &label_dsc, &txt_area);
 }
@@ -120,23 +147,52 @@ static void event_cb(lv_event_t * e)
 void example_lvgl_demo_ui(lv_display_t *disp)
 {
     lv_obj_t *scr = lv_display_get_screen_active(disp);
-    lv_obj_t *label = lv_label_create(scr);
-    lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR); /* Circular scroll */
-    lv_label_set_text(label, "Hello Espressif, Hello LVGL.");
+    label_ip = lv_label_create(scr);
+    lv_label_set_long_mode(label_ip, LV_LABEL_LONG_SCROLL_CIRCULAR); /* Circular scroll */
+    lv_label_set_text(label_ip, (char*)label_ip_text);
+    
     /* Size of the screen (if you use rotation 90 or 270, please use lv_display_get_vertical_resolution) */
-    lv_obj_set_width(label, lv_display_get_horizontal_resolution(disp));
-    lv_obj_align(label, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_set_width(label_ip, lv_display_get_horizontal_resolution(disp));
+    lv_obj_align(label_ip, LV_ALIGN_TOP_MID, 0, 0);
 
     bar_motor = lv_bar_create(scr);
     lv_bar_set_range(bar_motor, MIN_VALUE, MAX_VALUE);
-    lv_obj_set_size(bar_motor, 100, 20);
-    lv_obj_align_to(bar_motor, label, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
+    lv_obj_set_size(bar_motor, 100, 10);
+
+    /* white background bar (black on ssd1306) */
+    lv_obj_set_style_bg_color(bar_motor, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(bar_motor, LV_OPA_COVER, LV_PART_MAIN);
+
+    /* black bar (white on ssd1306)*/
+    lv_obj_set_style_bg_color(bar_motor, lv_color_black(), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(bar_motor, LV_OPA_COVER, LV_PART_INDICATOR);
+
+    /* black border (white on ssd1306) */
+    lv_obj_set_style_border_width(bar_motor, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(bar_motor, lv_color_black(), LV_PART_MAIN);
+    lv_obj_set_style_border_opa(bar_motor, LV_OPA_COVER, LV_PART_MAIN);
+
+    lv_obj_align_to(bar_motor, label_ip, LV_ALIGN_OUT_BOTTOM_MID, 0, 5);
     lv_obj_add_event_cb(bar_motor, event_cb, LV_EVENT_DRAW_MAIN_END, NULL);
     set_bar_motor(0);
 
     bar_steer = lv_bar_create(scr);
     lv_bar_set_range(bar_steer, MIN_VALUE, MAX_VALUE);
-    lv_obj_set_size(bar_steer, 100, 20);
+    lv_obj_set_size(bar_steer, 100, 8);
+
+    /* white background bar (black on ssd1306) */
+    lv_obj_set_style_bg_color(bar_steer, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(bar_steer, LV_OPA_COVER, LV_PART_MAIN);
+
+    /* black bar (white on ssd1306)*/
+    lv_obj_set_style_bg_color(bar_steer, lv_color_black(), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(bar_steer, LV_OPA_COVER, LV_PART_INDICATOR);
+
+    /* black border (white on ssd1306) */
+    lv_obj_set_style_border_width(bar_steer, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(bar_steer, lv_color_black(), LV_PART_MAIN);
+    lv_obj_set_style_border_opa(bar_steer, LV_OPA_COVER, LV_PART_MAIN);
+
     lv_obj_align_to(bar_steer, bar_motor, LV_ALIGN_OUT_BOTTOM_MID, 0, 5);
     lv_obj_add_event_cb(bar_steer, event_cb, LV_EVENT_DRAW_MAIN_END, NULL);
     set_bar_steer(0);
@@ -224,6 +280,24 @@ static void example_lvgl_port_task(void *arg)
     uint32_t time_till_next_ms = 0;
     while (1) {
         _lock_acquire(&lvgl_api_lock);
+
+        if (ui_bar_motor != last_ui_bar_motor) {
+            lv_bar_set_value(bar_motor, ui_bar_motor, LV_ANIM_OFF);
+            last_ui_bar_motor = ui_bar_motor;
+        }
+        
+        if (ui_bar_steer != last_ui_bar_steer) {
+            lv_bar_set_value(bar_steer, ui_bar_steer, LV_ANIM_OFF);
+            last_ui_bar_steer = ui_bar_steer;
+        }
+
+        /*
+        if (label_ip_text_changed) {
+            lv_label_set_text(label_ip, (char*)label_ip_text);
+            label_ip_text_changed = 0;
+        }
+            */
+
         time_till_next_ms = lv_timer_handler();
         _lock_release(&lvgl_api_lock);
         // in case of triggering a task watch dog time out

@@ -44,17 +44,15 @@ typedef struct {
 } sta_info_strings_t;
 #endif
 
+#define SSID_MAX_LEN 32
+#define PASS_MAX_LEN 64
+
 //wifi known networks
-typedef struct {
-    const char* ssid;
-    const char* password;
+typedef struct wifi_network_st {
+    char ssid[SSID_MAX_LEN];
+    char password[PASS_MAX_LEN];
     uint8_t priority;
 } wifi_network_t;
-
-wifi_network_t known_networks[] = {
-    {"freebox_isidor", "casanova1664", 0}, 
-    {"tchomec", "BahOuais", 1},
-};
 
 static bool scanning = false;
 
@@ -950,12 +948,54 @@ USEFUL FUNCTIONS
 =====================================================================
 */
 
+#if WIFI_STA_MODE
 static void first_scan() {
 
     esp_err_t err;
 #if DEBUG_WIFI
     sta_info_strings_t *info;
 #endif
+
+    /*
+    To save your NVS wifi credentials, uncomment this and put your credentials
+    in "networks_put" and it will be store in encrypted nvs.
+
+    wifi_network_t networks_put[] = {
+        {
+            "Example_SSID", 
+            "Example_PASSWORD", 
+            8 //priority (higher means less priority)
+        },
+    };
+
+    char key_put[16];
+    for (int i = 0; i < sizeof(networks_put)/sizeof(networks_put[0]); i++) {
+        snprintf(key_put, sizeof(key_put), "SSID_%u", i);
+        err = save_nvs_str(key_put, networks_put[i].ssid);
+        if (err != ESP_OK) {
+            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) on saving %s to NVS",
+                esp_err_to_name(err), key_put);
+        } else {
+            log_mqtt(LOG_INFO, TAG, true, "SSID %s saved to NVS to %s",
+                networks_put[i].ssid, key_put);
+        }
+        
+        snprintf(key_put, sizeof(key_put), "PASS_%u", i);
+        err = save_nvs_str(key_put, networks_put[i].password);
+        if (err != ESP_OK) {
+            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) on saving %s to NVS",
+                esp_err_to_name(err), key_put);
+        }
+
+        snprintf(key_put, sizeof(key_put), "PRIORITY_%u", i);
+        err = save_nvs_int(key_put, networks_put[i].priority);
+        if (err != ESP_OK) {
+            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) on saving %s to NVS",
+                esp_err_to_name(err), key_put);
+        }
+    }
+    log_mqtt(LOG_INFO, TAG, false, "Networks saved to NVS");
+    */
 
     log_mqtt(LOG_INFO, TAG, false, "=============== First scan APs ===============");
 
@@ -1012,13 +1052,40 @@ static void first_scan() {
     log_mqtt(LOG_INFO, TAG, true, "Total APs scanned = %u, actual AP number ap_info holds = %u", ap_count, number);
 #endif
 
+    wifi_network_t *known_networks;
+    known_networks = (wifi_network_t*)malloc(sizeof(struct wifi_network_st)*10);
+    uint8_t count = 0;
+    char key[16];
+    for (uint8_t i = 0; i < 10; i++) {
+        snprintf(key, sizeof(key), "SSID_%u", i);
+        err = load_nvs_str(key, known_networks[i].ssid);
+        
+        if (err != ESP_OK || (strcmp(known_networks[i].ssid,"") == 0)) {
+            break;
+        } //if ssid does not exists on nvs, others don't
+        else {
+            log_mqtt(LOG_INFO, TAG, true, "Network %s loaded to %s", known_networks[i].ssid, key);
+        }
+        
+        snprintf(key, sizeof(key), "PASS_%u", i);
+        load_nvs_str(key, known_networks[i].password);
+
+        snprintf(key, sizeof(key), "PRIORITY_%u", i);
+        int prio;
+        load_nvs_int(key, &prio);
+        known_networks[i].priority = prio;
+
+        count++;
+    }
+    log_mqtt(LOG_INFO, TAG, true, "Known networks found : %d", count);
+
     wifi_network_t *wifi_credentials = NULL;
     //go through each record and compare ssid
     for (int i = 0; i < number; i++) {
 #if DEBUG_WIFI
         print_record(ap_info[i]);
 #endif
-        for (int j = 0; j < sizeof(known_networks) / sizeof(known_networks[0]); j++) {
+        for (int j = 0; j < count; j++) {
             if (strcmp((const char *)ap_info[i].ssid, known_networks[j].ssid) == 0) {
                 if (wifi_credentials == NULL) {
                     wifi_credentials = &known_networks[j];
@@ -1032,6 +1099,7 @@ static void first_scan() {
 
     if (wifi_credentials == NULL) {
         log_mqtt(LOG_ERROR, TAG, true, "No network found");
+        free(known_networks);
         return;
     }
 
@@ -1055,15 +1123,20 @@ static void first_scan() {
     strncpy((char *)wifi_sta_config.sta.password,
         (const char *)wifi_credentials->password, sizeof(wifi_sta_config.sta.password));
 
+
     //Apply station config to ESP
     err = esp_wifi_set_config(WIFI_IF_STA, &wifi_sta_config);
     if (err != ESP_OK) {
         log_mqtt(LOG_ERROR, TAG, true, "Error (%s) setting wifi config", esp_err_to_name(err));
+        free(known_networks);
         return;
     }
 
+    free(known_networks);
+
     log_mqtt(LOG_INFO, TAG, false, "=============== First Scan End ===============");
 }
+#endif
 
 /**
  * Event handler:
@@ -1132,6 +1205,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
     }
 }
 
+#if WIFI_AP_MODE
 /* Initialize simpel soft AP config netif*/
 esp_netif_t *wifi_init_softap_netif(void)
 {
@@ -1161,7 +1235,9 @@ esp_netif_t *wifi_init_softap_netif(void)
 
     return esp_netif_ap;
 }
+#endif
 
+#if WIFI_AP_MODE && WIFI_STA_MODE
 //Set DNS address of ESP AP to transmit the one from ESP STA to clients connected to ESP AP
 //DNS : Domain Name System; Converts domain name to IP; Without DNS, use only IP;
 //NAT : Network Address Translation; Allows private IPs to access Internet with only one public IP;
@@ -1219,7 +1295,9 @@ static void softap_set_dns_addr(esp_netif_t *esp_netif_ap, esp_netif_t *esp_neti
         log_mqtt(LOG_ERROR, TAG, true, "Error (%s) starting DHCP", esp_err_to_name(err));
     }
 }
+#endif
 
+#if !WIFI_AP_MODE && WIFI_STA_MODE
 /**
  * Initialize ESP WiFi in station mode
  * -Initialize NVS to store WIFI data --> done in nvs_init
@@ -1229,7 +1307,7 @@ static void softap_set_dns_addr(esp_netif_t *esp_netif_ap, esp_netif_t *esp_neti
  * -Configure wifi station (STA) and start it
  * -Wait wait until IP received
  */
-void wifi_init_sta(void)
+static void wifi_init_sta(void)
 {
     esp_err_t err;
 #if DEBUG_WIFI
@@ -1317,7 +1395,9 @@ void wifi_init_sta(void)
         return;
     }
 }
+#endif
 
+#if WIFI_AP_MODE && !WIFI_STA_MODE
 /**
  * Initialize ESP WiFi in station mode
  * -Initialize NVS to store WIFI data --> done in nvs_init
@@ -1327,7 +1407,7 @@ void wifi_init_sta(void)
  * -Configure wifi station (STA) and start it
  * -Wait wait until IP received
  */
-void wifi_init_ap(void)
+static void wifi_init_ap(void)
 {
     esp_err_t err;
 #if DEBUG_WIFI
@@ -1400,7 +1480,9 @@ void wifi_init_ap(void)
     log_mqtt(LOG_INFO, TAG, true, "Wifi Soft-AP initialized; SSID : %s, PASS : %s, IP : " IPSTR,
         ESP_SSID, ESP_PASS, s_ip_str);
 }
+#endif
 
+#if WIFI_AP_MODE && WIFI_STA_MODE
 /**
  * Initialize ESP WiFi in station mode
  * -Initialize NVS to store WIFI data --> done in nvs_init
@@ -1410,7 +1492,7 @@ void wifi_init_ap(void)
  * -Configure wifi station (STA) and start it
  * -Wait wait until IP received
  */
-void wifi_init_apsta(void)
+static void wifi_init_apsta()
 {
     s_wifi_event_group = xEventGroupCreate();
 
@@ -1526,6 +1608,19 @@ void wifi_init_apsta(void)
     if (esp_netif_napt_enable(esp_netif_ap) != ESP_OK) {
         log_mqtt(LOG_ERROR, TAG, true, "NAPT not enabled on the netif: %p", esp_netif_ap);
     }
+}
+#endif
+
+void wifi_init() {
+#if WIFI_AP_MODE && WIFI_STA_MODE
+    wifi_init_apsta();
+#elif WIFI_AP_MODE
+    wifi_init_ap();
+#elif WIFI_STA_MODE
+    wifi_init_sta();
+#else
+    log_mqtt(LOG_WARN, TAG, true, "No wifi config selected");
+#endif
 }
 
 /**

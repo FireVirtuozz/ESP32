@@ -26,3 +26,31 @@ Namespace : Using default one, `storage`
 
 Partition (custom one could be used) -> Namespace -> Key : Val
 
+**Encryption** 
+
+menuconfig :
+- Security Features -> Enable Flash Encryption
+- Partition table -> offset 0xD000 (bootloader's size increase with flash encryption)
+- NVS -> Enable NVS encryption
+
+Add partition `nvs_keys` in custom partition, erase it if already used. Make sur the encryption is in Development mode.
+
+```bash
+# nvs_keys, data, nvs_keys,  , 0x1000, encrypted
+parttool.py erase_partition --partition-subtype nvs_keys
+```
+
+To flash, use
+
+
+```bash
+idf.py encrypted-flash
+```
+
+How it works?
+
+`nvs_flash_init` automatically generates the XTS encryption keys 
+
+it is possible to do it manually. See in 
+https://github.com/espressif/esp-idf/tree/97d95853572ab74f4769597496af9d5fe8b6bdea/examples/security/flash_encryption
+

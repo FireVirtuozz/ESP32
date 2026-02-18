@@ -17,7 +17,7 @@
 
 #define PORT 3333
 
-#define UDP_COMMANDS_TIMEOUT 500000 //us, no more than 1s = 1000000
+#define UDP_COMMANDS_TIMEOUT 900000 //us, no more than 1s = 1000000
 
 //TODO : IPv6 support, length commands buffer check, security
 

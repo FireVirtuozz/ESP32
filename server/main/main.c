@@ -7,13 +7,15 @@
 #include "efuseLib.h"
 #include "otaLib.h"
 #include "mqttLib.h"
-#include "screenLib.h"
-#include "lcdLib.h"
 #include <stdarg.h>
 
-//static const char * TAG = "main";
+#if USE_LVGL_SCREEN
+#include "lcdLib.h"
+#else
+#include "screenLib.h"
+#endif
 
-#define IN_AP_MODE 1
+//static const char * TAG = "main";
 
 void app_main()
 {
@@ -23,36 +25,30 @@ void app_main()
 #endif
     //init_queue_mqtt();
 
-    //ESP_LOGI(TAG, "[APP] Startup..");
-    //ESP_LOGI(TAG, "[APP] Free memory: %" PRIu32 " bytes", esp_get_free_heap_size());
-    //ESP_LOGI(TAG, "[APP] IDF version: %s", esp_get_idf_version());
+#if USE_LVGL_SCREEN
+    lcd_init();
+#else
+    ssd1306_setup(); //init oled screen
+    screen_full_off();
+#endif
 
     esp_log_level_set("*", ESP_LOG_INFO);
 
     nvs_init(); //init memory first, wifi/led needs this..
 
-    #if IN_AP_MODE
-        wifi_init_ap();
-        //ws_server_init();
-        udp_server_init();
-    #else
-        wifi_init_sta();
-        udp_server_init();
-        //mqtt_app_start();
-        //ws_server_init();
-    #endif
+    wifi_init();
+    udp_server_init();
+    //mqtt_app_start();
+    //ws_server_init();
 
     //wifi_init_apsta(); useful only if esp32 = router
 
-    //ssd1306_setup(); //init oled screen
-
-    //screen_full_off();
-    lcd_init();
-
     init_all_gpios();
 
-    //ssd1306_draw_string(wifi_get_ip(), 0, 0);
-
-    //print_esp_info_ledc();
+#if USE_LVGL_SCREEN
+    set_label_ip(wifi_get_ip());
+#else
+    ssd1306_draw_string(wifi_get_ip(), 0, 0);
+#endif
 
 }

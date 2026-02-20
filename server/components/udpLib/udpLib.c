@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include "ledLib.h"
 #include "mqttLib.h"
+#include "cmdLib.h"
 
 #include "lwip/err.h"
 #include "lwip/sockets.h"
@@ -135,7 +136,7 @@ static char * source_ip_to_str(int val) {
 
 static void udp_server_task(void *pvParameters)
 {
-    int8_t temp_buffer[8];
+    int8_t temp_buffer[10];
     int addr_family = (int)pvParameters;
     int ip_protocol = 0;
     struct sockaddr_in6 dest_addr;
@@ -387,45 +388,59 @@ static void udp_server_task(void *pvParameters)
                 log_mqtt(LOG_INFO, TAG, true, "Port : %d", ntohs(source_addr_ip4->sin_port));
                 
 #endif
-
-                uint8_t type = temp_buffer[0];
+                esp_err_t esp_err;
+                command_type_t type;
+                esp_err = get_cmd_type(temp_buffer, &type);
+                if (esp_err != ESP_OK) {
+                    log_mqtt(LOG_ERROR, TAG, true, "Error (%s) getting command type", 
+                            esp_err_to_name(esp_err));
+                }
 #if INFO_LOGS
                 nb_packets_received++;
                 log_mqtt(LOG_INFO, TAG, false, "Received %d bytes: packet number : %d",
                     len, nb_packets_received);
 #endif
                 switch (type) {
-                    case 0: //gamepad type control
+                    case CMD_GAMEPAD: //gamepad type control
+
+                        gamepad_t gamepad;
+                        esp_err = gamepad_from_buffer(temp_buffer, &gamepad);
+                        if (esp_err != ESP_OK) {
+                            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) getting gamepad from buffer", 
+                                    esp_err_to_name(esp_err));
+                            break;
+                        }
 #if INFO_LOGS
-                        log_mqtt(LOG_INFO, TAG, false, "Gamepad axes raw: [%d,%d,%d,%d,%d,%d]", 
-                            temp_buffer[1], temp_buffer[2], temp_buffer[3],
-                            temp_buffer[4], temp_buffer[5], temp_buffer[6]);
-                        log_mqtt(LOG_INFO, TAG, false, "Gamepad button raw: [%d,%d,%d,%d,%d,%d,%d,%d]", 
-                            (temp_buffer[7] & 0x01) ? 1 : 0, (temp_buffer[7] & 0x02) ? 1 : 0,
-                            (temp_buffer[7] & 0x04) ? 1 : 0, (temp_buffer[7] & 0x08) ? 1 : 0,
-                            (temp_buffer[7] & 0x10) ? 1 : 0, (temp_buffer[7] & 0x20) ? 1 : 0,
-                            (temp_buffer[7] & 0x40) ? 1 : 0, (temp_buffer[7] & 0x80) ? 1 : 0);
+                        dump_gamepad(&gamepad);
 #endif
 
-                        ledc_angle((int16_t)((temp_buffer[1] + 100) * 9 / 10)); //left_x
-            
-                        if (temp_buffer[6] > -95) {
-                            ledc_motor((int16_t)((temp_buffer[6] + 100) / 2)); //right_trigger
-                        } else if (temp_buffer[5] > -95) {
-                            ledc_motor((int16_t)((temp_buffer[5] + 100) / (-2))); //left_trigger
-                        } else {
-                            ledc_motor(0);
+                        esp_err = apply_gamepad_commands(&gamepad);
+                        if (esp_err != ESP_OK) {
+                            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) applying gamepad commands", 
+                                    esp_err_to_name(esp_err));
+                            break;
                         }
                         break;
                     
-                    case 1: //android type control
+                    case CMD_ANDROID: //android type control
+
+                        android_t android;
+                        esp_err = android_from_buffer(temp_buffer, &android);
+                        if (esp_err != ESP_OK) {
+                            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) getting android from buffer", 
+                                    esp_err_to_name(esp_err));
+                            break;
+                        }
 #if INFO_LOGS
-                        log_mqtt(LOG_INFO, TAG, false, "Android axes raw: [%d,%d]", 
-                            temp_buffer[1], temp_buffer[2]);
+                        dump_android(&android);
 #endif
                         
-                        ledc_angle((int16_t)((temp_buffer[2] + 100) * 9 / 10)); //direction
-                        ledc_motor((int16_t)(temp_buffer[1])); //accel
+                        esp_err = apply_android_commands(&android);
+                        if (esp_err != ESP_OK) {
+                            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) applying android commands", 
+                                    esp_err_to_name(esp_err));
+                            break;
+                        }
                         
                         break;
                     

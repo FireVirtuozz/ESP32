@@ -1162,7 +1162,9 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
     
     //if wifi starting event
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
+#if WIFI_STA_MODE
         first_scan();
+#endif
         err = esp_wifi_connect(); // Start wifi connection : send request to router
         if (err != ESP_OK) {
             log_mqtt(LOG_ERROR, TAG, true, "Error (%s) connecting wifi", esp_err_to_name(err));

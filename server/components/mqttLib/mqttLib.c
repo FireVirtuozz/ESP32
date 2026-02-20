@@ -29,15 +29,12 @@
 #include "wifiLib.h"
 #include "screenLib.h"
 #include "cJSON.h"
+#include "cmdLib.h"
 
 //mqtt through websocket secure
 
 //command to add dependency
 //idf.py add-dependency espressif/mqtt
-
-#define BROKER_URI "wss://1fa8d24b9815409da211d026bc02b50f.s1.eu.hivemq.cloud:8884/mqtt"
-#define BROKER_USER "ESP32"
-#define BROKER_PASS "BigEspGigaChad32"
 
 #define QUEUE_SIZE 256
 
@@ -196,24 +193,25 @@ static void handle_mqtt_data(const char *data, size_t len) {
 
 static void handle_mqtt_controller(const char *data, size_t len) {
     int8_t *payload = (int8_t *)data; /*from -128 to 127*/
-    log_mqtt(LOG_DEBUG, TAG, false, "Gamepad axes raw: [%d,%d,%d,%d,%d,%d]", 
-         payload[0], payload[1], payload[2], payload[3], payload[4], payload[5]);
-    log_mqtt(LOG_DEBUG, TAG, false, "Gamepad button raw: [%d,%d,%d,%d,%d,%d,%d,%d]", 
-        (payload[6] & 0x01) ? 1 : 0, (payload[6] & 0x02) ? 1 : 0,
-        (payload[6] & 0x04) ? 1 : 0, (payload[6] & 0x08) ? 1 : 0,
-        (payload[6] & 0x10) ? 1 : 0, (payload[6] & 0x20) ? 1 : 0,
-        (payload[6] & 0x40) ? 1 : 0, (payload[6] & 0x80) ? 1 : 0);
 
-    ledc_angle((int16_t)((payload[0] + 100) * 9 / 10)); /*left_x*/
-    
-    if (payload[5] > -95) {
-        ledc_motor((int16_t)((payload[5] + 100) / 2)); //right_trigger
-    } else if (payload[4] > -95) {
-        ledc_motor((int16_t)((payload[4] + 100) / (-2))); //left_trigger
-    } else {
-        ledc_motor(0);
+    esp_err_t err;
+    gamepad_t gamepad;
+    err = gamepad_from_buffer(payload, &gamepad);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) getting gamepad from buffer", 
+                esp_err_to_name(err));
+        return;
     }
-    
+
+    dump_gamepad(&gamepad);
+
+    err = apply_gamepad_commands(&gamepad);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) applying gamepad commands", 
+                esp_err_to_name(err));
+        return;
+    }
+
 }
 
 
@@ -390,7 +388,7 @@ void log_mqtt(mqtt_log_level lvl, const char * tag, bool mqtt, const char* fmt, 
     }
 }
 
-void mqtt_app_start()
+void mqtt_start()
 {
 
     if (initialized) {
@@ -398,17 +396,71 @@ void mqtt_app_start()
     }
     initialized = 1;
 
+    esp_err_t err;
+
+/*
+    Code to store credentials, uncomment, put yours & flash to encrypt your credentials on NVS.
+    Then, you can remove this part.
+
+    const char * mqtt_uri_hivemq = "example_uri";
+    const char * mqtt_username_hivemq = "example_username";
+    const char * mqtt_password_hivemq = "example_password";
+    err = save_nvs_str("MQTT_URI", mqtt_uri_hivemq);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) on saving MQTT_URI to NVS",
+            esp_err_to_name(err));
+    } else {
+        log_mqtt(LOG_INFO, TAG, true, "%s saved to NVS to MQTT_URI",
+            mqtt_uri_hivemq);
+    }
+    err = save_nvs_str("MQTT_USERNAME", mqtt_username_hivemq);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) on saving MQTT_USERNAME to NVS",
+            esp_err_to_name(err));
+    } else {
+        log_mqtt(LOG_INFO, TAG, true, "%s saved to NVS to MQTT_USERNAME",
+            mqtt_username_hivemq);
+    }
+    err = save_nvs_str("MQTT_PASSWORD", mqtt_password_hivemq);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) on saving MQTT_PASSWORD to NVS",
+            esp_err_to_name(err));
+    } else {
+        log_mqtt(LOG_INFO, TAG, true, "%s saved to NVS to MQTT_PASSWORD",
+            mqtt_password_hivemq);
+    }
+*/
+
+    char broker_uri[100];
+    char broker_username[32];
+    char broker_password[32];
+    err = load_nvs_str("MQTT_URI", broker_uri);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) on loading MQTT_URI to NVS",
+            esp_err_to_name(err));
+    } else {
+        log_mqtt(LOG_INFO, TAG, true, "MQTT_URI loaded");
+    }
+    err = load_nvs_str("MQTT_USERNAME", broker_username);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) on loading MQTT_USERNAME to NVS",
+            esp_err_to_name(err));
+    }
+    err = load_nvs_str("MQTT_PASSWORD", broker_password);
+    if (err != ESP_OK) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) on loading MQTT_PASSWORD to NVS",
+            esp_err_to_name(err));
+    }
+    
+
     const esp_mqtt_client_config_t mqtt_cfg = {
-        .broker.address.uri = BROKER_URI,
-        .credentials.username = BROKER_USER,
-        .credentials.authentication.password = BROKER_PASS,
+        .broker.address.uri = broker_uri,
+        .credentials.username = broker_username,
+        .credentials.authentication.password = broker_password,
         .broker.verification.crt_bundle_attach = esp_crt_bundle_attach,
         .network.disable_auto_reconnect = false,
     };
 
-    //ESP_LOGI(TAG, "[APP] Free memory: %" PRIu32 " bytes", esp_get_free_heap_size());
-    log_mqtt(LOG_DEBUG, TAG, false,
-            "[APP] Free memory: %" PRIu32 " bytes", esp_get_free_heap_size());
     esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt_cfg);
     /* The last argument may be used to pass data to the event handler, in this example mqtt_event_handler */
     esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);

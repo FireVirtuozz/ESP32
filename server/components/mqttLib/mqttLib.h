@@ -42,7 +42,7 @@ typedef enum {
 void init_queue_mqtt();
 
 //init mqtt
-void mqtt_app_start();
+void mqtt_start();
 
 //new log
 void log_mqtt(mqtt_log_level lvl, const char * tag, bool mqtt, const char* fmt, ...);

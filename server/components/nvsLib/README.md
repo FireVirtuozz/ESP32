@@ -7,11 +7,11 @@ By default, the NVS is allocating in RAM. If you want it to be on the SPIRAM, if
 Add a line *nvs* in partition.
 
 ## TODO : 
-- NVS Encryption
 - NVS for each int types, not only i32
 - Special default value
 - For performance, save function for a value that could be commit 1/100 changes for instance
  (on ledc better)
+- NVS Count for known networks 
 
 ## Components used
 
@@ -42,15 +42,20 @@ parttool.py erase_partition --partition-subtype nvs_keys
 
 To flash, use
 
-
 ```bash
 idf.py encrypted-flash
 ```
 
 How it works?
 
-`nvs_flash_init` automatically generates the XTS encryption keys 
+`nvs_flash_init` automatically generates the AES-256 XTS encryption keys.
 
-it is possible to do it manually. See in 
+It is possible to do it manually. See in 
 https://github.com/espressif/esp-idf/tree/97d95853572ab74f4769597496af9d5fe8b6bdea/examples/security/flash_encryption
+
+**AES-256** : It is an algorithm (*cipher*) to encrypt the data & makes it unreadable using the key. To get the data, it has to do the invert algorithm, but in order to work the key is needed. These keys are stored in the partition `nvs_keys`. When a `nvs_get / nvs_set` is done, it automatically do these steps.
+
+**XTS** : Encryption mode for drives & flash. AES encrypts data in blocks, and XTS incorporates the flash block address as a *tweak* so that identical blocks stored at different locations are encrypted differently.
+
+If someone wants to get those keys, he has to look into `nvs_keys`. However, with flash encryption, partition are also encrypted so it is very hard to get the data. The other way is to flash another firmware and do an `nvs_get` operation. To prevent this, *secure boot* has to be enabled.
 

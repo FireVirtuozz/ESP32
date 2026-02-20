@@ -133,23 +133,23 @@ client.on("message", (topic, payload) => {
 
   if (topic.startsWith("windowscontrols/gamepad")) {
     // byte array
-    if (data.length < 7) return; // security
+    //if (data.length < 7) return;
 
     const axes = [
-      signedByte(data[0]), // LEFT_X
-      signedByte(data[1]), // LEFT_Y
-      signedByte(data[2]), // RIGHT_X
-      signedByte(data[3]), // RIGHT_Y
-      signedByte(data[4]), // LEFT_TRIGGER
-      signedByte(data[5]), // RIGHT_TRIGGER
+      signedByte(data[2]), // LEFT_X
+      signedByte(data[3]), // LEFT_Y
+      signedByte(data[4]), // RIGHT_X
+      signedByte(data[5]), // RIGHT_Y
+      signedByte(data[6]), // LEFT_TRIGGER
+      signedByte(data[7]), // RIGHT_TRIGGER
     ];
 
     // Buttons 
     const buttons = {
-      a: (data[6] & 0b0001) !== 0,
-      b: (data[6] & 0b0010) !== 0,
-      x: (data[6] & 0b0100) !== 0,
-      y: (data[6] & 0b1000) !== 0
+      a: (data[8] & 0b0001) !== 0,
+      b: (data[8] & 0b0010) !== 0,
+      x: (data[8] & 0b0100) !== 0,
+      y: (data[8] & 0b1000) !== 0
     };
 
     // Update axes

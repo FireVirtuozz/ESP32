@@ -25,6 +25,8 @@ void app_main()
 #endif
     //init_queue_mqtt();
 
+    nvs_init(); //init memory first, wifi/led needs this..
+
 #if USE_LVGL_SCREEN
     lcd_init();
 #else
@@ -34,11 +36,9 @@ void app_main()
 
     esp_log_level_set("*", ESP_LOG_INFO);
 
-    nvs_init(); //init memory first, wifi/led needs this..
-
     wifi_init();
     udp_server_init();
-    //mqtt_app_start();
+    //mqtt_start();
     //ws_server_init();
 
     //wifi_init_apsta(); useful only if esp32 = router

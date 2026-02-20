@@ -1,9 +1,32 @@
 # Project for ESP32
 
+This project is aiming to learn all capacities of ESP32 with ESP-IDF framework.
+It is implemented:
+
+- Wifi library : AP / STA / APSTA config & encrypted NVS credentials & scan & debug
+- WS library : simple WS server to catch WS commands
+- UDP library : UDP IPv4 server to catch UDP commands & debug
+- OTA library : flash through wifi, using github .bin version check
+- Screen library : minimalist screen controller for SSD1306
+- LCD library : screen controller of SSD1306 for complex animations
+- NVS library :  Load & Save String, int (int32), blob (uint8) to NVS encrypted
+- LED library : GPIO debug & control, generate PWM with LEDC, fade PWMs
+- MQTT library : Handle MQTT publish logs & subscribe topics, using HiveMQ; Queue to send logs when Wifi is up.
+
 # Upgrades
 
-- Debug functions for everything
-- ifndef for each non-used librairies, edit with KConfig
+- Function in cmdLib to convert gamepad -> pwm safely (not cast..) & avoid redundance
+- Logs through selected network (udp, ws, mqtt..)
+- Ping & watchdog to reconnect
+- Heap & stack & core monitoring
+- Add new sensors (MPU, Hall, HC‑SR04)
+- Voltage, current & temperature monitoring
+- Network benchmark : ESP-NOW, Wifi-Mesh, LoRa
+- Ifndef for each non-used librairies, edit with KConfig
+- Sleep modes
+- Add LiDAR sensor & AI calculus through server for autonomous drive
+- SecureBoot : protect from unknown firmware flashes (todo at the end, irreversible & hard to implement, especially for OTA flash)
+- Details & debug about : OTA, MQTT, WS, Screen & LCD, Wifi low-level
 
 # Menuconfig
 

@@ -12,8 +12,8 @@
 #include <esp_mac.h>
 #include "mqttLib.h"
 
-#define WIFI_AP_MODE 0
-#define WIFI_STA_MODE 1
+#define WIFI_AP_MODE 1
+#define WIFI_STA_MODE 0
 
 #define DEBUG_WIFI 0
 

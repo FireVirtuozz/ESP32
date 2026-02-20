@@ -977,6 +977,4 @@ other functions for gpio
 //gpio_sleep_set_direction
 //gpio_sleep_set_pull_mode
 
-//gpio_dump_io_configuration -> for file (stdout..)
-
 //rtc gpios : for sleep-active gpios

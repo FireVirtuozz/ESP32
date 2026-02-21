@@ -15,7 +15,6 @@ It is implemented:
 
 # Upgrades
 
-- Function in cmdLib to convert gamepad -> pwm safely (not cast..) & avoid redundance
 - Logs through selected network (udp, ws, mqtt..)
 - Ping & watchdog to reconnect
 - Heap & stack & core monitoring

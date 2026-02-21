@@ -11,6 +11,8 @@
 #include "lwip/sys.h"
 #include <lwip/netdb.h>
 
+#include "freertos/idf_additions.h"
+
 #define TIME_STATS 0 //for time statistics
 #if TIME_STATS
 #include "esp_timer.h"
@@ -468,5 +470,9 @@ static void udp_server_task(void *pvParameters)
  */
 void udp_server_init()
 {
-    xTaskCreatePinnedToCore(udp_server_task, "udp_server", 8192, (void*)AF_INET, 15, NULL, 1);
+    BaseType_t res = xTaskCreatePinnedToCore(udp_server_task, "udp_server", 8192, (void*)AF_INET, 15, NULL, 0);
+    if (res != pdPASS) {
+        log_mqtt(LOG_ERROR, TAG, true, "Error (%d) create UDP task on core 1", res);
+    }
+    
 }

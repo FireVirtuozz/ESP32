@@ -7,6 +7,7 @@
 #include "efuseLib.h"
 #include "otaLib.h"
 #include "mqttLib.h"
+#include "logLib.h"
 #include <stdarg.h>
 
 #if USE_LVGL_SCREEN
@@ -19,6 +20,7 @@
 
 void app_main()
 {
+    log_init();
     
 #if DEBUG_GPIO
     dump_gpio_stats();
@@ -33,8 +35,6 @@ void app_main()
     ssd1306_setup(); //init oled screen
     screen_full_off();
 #endif
-
-    esp_log_level_set("*", ESP_LOG_INFO);
 
     wifi_init();
     udp_server_init();

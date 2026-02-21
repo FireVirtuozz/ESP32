@@ -20,6 +20,7 @@
 #include "esp_lcd_panel_vendor.h"
 #include "lvgl.h"
 #include "esp_timer.h"
+#include "freertos/idf_additions.h"
 
 #define I2C_BUS_PORT  0
 #define EXAMPLE_LCD_PIXEL_CLOCK_HZ    (400 * 1000)
@@ -402,7 +403,9 @@ void lcd_init()
     ESP_ERROR_CHECK(esp_timer_start_periodic(lvgl_tick_timer, EXAMPLE_LVGL_TICK_PERIOD_MS * 1000));
 
     ESP_LOGI(TAG, "Create LVGL task");
-    xTaskCreate(example_lvgl_port_task, "LVGL", EXAMPLE_LVGL_TASK_STACK_SIZE, NULL, EXAMPLE_LVGL_TASK_PRIORITY, NULL);
+    xTaskCreatePinnedToCore(example_lvgl_port_task, "LVGL", EXAMPLE_LVGL_TASK_STACK_SIZE,
+        NULL, EXAMPLE_LVGL_TASK_PRIORITY, NULL, 1);
+    //xTaskCreate(example_lvgl_port_task, "LVGL", EXAMPLE_LVGL_TASK_STACK_SIZE, NULL, EXAMPLE_LVGL_TASK_PRIORITY, NULL);
 
     ESP_LOGI(TAG, "Display LVGL Scroll Text");
     // Lock the mutex due to the LVGL APIs are not thread-safe

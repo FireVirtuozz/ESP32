@@ -1,6 +1,6 @@
 #include "cmdLib.h"
 #include "ledLib.h"
-#include "mqttLib.h"
+#include "logLib.h"
 
 #define BUFFER_SIZE_PAYLOAD_GAMEPAD 7 //6 axes, 8 buttons in 1 byte
 #define BUFFER_SIZE_PAYLOAD_ANDROID 2 //2 axes
@@ -28,12 +28,12 @@ esp_err_t gamepad_from_buffer(const int8_t *buf, gamepad_t *gamepad) {
 
     if (buf[BUFFER_IDX_PAYLOAD_SIZE] != BUFFER_SIZE_PAYLOAD_GAMEPAD) return ESP_ERR_INVALID_SIZE;
 
-    gamepad->leftY        = buf[BUFFER_IDX_PAYLOAD + 0];
-    gamepad->leftX        = buf[BUFFER_IDX_PAYLOAD + 1];
-    gamepad->rightY       = buf[BUFFER_IDX_PAYLOAD + 2];
-    gamepad->rightX       = buf[BUFFER_IDX_PAYLOAD + 3];
-    gamepad->leftTrigger  = buf[BUFFER_IDX_PAYLOAD + 4];
-    gamepad->rightTrigger = buf[BUFFER_IDX_PAYLOAD + 5];
+    gamepad->leftX        = buf[BUFFER_IDX_PAYLOAD + 0];
+    gamepad->leftY        = buf[BUFFER_IDX_PAYLOAD + 1];
+    gamepad->rightX       = buf[BUFFER_IDX_PAYLOAD + 2];
+    gamepad->rightY       = buf[BUFFER_IDX_PAYLOAD + 3];
+    gamepad->rightTrigger  = buf[BUFFER_IDX_PAYLOAD + 4];
+    gamepad->leftTrigger = buf[BUFFER_IDX_PAYLOAD + 5];
     gamepad->buttons      = (uint8_t)buf[BUFFER_IDX_PAYLOAD + 6];
     
     return ESP_OK;
@@ -160,11 +160,11 @@ esp_err_t apply_android_commands(const android_t *android) {
 
 void dump_gamepad(const gamepad_t *gamepad) {
     if (gamepad == NULL) {
-        log_mqtt(LOG_ERROR, TAG, false, "Error invalid argument"); 
+        log_msg(TAG, "Error invalid argument"); 
         return;
     }
 
-    log_mqtt(LOG_INFO, TAG, false, "Gamepad raw: [%d,%d,%d,%d,%d,%d][%d,%d,%d,%d,%d,%d,%d,%d]", 
+    log_msg(TAG, "Gamepad raw: [%d,%d,%d,%d,%d,%d][%d,%d,%d,%d,%d,%d,%d,%d]", 
         gamepad->leftX, gamepad->leftY, gamepad->rightX,
         gamepad->rightY, gamepad->leftTrigger, gamepad->rightTrigger,
         (gamepad->buttons & 0x01) ? 1 : 0, (gamepad->buttons & 0x02) ? 1 : 0, 
@@ -176,10 +176,10 @@ void dump_gamepad(const gamepad_t *gamepad) {
 
 void dump_android(const android_t *android) {
     if (android == NULL) {
-        log_mqtt(LOG_ERROR, TAG, false, "Error invalid argument"); 
+        log_msg(TAG, "Error invalid argument"); 
         return;
     }
 
-    log_mqtt(LOG_INFO, TAG, false, "Android raw: [%d,%d]", 
+    log_msg(TAG, "Android raw: [%d,%d]", 
         android->sliderX, android->sliderY); 
 }

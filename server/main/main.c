@@ -50,5 +50,6 @@ void app_main()
 #else
     ssd1306_draw_string(wifi_get_ip(), 0, 0);
 #endif
+    led_on();
 
 }

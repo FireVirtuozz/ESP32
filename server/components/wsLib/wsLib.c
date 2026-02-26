@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <esp_http_server.h>
 #include "ledLib.h"
-#include "mqttLib.h"
+#include "logLib.h"
 
 /**
  * How it works:
@@ -31,7 +31,7 @@ static esp_err_t ws_handler(httpd_req_t *req)
 {
     //if get method, client connected and return ok
     if (req->method == HTTP_GET) { 
-        log_mqtt(LOG_INFO, TAG, true, "Client connected");
+        log_msg(TAG, "Client connected");
         return ESP_OK;
     }
 
@@ -59,7 +59,7 @@ static esp_err_t ws_handler(httpd_req_t *req)
     ws_pkt.payload[ws_pkt.len] = '\0'; 
 
     //log for debug
-    log_mqtt(LOG_INFO, TAG, false, "Received: %s", (char *)ws_pkt.payload);
+    log_msg(TAG, "Received: %s", (char *)ws_pkt.payload);
 
     //compare messages to give instructions
     if (strcmp((char *)ws_pkt.payload, "LED_ON") == 0) {
@@ -99,7 +99,7 @@ static esp_err_t controller_handler(httpd_req_t *req)
 
     //if get method, client connected and return ok
     if (req->method == HTTP_GET) { 
-        log_mqtt(LOG_INFO, TAG, true, "Client connected");
+        log_msg(TAG, "Client connected");
         return ESP_OK;
     }
 
@@ -118,22 +118,22 @@ static esp_err_t controller_handler(httpd_req_t *req)
         return ret;
     }
 
-    log_mqtt(LOG_DEBUG, TAG, false, "Frame size : %d", ws_pkt.len);
-    log_mqtt(LOG_DEBUG, TAG, false, "Frame type : %d", ws_pkt.type);
-    log_mqtt(LOG_DEBUG, TAG, false, "Frame final : %d", ws_pkt.final);
-    log_mqtt(LOG_DEBUG, TAG, false, "Frame frag : %d", ws_pkt.fragmented);
+    log_msg(TAG, "Frame size : %d", ws_pkt.len);
+    log_msg(TAG, "Frame type : %d", ws_pkt.type);
+    log_msg(TAG, "Frame final : %d", ws_pkt.final);
+    log_msg(TAG, "Frame frag : %d", ws_pkt.fragmented);
 
     /*
     if (ws_pkt.len != 7) {
-        log_mqtt(LOG_WARN, TAG, true, "Unexpected size of ws frame : %d", ws_pkt.len);
+        log_msg(TAG, "Unexpected size of ws frame : %d", ws_pkt.len);
     }
     */
     
     int8_t *p = (int8_t *)ws_pkt.payload;
-    log_mqtt(LOG_DEBUG, TAG, false, "Gamepad axes raw: [%d,%d,%d,%d,%d,%d]", 
+    log_msg(TAG, "Gamepad axes raw: [%d,%d,%d,%d,%d,%d]", 
          p[0], p[1], p[2],
          p[3], p[4], p[5]);
-    log_mqtt(LOG_DEBUG, TAG, false, "Gamepad button raw: [%d,%d,%d,%d,%d,%d,%d,%d]", 
+    log_msg(TAG, "Gamepad button raw: [%d,%d,%d,%d,%d,%d,%d,%d]", 
         (p[6] & 0x01) ? 1 : 0, (p[6] & 0x02) ? 1 : 0,
         (p[6] & 0x04) ? 1 : 0, (p[6] & 0x08) ? 1 : 0,
         (p[6] & 0x10) ? 1 : 0, (p[6] & 0x20) ? 1 : 0,
@@ -189,7 +189,7 @@ static httpd_uri_t controller_uri = {
 void ws_server_init()
 {
     if (server != NULL) {
-        log_mqtt(LOG_WARN, TAG, true, "WS server already initialized");
+        log_msg(TAG, "WS server already initialized");
     }
 
     //get default config, on port 80
@@ -201,9 +201,9 @@ void ws_server_init()
         //register uri handler from before
         httpd_register_uri_handler(server, &ws_uri);
         httpd_register_uri_handler(server, &controller_uri);
-        log_mqtt(LOG_INFO, TAG, true, "WS server started");
+        log_msg(TAG, "WS server started");
     } else {
-        log_mqtt(LOG_ERROR, TAG, true, "Error on WS server startup");
+        log_msg(TAG, "Error on WS server startup");
     }
 }
 

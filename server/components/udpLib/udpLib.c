@@ -3,7 +3,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include "ledLib.h"
-#include "mqttLib.h"
+#include "logLib.h"
 #include "cmdLib.h"
 
 #include "lwip/err.h"
@@ -155,7 +155,7 @@ static void udp_server_task(void *pvParameters)
         int packet_count = 0;
 #endif
 #if ADDRESS_DEBUG
-        log_mqtt(LOG_INFO, TAG, true, "Address family : %s", addr_family_to_str(addr_family));
+        log_msg(TAG, "Address family : %s", addr_family_to_str(addr_family));
 #endif
 
         //For multi-byte numbers : ENDIANNESS, order of sending bytes for a number
@@ -178,10 +178,10 @@ static void udp_server_task(void *pvParameters)
             dest_addr_ip4->sin_port = htons(PORT); //setting port
             ip_protocol = IPPROTO_IP; //setting ip protocol
 #if ADDRESS_DEBUG
-            log_mqtt(LOG_INFO, TAG, true, "IP protocol : %s", cmsg_protocol_to_str(ip_protocol));
-            log_mqtt(LOG_INFO, TAG, true, "IP : %s", source_ip_to_str(ntohl(dest_addr_ip4->sin_addr.s_addr)));
-            log_mqtt(LOG_INFO, TAG, true, "Family : %s", addr_family_to_str(dest_addr_ip4->sin_family));
-            log_mqtt(LOG_INFO, TAG, true, "Port : %d", ntohs(dest_addr_ip4->sin_port));
+            log_msg(TAG, "IP protocol : %s", cmsg_protocol_to_str(ip_protocol));
+            log_msg(TAG, "IP : %s", source_ip_to_str(ntohl(dest_addr_ip4->sin_addr.s_addr)));
+            log_msg(TAG, "Family : %s", addr_family_to_str(dest_addr_ip4->sin_family));
+            log_msg(TAG, "Port : %d", ntohs(dest_addr_ip4->sin_port));
 #endif
         }
 
@@ -193,10 +193,10 @@ static void udp_server_task(void *pvParameters)
         //ip protocol : auto
         int sock = socket(addr_family, SOCK_DGRAM, ip_protocol); //create socket    
         if (sock < 0) {
-            log_mqtt(LOG_ERROR, TAG, true, "Unable to create socket: %d, %s", errno, strerror(errno));
+            log_msg(TAG, "Unable to create socket: %d, %s", errno, strerror(errno));
             break;
         }
-        log_mqtt(LOG_INFO, TAG, true, "Socket created");
+        log_msg(TAG, "Socket created");
 
 #if PACKET_DEBUG_ACTIVATED
         //set receive packt info for debug (ipv4 only)
@@ -215,54 +215,54 @@ static void udp_server_task(void *pvParameters)
         socklen_t len = sizeof(val);
         //reuse port if already used in TIME_WAIT (state TCP when connection closed)
         if (getsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &val, &len) == 0) {
-            log_mqtt(LOG_INFO, TAG, true, "Reuse address : %d", val);
+            log_msg(TAG, "Reuse address : %d", val);
         } else {
-            log_mqtt(LOG_ERROR, TAG, true, "Error getting reuse address option socket info");
+            log_msg(TAG, "Error getting reuse address option socket info");
         }
         //in TCP : pings device to keep connection alive
         if (getsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, &val, &len) == 0) {
-            log_mqtt(LOG_INFO, TAG, true, "Keep alive : %d", val);
+            log_msg(TAG, "Keep alive : %d", val);
         } else {
-            log_mqtt(LOG_ERROR, TAG, true, "Error getting keep alive option socket info");
+            log_msg(TAG, "Error getting keep alive option socket info");
         }
         //allow receive / send broadcast messages (255.255.255.255)
         if (getsockopt(sock, SOL_SOCKET, SO_BROADCAST, &val, &len) == 0) {
-            log_mqtt(LOG_INFO, TAG, true, "Broadcast : %d", val);
+            log_msg(TAG, "Broadcast : %d", val);
         } else {
-            log_mqtt(LOG_ERROR, TAG, true, "Error getting broadcast option socket info");
+            log_msg(TAG, "Error getting broadcast option socket info");
         }
         //length of receiver buffer
         if (getsockopt(sock, SOL_SOCKET, SO_RCVBUF, &val, &len) == 0) {
-            log_mqtt(LOG_INFO, TAG, true, "Receive buffer size : %d", val);
+            log_msg(TAG, "Receive buffer size : %d", val);
         } else {
-            log_mqtt(LOG_ERROR, TAG, true, "Error getting receive buffer option socket info");
+            log_msg(TAG, "Error getting receive buffer option socket info");
         }
 
         socklen_t lenTimeout = sizeof(timeout);
         //blocking timeout for sending
         if (getsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &timeout, &lenTimeout) == 0) {
-            log_mqtt(LOG_INFO, TAG, true, "Send timeout: %ld.%06ld sec\n", timeout.tv_sec, timeout.tv_usec);
+            log_msg(TAG, "Send timeout: %ld.%06ld sec\n", timeout.tv_sec, timeout.tv_usec);
         } else {
-            log_mqtt(LOG_ERROR, TAG, true, "Error getting send timeout option socket info");
+            log_msg(TAG, "Error getting send timeout option socket info");
         }
         //blocking timeout for receiving
         if (getsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, &lenTimeout) == 0) {
-            log_mqtt(LOG_INFO, TAG, true, "Receive timeout: %ld.%06ld sec\n", timeout.tv_sec, timeout.tv_usec);
+            log_msg(TAG, "Receive timeout: %ld.%06ld sec\n", timeout.tv_sec, timeout.tv_usec);
         } else {
-            log_mqtt(LOG_ERROR, TAG, true, "Error getting receive timeout option socket info");
+            log_msg(TAG, "Error getting receive timeout option socket info");
         }
 
         //socket type : tcp, udp, raw ip
         if (getsockopt(sock, SOL_SOCKET, SO_TYPE, &val, &len) == 0) {
-            log_mqtt(LOG_INFO, TAG, true, "Socket type : %s", sock_type_to_str(val));
+            log_msg(TAG, "Socket type : %s", sock_type_to_str(val));
         } else {
-            log_mqtt(LOG_ERROR, TAG, true, "Error getting socket type option socket info");
+            log_msg(TAG, "Error getting socket type option socket info");
         }
         //udp no checksum (for perf, but not safe at all)
         if (getsockopt(sock, SOL_SOCKET, SO_NO_CHECK, &val, &len) == 0) {
-            log_mqtt(LOG_INFO, TAG, true, "No checksum : %d", val);
+            log_msg(TAG, "No checksum : %d", val);
         } else {
-            log_mqtt(LOG_ERROR, TAG, true, "Error getting no checksum option socket info");
+            log_msg(TAG, "Error getting no checksum option socket info");
         }
 #endif
 
@@ -272,9 +272,9 @@ static void udp_server_task(void *pvParameters)
         //bind socket to port
         int err = bind(sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
         if (err < 0) {
-            log_mqtt(LOG_ERROR, TAG, true, "Socket unable to bind: errno %d", errno);
+            log_msg(TAG, "Socket unable to bind: errno %d", errno);
         }
-        log_mqtt(LOG_INFO, TAG, true, "Socket bound, port %d", PORT);
+        log_msg(TAG, "Socket bound, port %d", PORT);
 
         struct sockaddr_storage source_addr; // Large enough for both IPv4 or IPv6
         socklen_t socklen = sizeof(source_addr);
@@ -297,7 +297,7 @@ static void udp_server_task(void *pvParameters)
 #endif
 
         while (1) {
-            log_mqtt(LOG_DEBUG, TAG, false, "Waiting for data");
+            log_msg(TAG, "Waiting for data");
 
 #if PACKET_DEBUG_ACTIVATED
             //receive message for debug (ipv4 only)
@@ -311,14 +311,14 @@ static void udp_server_task(void *pvParameters)
 
             // Error occurred during receiving
             if (len < 0) {
-                log_mqtt(LOG_ERROR, TAG, true, "recvfrom failed: errno %d", errno);
+                log_msg(TAG, "recvfrom failed: errno %d", errno);
                 break;
             } else { // Data received
 
 #if PACKET_DEBUG_ACTIVATED
                 //for debug (ipv4 only)
                 for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
-                    log_mqtt(LOG_INFO, TAG, false, "cmsg_level=%s, cmsg_type=%s, cmsg_len=%d",
+                    log_msg(TAG, "cmsg_level=%s, cmsg_type=%s, cmsg_len=%d",
                             cmsg_protocol_to_str(cmsg->cmsg_level),
                             cmsg_protocol_spe_to_str(cmsg->cmsg_type), cmsg->cmsg_len);
 
@@ -326,26 +326,26 @@ static void udp_server_task(void *pvParameters)
                         switch (cmsg->cmsg_type) {
                             case IP_PKTINFO: {
                                 struct in_pktinfo *pktinfo = (struct in_pktinfo *)CMSG_DATA(cmsg);
-                                log_mqtt(LOG_INFO, TAG, true, "IP_PKTINFO -> dest IP: %s, ifindex: %u",
+                                log_msg(TAG, "IP_PKTINFO -> dest IP: %s, ifindex: %u",
                                         inet_ntoa(pktinfo->ipi_addr), pktinfo->ipi_ifindex);
                                 break;
                             }
                             case IP_TTL: {
                                 int ttl = *(int *)CMSG_DATA(cmsg);
-                                log_mqtt(LOG_INFO, TAG, true, "IP_TTL -> %d", ttl);
+                                log_msg(TAG, "IP_TTL -> %d", ttl);
                                 break;
                             }
                             case IP_TOS: {
                                 int tos = *(int *)CMSG_DATA(cmsg);
-                                log_mqtt(LOG_INFO, TAG, true, "IP_TOS -> 0x%02X", tos);
+                                log_msg(TAG, "IP_TOS -> 0x%02X", tos);
                                 break;
                             }
                             default:
-                                log_mqtt(LOG_INFO, TAG, true, "Unknown IP cmsg_type=%d", cmsg->cmsg_type);
+                                log_msg(TAG, "Unknown IP cmsg_type=%d", cmsg->cmsg_type);
                                 break;
                         }
                     } else {
-                        log_mqtt(LOG_INFO, TAG, true, "Unknown cmsg_level=%d", cmsg->cmsg_level);
+                        log_msg(TAG, "Unknown cmsg_level=%d", cmsg->cmsg_level);
                     }
                 }
 
@@ -357,7 +357,7 @@ static void udp_server_task(void *pvParameters)
                 // 16..19 : ip
                 u8_t *cmsg_data = (u8_t *)msg.msg_control;
                 for (int i = 0; i < msg.msg_controllen; i++) {
-                    log_mqtt(LOG_INFO, TAG, false, "cmsg raw[%d]=0x%02X", i, cmsg_data[i]);
+                    log_msg(TAG, "cmsg raw[%d]=0x%02X", i, cmsg_data[i]);
                 }
 #endif
 
@@ -369,7 +369,7 @@ static void udp_server_task(void *pvParameters)
                     packet_count++;
 
                     int64_t average_interval = sum_intervals / packet_count; // average in us
-                    log_mqtt(LOG_INFO, TAG, false, "Interval: %lld us, Average: %lld us", delta, average_interval);
+                    log_msg(TAG, "Interval: %lld us, Average: %lld us", delta, average_interval);
                 }
                 last_packet_time = current_time;
 #endif
@@ -380,26 +380,26 @@ static void udp_server_task(void *pvParameters)
                 //PF = Protocol (old)
                 //AF = Address (new ones)
                 //PF = AF usually in terms of value
-                log_mqtt(LOG_INFO, TAG, true, "Client family PF : %s", addr_family_pf_to_str(source_addr.ss_family)); //PF_INET
+                log_msg(TAG, "Client family PF : %s", addr_family_pf_to_str(source_addr.ss_family)); //PF_INET
                 struct sockaddr_in * source_addr_ip4 = ((struct sockaddr_in *)&source_addr); //cast to IPv4
 
                 char ip_buf[16]; //IPv4
                 inet_ntoa_r(source_addr_ip4->sin_addr, ip_buf, sizeof(ip_buf));
-                log_mqtt(LOG_INFO, TAG, true, "IP : %s", ip_buf);
-                log_mqtt(LOG_INFO, TAG, true, "Family : %s", addr_family_to_str(source_addr_ip4->sin_family));
-                log_mqtt(LOG_INFO, TAG, true, "Port : %d", ntohs(source_addr_ip4->sin_port));
+                log_msg(TAG, "IP : %s", ip_buf);
+                log_msg(TAG, "Family : %s", addr_family_to_str(source_addr_ip4->sin_family));
+                log_msg(TAG, "Port : %d", ntohs(source_addr_ip4->sin_port));
                 
 #endif
                 esp_err_t esp_err;
                 command_type_t type;
                 esp_err = get_cmd_type(temp_buffer, &type);
                 if (esp_err != ESP_OK) {
-                    log_mqtt(LOG_ERROR, TAG, true, "Error (%s) getting command type", 
+                    log_msg(TAG, "Error (%s) getting command type", 
                             esp_err_to_name(esp_err));
                 }
 #if INFO_LOGS
                 nb_packets_received++;
-                log_mqtt(LOG_INFO, TAG, false, "Received %d bytes: packet number : %d",
+                log_msg(TAG, "Received %d bytes: packet number : %d",
                     len, nb_packets_received);
 #endif
                 switch (type) {
@@ -408,7 +408,7 @@ static void udp_server_task(void *pvParameters)
                         gamepad_t gamepad;
                         esp_err = gamepad_from_buffer(temp_buffer, &gamepad);
                         if (esp_err != ESP_OK) {
-                            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) getting gamepad from buffer", 
+                            log_msg(TAG, "Error (%s) getting gamepad from buffer", 
                                     esp_err_to_name(esp_err));
                             break;
                         }
@@ -418,7 +418,7 @@ static void udp_server_task(void *pvParameters)
 
                         esp_err = apply_gamepad_commands(&gamepad);
                         if (esp_err != ESP_OK) {
-                            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) applying gamepad commands", 
+                            log_msg(TAG, "Error (%s) applying gamepad commands", 
                                     esp_err_to_name(esp_err));
                             break;
                         }
@@ -429,7 +429,7 @@ static void udp_server_task(void *pvParameters)
                         android_t android;
                         esp_err = android_from_buffer(temp_buffer, &android);
                         if (esp_err != ESP_OK) {
-                            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) getting android from buffer", 
+                            log_msg(TAG, "Error (%s) getting android from buffer", 
                                     esp_err_to_name(esp_err));
                             break;
                         }
@@ -439,7 +439,7 @@ static void udp_server_task(void *pvParameters)
                         
                         esp_err = apply_android_commands(&android);
                         if (esp_err != ESP_OK) {
-                            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) applying android commands", 
+                            log_msg(TAG, "Error (%s) applying android commands", 
                                     esp_err_to_name(esp_err));
                             break;
                         }
@@ -455,7 +455,7 @@ static void udp_server_task(void *pvParameters)
 
             //shutdown socket if error
             if (sock != -1) {
-                log_mqtt(LOG_ERROR, TAG, true, "Shutting down socket and restarting...");
+                log_msg(TAG, "Shutting down socket and restarting...");
                 shutdown(sock, 0);
                 close(sock);
                 ledc_motor(0);
@@ -472,7 +472,7 @@ void udp_server_init()
 {
     BaseType_t res = xTaskCreatePinnedToCore(udp_server_task, "udp_server", 8192, (void*)AF_INET, 15, NULL, 0);
     if (res != pdPASS) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%d) create UDP task on core 1", res);
+        log_msg(TAG, "Error (%d) create UDP task on core 1", res);
     }
     
 }

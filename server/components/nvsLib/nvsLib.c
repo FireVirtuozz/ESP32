@@ -1,5 +1,5 @@
 #include "nvsLib.h"
-#include "mqttLib.h"
+#include "logLib.h"
 #include <nvs_flash.h>
 #include <nvs.h>
 #include <inttypes.h>
@@ -76,8 +76,8 @@ esp_err_t nvs_init() {
     //if mutex already initialized, quit
     if( xMutex != NULL )
     {
-        //log_mqtt()
-        log_mqtt(LOG_WARN, TAG, true, "NVS already initialized");
+        //log_msg()
+        log_msg(TAG, "NVS already initialized");
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -86,7 +86,7 @@ esp_err_t nvs_init() {
     //If error in Create mutex
     if( xMutex == NULL )
     {
-        log_mqtt(LOG_ERROR, TAG, true, "Error in mutex creation");
+        log_msg(TAG, "Error in mutex creation");
         return ESP_ERR_INVALID_RESPONSE;
     }
 
@@ -97,27 +97,27 @@ esp_err_t nvs_init() {
         // Retry nvs_flash_init
         esp_err_t err = nvs_flash_erase();
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) erase nvs flash", esp_err_to_name(err));
+            log_msg(TAG, "Error (%s) erase nvs flash", esp_err_to_name(err));
             return err;
         }
         err = nvs_flash_init();
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) initiating flash after erase", esp_err_to_name(err));
+            log_msg(TAG, "Error (%s) initiating flash after erase", esp_err_to_name(err));
             return err;
         }
     }
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) initiating flash", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) initiating flash", esp_err_to_name(err));
         return err;
     }
 
     // Open NVS handle
 #if NVS_DEBUG
-    log_mqtt(LOG_INFO, TAG, true, "Opening Non-Volatile Storage (NVS) handle...");
+    log_msg(TAG, "Opening Non-Volatile Storage (NVS) handle...");
 #endif
     err = nvs_open(namespace, NVS_READWRITE, &my_handle);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) opening NVS handle!", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) opening NVS handle!", esp_err_to_name(err));
     }
     return err;
 }
@@ -145,7 +145,7 @@ esp_err_t load_nvs_int(const char *key, int *val) {
     if (xSemaphoreTake(xMutex, portMAX_DELAY) == pdTRUE) {
 
 #if NVS_DEBUG
-        log_mqtt(LOG_INFO, TAG, false, "Reading %s from NVS...", key);
+        log_msg(TAG, "Reading %s from NVS...", key);
 #endif
         //read value i32
         err = nvs_get_i32(my_handle, key, &read_val);
@@ -155,18 +155,18 @@ esp_err_t load_nvs_int(const char *key, int *val) {
             // ok : update value
             case ESP_OK:
 #if NVS_DEBUG
-                log_mqtt(LOG_INFO, TAG, true, "Read %s = %" PRIu32, key, read_val);
+                log_msg(TAG, "Read %s = %" PRIu32, key, read_val);
 #endif
                 *val = (int)read_val;
                 break;
             // not found : initialize value to 0 (default)
             case ESP_ERR_NVS_NOT_FOUND:
                 need_init = 1;
-                log_mqtt(LOG_WARN, TAG, true, "The value is not initialized yet!");
+                log_msg(TAG, "The value is not initialized yet!");
                 break;
             //other : error
             default:
-                log_mqtt(LOG_ERROR, TAG, true, "Error (%s) reading!", esp_err_to_name(err));
+                log_msg(TAG, "Error (%s) reading!", esp_err_to_name(err));
         }
         //free mutex
         xSemaphoreGive(xMutex);
@@ -195,7 +195,7 @@ esp_err_t load_nvs_blob(const char *key, uint8_t *val, size_t length) {
 
     //if mutex destroyed or not initialized
     if (xMutex == NULL) {
-        log_mqtt(LOG_ERROR, TAG, true, "Mutex not initalized!");
+        log_msg(TAG, "Mutex not initalized!");
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -207,14 +207,14 @@ esp_err_t load_nvs_blob(const char *key, uint8_t *val, size_t length) {
         size_t required_size = 0;
 
 #if NVS_DEBUG
-        log_mqtt(LOG_INFO, TAG, false, "Reading blob %s from NVS...", key);
+        log_msg(TAG, "Reading blob %s from NVS...", key);
 #endif
         //get the required size
         err = nvs_get_blob(my_handle, key, NULL, &required_size);
         if (err == ESP_OK) {
             uint8_t* tmp = malloc(required_size);
             if (!tmp) {
-                log_mqtt(LOG_ERROR, TAG, true, "Memory allocation failed for blob %s", key);
+                log_msg(TAG, "Memory allocation failed for blob %s", key);
                 xSemaphoreGive(xMutex);
                 return ESP_ERR_NO_MEM;
             }
@@ -227,9 +227,9 @@ esp_err_t load_nvs_blob(const char *key, uint8_t *val, size_t length) {
             free(tmp);
         } else if (err == ESP_ERR_NVS_NOT_FOUND) {
             need_init = 1;
-            log_mqtt(LOG_WARN, TAG, true, "The blob is not initialized yet!");
+            log_msg(TAG, "The blob is not initialized yet!");
         } else {
-            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) reading!", esp_err_to_name(err));
+            log_msg(TAG, "Error (%s) reading!", esp_err_to_name(err));
         }
         //free mutex
         xSemaphoreGive(xMutex);
@@ -254,19 +254,19 @@ esp_err_t load_nvs_blob(const char *key, uint8_t *val, size_t length) {
 esp_err_t save_nvs_blob(const char *key, uint8_t* value, size_t length) {
 
     if (xMutex == NULL) {
-        log_mqtt(LOG_ERROR, TAG, true, "Mutex not initalized!");
+        log_msg(TAG, "Mutex not initalized!");
         return ESP_ERR_INVALID_STATE;
     }
     
     if (xSemaphoreTake(xMutex, portMAX_DELAY) == pdTRUE) {
 
 #if NVS_DEBUG
-        log_mqtt(LOG_INFO, TAG, true, "Writing blob %s to NVS...", key);
+        log_msg(TAG, "Writing blob %s to NVS...", key);
 #endif
         // Store blob
         esp_err_t err = nvs_set_blob(my_handle, key, value, length);
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Failed to write blob %s!", key);
+            log_msg(TAG, "Failed to write blob %s!", key);
             xSemaphoreGive(xMutex);
             return err;
         }
@@ -276,11 +276,11 @@ esp_err_t save_nvs_blob(const char *key, uint8_t* value, size_t length) {
         // to flash storage. Implementations may write to storage at other times,
         // but this is not guaranteed.
 #if NVS_DEBUG
-        log_mqtt(LOG_INFO, TAG, true, "Committing updates in NVS...");
+        log_msg(TAG, "Committing updates in NVS...");
 #endif
         err = nvs_commit(my_handle);
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Failed to commit NVS changes!");
+            log_msg(TAG, "Failed to commit NVS changes!");
         }
         xSemaphoreGive(xMutex);
         return err;
@@ -312,7 +312,7 @@ esp_err_t load_nvs_str(const char *key, char *val) {
         size_t required_size = 0;
 
 #if NVS_DEBUG
-        log_mqtt(LOG_INFO, TAG, false, "Reading %s from NVS...", key);
+        log_msg(TAG, "Reading %s from NVS...", key);
 #endif
         err = nvs_get_str(my_handle, key, NULL, &required_size);
         if (err == ESP_OK) {
@@ -335,17 +335,17 @@ esp_err_t load_nvs_str(const char *key, char *val) {
             // ok : update value
             case ESP_OK:
 #if NVS_DEBUG
-                log_mqtt(LOG_INFO, TAG, true, "Read %s = %s", key, val);
+                log_msg(TAG, "Read %s = %s", key, val);
 #endif
                 break;
             // not found : initialize value to 0 (default)
             case ESP_ERR_NVS_NOT_FOUND:
                 need_init = 1;
-                log_mqtt(LOG_WARN, TAG, true, "The value is not initialized yet!");
+                log_msg(TAG, "The value is not initialized yet!");
                 break;
             //other : error
             default:
-                log_mqtt(LOG_ERROR, TAG, true, "Error (%s) reading!", esp_err_to_name(err));
+                log_msg(TAG, "Error (%s) reading!", esp_err_to_name(err));
         }
         //free mutex
         xSemaphoreGive(xMutex);
@@ -376,12 +376,12 @@ esp_err_t save_nvs_str(const char *key, const char* value) {
     if (xSemaphoreTake(xMutex, portMAX_DELAY) == pdTRUE) {
 
 #if NVS_DEBUG
-        log_mqtt(LOG_INFO, TAG, true, "Writing %s to NVS...", key);
+        log_msg(TAG, "Writing %s to NVS...", key);
 #endif
         // Store an integer value
         esp_err_t err = nvs_set_str(my_handle, key, value);
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Failed to write %s!", key);
+            log_msg(TAG, "Failed to write %s!", key);
         }
 
         // Commit changes
@@ -389,11 +389,11 @@ esp_err_t save_nvs_str(const char *key, const char* value) {
         // to flash storage. Implementations may write to storage at other times,
         // but this is not guaranteed.
 #if NVS_DEBUG
-        log_mqtt(LOG_INFO, TAG, true, "Committing updates in NVS...");
+        log_msg(TAG, "Committing updates in NVS...");
 #endif
         err = nvs_commit(my_handle);
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Failed to commit NVS changes!");
+            log_msg(TAG, "Failed to commit NVS changes!");
         }
         xSemaphoreGive(xMutex);
         return err;
@@ -418,12 +418,12 @@ esp_err_t save_nvs_int(const char *key, const int value) {
     if (xSemaphoreTake(xMutex, portMAX_DELAY) == pdTRUE) {
         
 #if NVS_DEBUG
-        log_mqtt(LOG_INFO, TAG, true, "Writing %s to NVS...", key);
+        log_msg(TAG, "Writing %s to NVS...", key);
 #endif
         // Store an integer value
         esp_err_t err = nvs_set_i32(my_handle, key, val);
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Failed to write %s!", key);
+            log_msg(TAG, "Failed to write %s!", key);
         }
 
         // Commit changes
@@ -431,11 +431,11 @@ esp_err_t save_nvs_int(const char *key, const int value) {
         // to flash storage. Implementations may write to storage at other times,
         // but this is not guaranteed.
 #if NVS_DEBUG
-        log_mqtt(LOG_INFO, TAG, true, "Committing updates in NVS...");
+        log_msg(TAG, "Committing updates in NVS...");
 #endif
         err = nvs_commit(my_handle);
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Failed to commit NVS changes!");
+            log_msg(TAG, "Failed to commit NVS changes!");
         }
         xSemaphoreGive(xMutex);
         return err;
@@ -455,7 +455,7 @@ void close_nvs() {
 
     // Close
     nvs_close(my_handle);
-    log_mqtt(LOG_INFO, TAG, true, "NVS handle closed.");
+    log_msg(TAG, "NVS handle closed.");
 
     vSemaphoreDelete(xMutex);
     xMutex = NULL;
@@ -478,7 +478,7 @@ void list_storage() {
     //take mutex
     if (xSemaphoreTake(xMutex, portMAX_DELAY) == pdTRUE) {
 
-        log_mqtt(LOG_INFO, TAG, true, "Finding keys in NVS...");
+        log_msg(TAG, "Finding keys in NVS...");
         nvs_iterator_t it = NULL;
         // Find keys in NVS and put it in the iterator
         esp_err_t res = nvs_entry_find(partition_name, namespace, NVS_TYPE_ANY, &it);
@@ -498,24 +498,24 @@ void list_storage() {
                 //load value : load function not called to prevent deadlock mutex
                 int val;
                 int32_t read_val;
-                log_mqtt(LOG_INFO, TAG, false, "Reading %s from NVS...", info.key);
+                log_msg(TAG, "Reading %s from NVS...", info.key);
                 esp_err_t err = nvs_get_i32(my_handle, info.key, &read_val);
 
                 switch (err) {
                     case ESP_OK:
                         val = (int)read_val;
-                        log_mqtt(LOG_INFO, TAG, true, "Key: '%s', Type: %s, Value: %d",
+                        log_msg(TAG, "Key: '%s', Type: %s, Value: %d",
                             info.key, type_str, val);
                         break;
                     case ESP_ERR_NVS_NOT_FOUND:
-                        log_mqtt(LOG_WARN, TAG, true, "The value is not initialized yet!");
+                        log_msg(TAG, "The value is not initialized yet!");
                         break;
                     default:
-                        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) reading!", esp_err_to_name(err));
+                        log_msg(TAG, "Error (%s) reading!", esp_err_to_name(err));
                 }
                 
             } else {
-                log_mqtt(LOG_INFO, TAG, true, "Key: '%s', Type: %s", info.key, type_str);
+                log_msg(TAG, "Key: '%s', Type: %s", info.key, type_str);
             }
             //next iterator
             res = nvs_entry_next(&it);
@@ -525,7 +525,7 @@ void list_storage() {
         xSemaphoreGive(xMutex);
     }
 #else
-    log_mqtt(LOG_INFO, TAG, true, "NVS debug disabled : failed to list storage");
+    log_msg(TAG, "NVS debug disabled : failed to list storage");
 #endif
 }
 
@@ -533,22 +533,22 @@ void list_storage() {
 void show_nvs_stats() {
 
 #if NVS_DEBUG
-    log_mqtt(LOG_INFO, TAG, true, "==================== NVS statistics ====================");
+    log_msg(TAG, "==================== NVS statistics ====================");
 
     nvs_stats_t nvs_stats;
     esp_err_t ret = nvs_get_stats(partition_name, &nvs_stats);
     if (ret != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) getting NVS statistics!", esp_err_to_name(ret));
+        log_msg(TAG, "Error (%s) getting NVS statistics!", esp_err_to_name(ret));
     }
 
-    log_mqtt(LOG_INFO, TAG, true, "Used NVS entries: %u", nvs_stats.used_entries);
-    log_mqtt(LOG_INFO, TAG, true, "Free NVS entries: %u", nvs_stats.free_entries);
-    log_mqtt(LOG_INFO, TAG, true, "Available NVS entries: %u", nvs_stats.available_entries);
-    log_mqtt(LOG_INFO, TAG, true, "Total NVS entries: %u", nvs_stats.total_entries);
-    log_mqtt(LOG_INFO, TAG, true, "Namespace count: %u", nvs_stats.namespace_count);
+    log_msg(TAG, "Used NVS entries: %u", nvs_stats.used_entries);
+    log_msg(TAG, "Free NVS entries: %u", nvs_stats.free_entries);
+    log_msg(TAG, "Available NVS entries: %u", nvs_stats.available_entries);
+    log_msg(TAG, "Total NVS entries: %u", nvs_stats.total_entries);
+    log_msg(TAG, "Namespace count: %u", nvs_stats.namespace_count);
 
-    log_mqtt(LOG_INFO, TAG, true, "==================== NVS statistics end ====================");
+    log_msg(TAG, "==================== NVS statistics end ====================");
 #else
-    log_mqtt(LOG_INFO, TAG, true, "NVS debug disabled : failed to print stats");
+    log_msg(TAG, "NVS debug disabled : failed to print stats");
 #endif
 }

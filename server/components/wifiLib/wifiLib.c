@@ -1,7 +1,12 @@
 #include "wifiLib.h"
 #include <esp_wifi.h>
-#include "mqttLib.h"
-#include <stdarg.h>
+#include "logLib.h"
+#include <esp_err.h>
+#include <esp_event.h>
+#include <esp_netif.h>
+#include <freertos/event_groups.h>
+#include <string.h>
+#include <esp_mac.h>
 
 /**
  * WiFi library
@@ -883,60 +888,60 @@ static sta_info_strings_t *get_sta_info(wifi_sta_info_t sta) {
 static void print_record(wifi_ap_record_t ap_info) {
     sta_info_strings_t * info;
 
-    log_mqtt(LOG_INFO, TAG, true, "=================== SSID %s ===============",
+    log_msg(TAG, "=================== SSID %s ===============",
         ap_info.ssid);
 
-    log_mqtt(LOG_INFO, TAG, true, "RSSI : %d dBm",
+    log_msg(TAG, "RSSI : %d dBm",
         ap_info.rssi);
 
-    log_mqtt(LOG_INFO, TAG, true, "Authmode : %s",
+    log_msg(TAG, "Authmode : %s",
         get_authmode_str(ap_info.authmode));
 
     if (ap_info.authmode != WIFI_AUTH_WEP) {
-        log_mqtt(LOG_INFO, TAG, true, "Cipher: Pair: %s / Type : %s",
+        log_msg(TAG, "Cipher: Pair: %s / Type : %s",
             get_cipher_type_str(ap_info.pairwise_cipher), get_cipher_type_str(ap_info.group_cipher));
     }
 
-    log_mqtt(LOG_INFO, TAG, true, "Channel : %d",
+    log_msg(TAG, "Channel : %d",
         ap_info.primary);
     //ESP_LOGI(TAG, "Secondary channel \t\t%d", ap_info.second);
 
-    log_mqtt(LOG_INFO, TAG, true, "bssid : %s",
+    log_msg(TAG, "bssid : %s",
         get_bssid_str(ap_info.bssid));
 
-    log_mqtt(LOG_INFO, TAG, true, "antenna : %s",
+    log_msg(TAG, "antenna : %s",
         get_antenna_str(ap_info.ant));
 
     info = get_country_info(ap_info.country);
     for (int i = 0; i < info->count; i++) {
-        log_mqtt(LOG_INFO, TAG, true, "country [%d] : %s",
+        log_msg(TAG, "country [%d] : %s",
             i, info->lines[i]);
     }
 
     info = get_phy_info(ap_info);
     for (int i = 0; i < info->count; i++) {
-        log_mqtt(LOG_INFO, TAG, true, "phy [%d] : %s",
+        log_msg(TAG, "phy [%d] : %s",
             i, info->lines[i]);
     }
     
     if (ap_info.phy_11ax) {
         info = get_he_info(ap_info.he_ap);
         for (int i = 0; i < info->count; i++) {
-            log_mqtt(LOG_INFO, TAG, true, "he [%d] : %s",
+            log_msg(TAG, "he [%d] : %s",
                 i, info->lines[i]);
         }
     }
 
-    log_mqtt(LOG_INFO, TAG, true, "Bandwidth  : %s",
+    log_msg(TAG, "Bandwidth  : %s",
         get_bandwidth_str(ap_info.bandwidth));
     
     info = get_vht_channels_info(ap_info);
     for (int i = 0; i < info->count; i++) {
-        log_mqtt(LOG_INFO, TAG, true, "vht [%d] : %s",
+        log_msg(TAG, "vht [%d] : %s",
             i, info->lines[i]);
     }
     
-    log_mqtt(LOG_INFO, TAG, true, "=================== %s end ===============",
+    log_msg(TAG, "=================== %s end ===============",
         ap_info.ssid);
 }
 
@@ -973,41 +978,41 @@ static void first_scan() {
         snprintf(key_put, sizeof(key_put), "SSID_%u", i);
         err = save_nvs_str(key_put, networks_put[i].ssid);
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) on saving %s to NVS",
+            log_msg(TAG, "Error (%s) on saving %s to NVS",
                 esp_err_to_name(err), key_put);
         } else {
-            log_mqtt(LOG_INFO, TAG, true, "SSID %s saved to NVS to %s",
+            log_msg(TAG, "SSID %s saved to NVS to %s",
                 networks_put[i].ssid, key_put);
         }
         
         snprintf(key_put, sizeof(key_put), "PASS_%u", i);
         err = save_nvs_str(key_put, networks_put[i].password);
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) on saving %s to NVS",
+            log_msg(TAG, "Error (%s) on saving %s to NVS",
                 esp_err_to_name(err), key_put);
         }
 
         snprintf(key_put, sizeof(key_put), "PRIORITY_%u", i);
         err = save_nvs_int(key_put, networks_put[i].priority);
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) on saving %s to NVS",
+            log_msg(TAG, "Error (%s) on saving %s to NVS",
                 esp_err_to_name(err), key_put);
         }
     }
-    log_mqtt(LOG_INFO, TAG, false, "Networks saved to NVS");
+    log_msg(TAG, "Networks saved to NVS");
     */
 
-    log_mqtt(LOG_INFO, TAG, false, "=============== First scan APs ===============");
+    log_msg(TAG, "=============== First scan APs ===============");
 
     wifi_scan_default_params_t params;
     err = esp_wifi_get_scan_parameters(&params);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error on getting scan parameters : %d", err);
+        log_msg(TAG, "Error on getting scan parameters : %d", err);
     } else {
 #if DEBUG_WIFI
         info = get_scan_params_info(params);
         for (int i = 0; i < info->count; i++) {
-            log_mqtt(LOG_INFO, TAG, true, "scan params [%d] : %s", i, info->lines[i]);
+            log_msg(TAG, "scan params [%d] : %s", i, info->lines[i]);
         }
 #endif
     }
@@ -1017,7 +1022,7 @@ static void first_scan() {
     uint16_t ap_count = 0;
     wifi_ap_record_t* ap_info = malloc(sizeof(wifi_ap_record_t) * DEFAULT_SCAN_LIST_SIZE);
     if (!ap_info) {
-        log_mqtt(LOG_ERROR, TAG, true, "Failed to allocate memory for AP scan");
+        log_msg(TAG, "Failed to allocate memory for AP scan");
         return;
     }
     memset(ap_info, 0, sizeof(wifi_ap_record_t) * DEFAULT_SCAN_LIST_SIZE);
@@ -1026,30 +1031,30 @@ static void first_scan() {
     wifi_scan_config_t cfg = WIFI_SCAN_PARAMS_DEFAULT_CONFIG();
     err = esp_wifi_scan_start(&cfg, true); //blocking
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Scan failed: %s", esp_err_to_name(err));
+        log_msg(TAG, "Scan failed: %s", esp_err_to_name(err));
         return;
     }
 
     //if fail : esp_wifi_clear_ap_list
 #if DEBUG_WIFI
-    log_mqtt(LOG_INFO, TAG, false, "Max AP number ap_info can hold = %u", number);
+    log_msg(TAG, "Max AP number ap_info can hold = %u", number);
 #endif
 
     //get num & records of scan
     err = esp_wifi_scan_get_ap_num(&ap_count);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) getting AP number", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) getting AP number", esp_err_to_name(err));
         return;
     }
     
     err = esp_wifi_scan_get_ap_records(&number, ap_info);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) getting AP records", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) getting AP records", esp_err_to_name(err));
         return;
     }
 
 #if DEBUG_WIFI
-    log_mqtt(LOG_INFO, TAG, true, "Total APs scanned = %u, actual AP number ap_info holds = %u", ap_count, number);
+    log_msg(TAG, "Total APs scanned = %u, actual AP number ap_info holds = %u", ap_count, number);
 #endif
 
     wifi_network_t *known_networks;
@@ -1064,7 +1069,7 @@ static void first_scan() {
             break;
         } //if ssid does not exists on nvs, others don't
         else {
-            log_mqtt(LOG_INFO, TAG, true, "Network %s loaded to %s", known_networks[i].ssid, key);
+            log_msg(TAG, "Network %s loaded to %s", known_networks[i].ssid, key);
         }
         
         snprintf(key, sizeof(key), "PASS_%u", i);
@@ -1077,7 +1082,7 @@ static void first_scan() {
 
         count++;
     }
-    log_mqtt(LOG_INFO, TAG, true, "Known networks found : %d", count);
+    log_msg(TAG, "Known networks found : %d", count);
 
     wifi_network_t *wifi_credentials = NULL;
     //go through each record and compare ssid
@@ -1098,7 +1103,7 @@ static void first_scan() {
     free(ap_info);
 
     if (wifi_credentials == NULL) {
-        log_mqtt(LOG_ERROR, TAG, true, "No network found");
+        log_msg(TAG, "No network found");
         free(known_networks);
         return;
     }
@@ -1127,14 +1132,14 @@ static void first_scan() {
     //Apply station config to ESP
     err = esp_wifi_set_config(WIFI_IF_STA, &wifi_sta_config);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) setting wifi config", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) setting wifi config", esp_err_to_name(err));
         free(known_networks);
         return;
     }
 
     free(known_networks);
 
-    log_mqtt(LOG_INFO, TAG, false, "=============== First Scan End ===============");
+    log_msg(TAG, "=============== First Scan End ===============");
 }
 #endif
 
@@ -1156,7 +1161,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
 #if DEBUG_WIFI
     if (event_base == WIFI_EVENT) {
         wifi_event_t event_wifi = (wifi_event_t)event_id;
-        log_mqtt(LOG_INFO, TAG, true, "Wifi event id : %d", event_wifi);
+        log_msg(TAG, "Wifi event id : %d", event_wifi);
     }
 #endif
     
@@ -1167,14 +1172,14 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
 #endif
         err = esp_wifi_connect(); // Start wifi connection : send request to router
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) connecting wifi", esp_err_to_name(err));
+            log_msg(TAG, "Error (%s) connecting wifi", esp_err_to_name(err));
         }
     //if wifi disconnect event, trying to reconnect
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-        log_mqtt(LOG_INFO, TAG, true, "Disconnected, trying to reconnect..");
+        log_msg(TAG, "Disconnected, trying to reconnect..");
         err = esp_wifi_connect();
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) connecting wifi", esp_err_to_name(err));
+            log_msg(TAG, "Error (%s) connecting wifi", esp_err_to_name(err));
         }
         //maximum retry?
     //if router assigned an IP address to ESP (triggered by DHCP netif when connection ok by router)
@@ -1182,7 +1187,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         //get IP from data : cast
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
         //log wifi connected IP
-        log_mqtt(LOG_INFO, TAG, true, "Connected, IP: " IPSTR, IP2STR(&event->ip_info.ip));
+        log_msg(TAG, "Connected, IP: " IPSTR, IP2STR(&event->ip_info.ip));
 
         // Store IP address as string for later use
         snprintf(s_ip_str, sizeof(s_ip_str),
@@ -1192,17 +1197,17 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
     } else if (event_id == WIFI_EVENT_AP_STACONNECTED) {
         wifi_event_ap_staconnected_t* event = (wifi_event_ap_staconnected_t*) event_data;
-        log_mqtt(LOG_INFO, TAG, true, "station " MACSTR " join, AID=%d, is mesh : %s",
+        log_msg(TAG, "station " MACSTR " join, AID=%d, is mesh : %s",
                  MAC2STR(event->mac), event->aid, event->is_mesh_child ? "Yes" : "No");
 
     } else if (event_id == WIFI_EVENT_AP_STADISCONNECTED) {
         wifi_event_ap_stadisconnected_t* event = (wifi_event_ap_stadisconnected_t*) event_data;
-        log_mqtt(LOG_INFO, TAG, true, "station " MACSTR " leave, AID=%d, reason=%d, is mesh : %s",
+        log_msg(TAG, "station " MACSTR " leave, AID=%d, reason=%d, is mesh : %s",
                  MAC2STR(event->mac), event->aid, event->reason, event->is_mesh_child ? "Yes" : "No");
 
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_ASSIGNED_IP_TO_CLIENT) {
         const ip_event_assigned_ip_to_client_t *e = (const ip_event_assigned_ip_to_client_t *)event_data;
-        log_mqtt(LOG_INFO, TAG, true, "Assigned IP to client: " IPSTR ", MAC=" MACSTR ", hostname='%s'",
+        log_msg(TAG, "Assigned IP to client: " IPSTR ", MAC=" MACSTR ", hostname='%s'",
                  IP2STR(&e->ip), MAC2STR(e->mac), e->hostname);
     }
 }
@@ -1228,11 +1233,11 @@ esp_netif_t *wifi_init_softap_netif(void)
     //apply config AP to ESP
     esp_err_t err = esp_wifi_set_config(WIFI_IF_AP, &wifi_ap_config);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) setting wifi config", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) setting wifi config", esp_err_to_name(err));
         return esp_netif_ap;
     }
 
-    log_mqtt(LOG_INFO, TAG, true, "wifi_init_softap finished. SSID:%s password:%s",
+    log_msg(TAG, "wifi_init_softap finished. SSID:%s password:%s",
              ESP_SSID, ESP_PASS);
 
     return esp_netif_ap;
@@ -1253,7 +1258,7 @@ static void softap_set_dns_addr(esp_netif_t *esp_netif_ap, esp_netif_t *esp_neti
     //getting dns info of ESP STA mode (MAIN DNS)
     esp_err_t err = esp_netif_get_dns_info(esp_netif_sta, ESP_NETIF_DNS_MAIN, &dns);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) getting DNS info", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) getting DNS info", esp_err_to_name(err));
         return;
     }
 
@@ -1263,7 +1268,7 @@ static void softap_set_dns_addr(esp_netif_t *esp_netif_ap, esp_netif_t *esp_neti
     //Stops DHCP server to apply a new config
     err = esp_netif_dhcps_stop(esp_netif_ap);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) stopping DHCP", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) stopping DHCP", esp_err_to_name(err));
         return;
     }
 
@@ -1272,10 +1277,10 @@ static void softap_set_dns_addr(esp_netif_t *esp_netif_ap, esp_netif_t *esp_neti
     err = esp_netif_dhcps_option(esp_netif_ap, ESP_NETIF_OP_SET, ESP_NETIF_DOMAIN_NAME_SERVER,
         &dhcps_offer_option, sizeof(dhcps_offer_option));
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) getting DHCP option", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) getting DHCP option", esp_err_to_name(err));
         err = esp_netif_dhcps_start(esp_netif_ap);
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) starting DHCP", esp_err_to_name(err));
+            log_msg(TAG, "Error (%s) starting DHCP", esp_err_to_name(err));
         }
         return;
     }
@@ -1283,10 +1288,10 @@ static void softap_set_dns_addr(esp_netif_t *esp_netif_ap, esp_netif_t *esp_neti
     //Set DNS got from STA to AP
     err = esp_netif_set_dns_info(esp_netif_ap, ESP_NETIF_DNS_MAIN, &dns);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) setting DNS info", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) setting DNS info", esp_err_to_name(err));
         err = esp_netif_dhcps_start(esp_netif_ap);
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) starting DHCP", esp_err_to_name(err));
+            log_msg(TAG, "Error (%s) starting DHCP", esp_err_to_name(err));
         }
         return;
     }
@@ -1294,7 +1299,7 @@ static void softap_set_dns_addr(esp_netif_t *esp_netif_ap, esp_netif_t *esp_neti
     //Restart DHCP server with new config
     err = esp_netif_dhcps_start(esp_netif_ap);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) starting DHCP", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) starting DHCP", esp_err_to_name(err));
     }
 }
 #endif
@@ -1322,14 +1327,14 @@ static void wifi_init_sta(void)
     //Initialize netif TCP/IP
     err = esp_netif_init();
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) init netif", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) init netif", esp_err_to_name(err));
         return;
     }
     
     //Create system event loop
     err = esp_event_loop_create_default();
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) creating event loop", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) creating event loop", esp_err_to_name(err));
         return;
     }
 
@@ -1338,13 +1343,13 @@ static void wifi_init_sta(void)
 #if DEBUG_WIFI
     info = get_init_config(cfg);
     for (int i = 0; i < info->count; i++) {
-        log_mqtt(LOG_INFO, TAG, true, "Config [%d] : %s",
+        log_msg(TAG, "Config [%d] : %s",
             i, info->lines[i]);
     }
 #endif
     err = esp_wifi_init(&cfg);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) allocating wifi resources", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) allocating wifi resources", esp_err_to_name(err));
         return;
     }
 
@@ -1355,20 +1360,20 @@ static void wifi_init_sta(void)
     err = esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
                                         &wifi_event_handler, NULL, &instance_any_id);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) register any handler", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) register any handler", esp_err_to_name(err));
         return;
     }
     err = esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
                                         &wifi_event_handler, NULL, &instance_got_ip);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) register IP handler", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) register IP handler", esp_err_to_name(err));
         return;
     }
 
     //Configure esp in station mode
     err = esp_wifi_set_mode(WIFI_MODE_STA);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) setting wifi mode", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) setting wifi mode", esp_err_to_name(err));
         return;
     }
     
@@ -1378,12 +1383,12 @@ static void wifi_init_sta(void)
     //start wifi : triggers WIFI_EVENT_STA_START handler
     err = esp_wifi_start();
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) starting wifi", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) starting wifi", esp_err_to_name(err));
         return;
     }
 
 #if DEBUG_WIFI
-    log_mqtt(LOG_INFO, TAG, false, "Connection to ...");
+    log_msg(TAG, "Connection to ...");
 #endif
 
     //Waiting for connection until WIFI_CONNECTED_BIT is activated (if init in main, it will wait..)
@@ -1391,9 +1396,9 @@ static void wifi_init_sta(void)
                         pdFALSE, pdTRUE, portMAX_DELAY);
 
     if (bits & WIFI_CONNECTED_BIT) {
-        log_mqtt(LOG_INFO, TAG, true, "Connected to AP");
+        log_msg(TAG, "Connected to AP");
     } else {
-        log_mqtt(LOG_ERROR, TAG, true, "UNEXPECTED EVENT");
+        log_msg(TAG, "UNEXPECTED EVENT");
         return;
     }
 }
@@ -1419,14 +1424,14 @@ static void wifi_init_ap(void)
     //Initialize netif TCP/IP
     err = esp_netif_init();
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) init netif", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) init netif", esp_err_to_name(err));
         return;
     }
     
     //Create system event loop
     err = esp_event_loop_create_default();
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) creating event loop", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) creating event loop", esp_err_to_name(err));
         return;
     }
 
@@ -1435,13 +1440,13 @@ static void wifi_init_ap(void)
 #if DEBUG_WIFI
     info = get_init_config(cfg);
     for (int i = 0; i < info->count; i++) {
-        log_mqtt(LOG_INFO, TAG, true, "Config [%d] : %s",
+        log_msg(TAG, "Config [%d] : %s",
             i, info->lines[i]);
     }
 #endif
     err = esp_wifi_init(&cfg);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) allocating wifi resources", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) allocating wifi resources", esp_err_to_name(err));
         return;
     }
 
@@ -1450,14 +1455,14 @@ static void wifi_init_ap(void)
     err = esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
                                         &wifi_event_handler, NULL, &instance_any_id);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) register any handler", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) register any handler", esp_err_to_name(err));
         return;
     }
 
     //Configure esp in AP mode
     err = esp_wifi_set_mode(WIFI_MODE_AP);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) setting wifi mode", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) setting wifi mode", esp_err_to_name(err));
         return;
     }
 
@@ -1467,7 +1472,7 @@ static void wifi_init_ap(void)
     //start wifi : triggers WIFI_EVENT_STA_START handler
     err = esp_wifi_start();
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) starting wifi", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) starting wifi", esp_err_to_name(err));
         return;
     }
 
@@ -1479,7 +1484,7 @@ static void wifi_init_ap(void)
                  IPSTR, IP2STR(&ip_info.ip));
 
     //debug
-    log_mqtt(LOG_INFO, TAG, true, "Wifi Soft-AP initialized; SSID : %s, PASS : %s, IP : " IPSTR,
+    log_msg(TAG, "Wifi Soft-AP initialized; SSID : %s, PASS : %s, IP : " IPSTR,
         ESP_SSID, ESP_PASS, s_ip_str);
 }
 #endif
@@ -1506,14 +1511,14 @@ static void wifi_init_apsta()
     //Initialize netif TCP/IP
     err = esp_netif_init();
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) init netif", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) init netif", esp_err_to_name(err));
         return;
     }
     
     //Create system event loop
     err = esp_event_loop_create_default();
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) creating event loop", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) creating event loop", esp_err_to_name(err));
         return;
     }
 
@@ -1522,13 +1527,13 @@ static void wifi_init_apsta()
 #if DEBUG_WIFI
     info = get_init_config(cfg);
     for (int i = 0; i < info->count; i++) {
-        log_mqtt(LOG_INFO, TAG, true, "Config [%d] : %s",
+        log_msg(TAG, "Config [%d] : %s",
             i, info->lines[i]);
     }
 #endif
     err = esp_wifi_init(&cfg);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) allocating wifi resources", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) allocating wifi resources", esp_err_to_name(err));
         return;
     }
 
@@ -1539,7 +1544,7 @@ static void wifi_init_apsta()
                     NULL,
                     NULL);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) register any handler", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) register any handler", esp_err_to_name(err));
         return;
     }
     err = esp_event_handler_instance_register(IP_EVENT,
@@ -1548,7 +1553,7 @@ static void wifi_init_apsta()
                     NULL,
                     NULL);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) register got IP handler", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) register got IP handler", esp_err_to_name(err));
         return;
     }
     err = esp_event_handler_instance_register(IP_EVENT,
@@ -1557,14 +1562,14 @@ static void wifi_init_apsta()
                     NULL,
                     NULL);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) register IP assigned handler", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) register IP assigned handler", esp_err_to_name(err));
         return;
     }
 
     //Configure esp in APSTA mode
     err = esp_wifi_set_mode(WIFI_MODE_APSTA);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) setting wifi mode", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) setting wifi mode", esp_err_to_name(err));
         return;
     }
 
@@ -1577,7 +1582,7 @@ static void wifi_init_apsta()
     //start wifi : triggers WIFI_EVENT_STA_START handler
     err = esp_wifi_start();
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) starting wifi", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) starting wifi", esp_err_to_name(err));
         return;
     }
 
@@ -1588,12 +1593,12 @@ static void wifi_init_apsta()
     /* xEventGroupWaitBits() returns the bits before the call returned,
      * hence we can test which event actually happened. */
     if (bits & WIFI_CONNECTED_BIT) {
-        log_mqtt(LOG_INFO, TAG, true, "connected to ap");
+        log_msg(TAG, "connected to ap");
         //get dns from sta mode ESP & config it for ESP AP's clients
         //"transmit dns internet from WAN to Clients"
         softap_set_dns_addr(esp_netif_ap, esp_netif_sta);
     } else {
-        log_mqtt(LOG_ERROR, TAG, true, "UNEXPECTED EVENT");
+        log_msg(TAG, "UNEXPECTED EVENT");
         return;
     }
 
@@ -1601,14 +1606,14 @@ static void wifi_init_apsta()
     //every Internet request will go through ESP STA mode (not AP)
     err = esp_netif_set_default_netif(esp_netif_sta);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) setting default netif", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) setting default netif", esp_err_to_name(err));
         return;
     }
 
     /* Enable napt on the AP netif */
     //transform private IPs of clients from ESP AP to public IP of ESP STA (NAT)
     if (esp_netif_napt_enable(esp_netif_ap) != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "NAPT not enabled on the netif: %p", esp_netif_ap);
+        log_msg(TAG, "NAPT not enabled on the netif: %p", esp_netif_ap);
     }
 }
 #endif
@@ -1621,7 +1626,7 @@ void wifi_init() {
 #elif WIFI_STA_MODE
     wifi_init_sta();
 #else
-    log_mqtt(LOG_WARN, TAG, true, "No wifi config selected");
+    log_msg(TAG, "No wifi config selected");
 #endif
 }
 
@@ -1642,16 +1647,16 @@ void wifi_scan_task(void *pvParameter) {
 
     sta_info_strings_t *info;
 
-    log_mqtt(LOG_INFO, TAG, true, "=============== Scanning APs ===============");
+    log_msg(TAG, "=============== Scanning APs ===============");
 
     wifi_scan_default_params_t params;
     esp_err_t err = esp_wifi_get_scan_parameters(&params);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error on getting scan parameters : %d", err);
+        log_msg(TAG, "Error on getting scan parameters : %d", err);
     } else {
         info = get_scan_params_info(params);
         for (int i = 0; i < info->count; i++) {
-            log_mqtt(LOG_INFO, TAG, true, "scan params [%d] : %s", i, info->lines[i]);
+            log_msg(TAG, "scan params [%d] : %s", i, info->lines[i]);
         }
     }
 
@@ -1665,29 +1670,29 @@ void wifi_scan_task(void *pvParameter) {
     //null : a scan config is possible
     err = esp_wifi_scan_start(NULL, true); // blocking
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Scan failed: %d", err);
+        log_msg(TAG, "Scan failed: %d", err);
         return;
     }
 
     // if fail : esp_wifi_clear_ap_list
 
-    log_mqtt(LOG_INFO, TAG, true, "Max AP number ap_info can hold = %u",
+    log_msg(TAG, "Max AP number ap_info can hold = %u",
         number);
 
     //get num & records of scan
     err = esp_wifi_scan_get_ap_num(&ap_count);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) getting AP number", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) getting AP number", esp_err_to_name(err));
         return;
     }
     
     err = esp_wifi_scan_get_ap_records(&number, ap_info);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) getting AP records", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) getting AP records", esp_err_to_name(err));
         return;
     }
     
-    log_mqtt(LOG_INFO, TAG, true, "Total APs scanned = %u, actual AP number ap_info holds = %u",
+    log_msg(TAG, "Total APs scanned = %u, actual AP number ap_info holds = %u",
         ap_count, number);
 
     // go through each record and print authmode, ssid, rssi, cipher, channel..
@@ -1706,7 +1711,7 @@ void wifi_scan_aps() {
         xTaskCreate(&wifi_scan_task, "wifi_scan_task", 4096, NULL, 5, NULL);
 
     } else {
-        log_mqtt(LOG_WARN, TAG, true, "Already scanning Wifi");
+        log_msg(TAG, "Already scanning Wifi");
     }
 }
 #endif
@@ -1717,7 +1722,7 @@ void get_ap_info() {
     wifi_ap_record_t ap_info;
     esp_err_t err = esp_wifi_sta_get_ap_info(&ap_info);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error on getting current AP info : %d", err);
+        log_msg(TAG, "Error on getting current AP info : %d", err);
     } else {
         print_record(ap_info);
     }
@@ -1728,33 +1733,33 @@ void get_ap_info() {
 void wifi_scan_esp() {
 
     // Launching scan
-    log_mqtt(LOG_INFO, TAG, true, "=============== Getting ESP wifi info ===============");
+    log_msg(TAG, "=============== Getting ESP wifi info ===============");
 
     // get current wifi mode
     wifi_mode_t mode;
     esp_err_t err = esp_wifi_get_mode(&mode);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error on getting wifi mode %d", err);
+        log_msg(TAG, "Error on getting wifi mode %d", err);
     } else {
-        log_mqtt(LOG_INFO, TAG, true, "Wifi mode : %s", get_wifi_mode_str(mode));
+        log_msg(TAG, "Wifi mode : %s", get_wifi_mode_str(mode));
     }
 
     // get power saving type
     wifi_ps_type_t type;
     err = esp_wifi_get_ps(&type);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error on getting wifi power save type %d", err);
+        log_msg(TAG, "Error on getting wifi power save type %d", err);
     } else {
-        log_mqtt(LOG_INFO, TAG, true, "Power save : %s", get_ps_str(type));
+        log_msg(TAG, "Power save : %s", get_ps_str(type));
     }
 
     // get wifi band
     wifi_band_mode_t band;
     err = esp_wifi_get_band_mode(&band);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error on getting wifi band mode %d", err);
+        log_msg(TAG, "Error on getting wifi band mode %d", err);
     } else {
-        log_mqtt(LOG_INFO, TAG, true, "Band mode : %s", get_band_mode_str(band));
+        log_msg(TAG, "Band mode : %s", get_band_mode_str(band));
     }
 
     wifi_protocols_t protocols;
@@ -1762,12 +1767,12 @@ void wifi_scan_esp() {
     if (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA) {
         err = esp_wifi_get_protocols(WIFI_IF_STA, &protocols);
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Error on getting wifi STA protocol %d", err);
+            log_msg(TAG, "Error on getting wifi STA protocol %d", err);
         } else {
-            log_mqtt(LOG_INFO, TAG, true, "ESP protocols for STA");
+            log_msg(TAG, "ESP protocols for STA");
             sta_info_strings_t *info = get_protocols_info(protocols);
             for (int i = 0; i < info->count; i++) {
-                log_mqtt(LOG_INFO, TAG, true, "Protocols [%d] : %s",
+                log_msg(TAG, "Protocols [%d] : %s",
                     i, info->lines[i]);
             }
         }
@@ -1777,12 +1782,12 @@ void wifi_scan_esp() {
     if (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA) {
         err = esp_wifi_get_protocols(WIFI_IF_AP, &protocols);
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Error on getting wifi AP protocol %d", err);
+            log_msg(TAG, "Error on getting wifi AP protocol %d", err);
         } else {
-            log_mqtt(LOG_INFO, TAG, true, "ESP protocols for AP");
+            log_msg(TAG, "ESP protocols for AP");
             sta_info_strings_t *info = get_protocols_info(protocols);
             for (int i = 0; i < info->count; i++) {
-                log_mqtt(LOG_INFO, TAG, true, "Protocols [%d] : %s",
+                log_msg(TAG, "Protocols [%d] : %s",
                     i, info->lines[i]);
             }
         }
@@ -1793,9 +1798,9 @@ void wifi_scan_esp() {
     if (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA) {
         err = esp_wifi_get_bandwidth(WIFI_IF_STA, &bw);
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Error on getting wifi STA bandwidth %d", err);
+            log_msg(TAG, "Error on getting wifi STA bandwidth %d", err);
         } else {
-            log_mqtt(LOG_INFO, TAG, true, "ESP STA Bandwidth : %s", get_bandwidth_str(bw));
+            log_msg(TAG, "ESP STA Bandwidth : %s", get_bandwidth_str(bw));
         }
     }
 
@@ -1803,9 +1808,9 @@ void wifi_scan_esp() {
     if (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA) {
         err = esp_wifi_get_bandwidth(WIFI_IF_AP, &bw);
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Error on getting wifi AP bandwidth %d", err);
+            log_msg(TAG, "Error on getting wifi AP bandwidth %d", err);
         } else {
-            log_mqtt(LOG_INFO, TAG, true, "ESP AP Bandwidth : %s", get_bandwidth_str(bw));
+            log_msg(TAG, "ESP AP Bandwidth : %s", get_bandwidth_str(bw));
         }
     }
 
@@ -1814,21 +1819,21 @@ void wifi_scan_esp() {
     wifi_second_chan_t second;
     err = esp_wifi_get_channel(&primary, &second);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error on getting channel %d", err);
+        log_msg(TAG, "Error on getting channel %d", err);
     } else {
-        log_mqtt(LOG_INFO, TAG, true, "Wifi ESP primary channel %d", primary);
-        // log_mqtt(LOG_INFO, TAG, true, "Secondary channel %d", second);
+        log_msg(TAG, "Wifi ESP primary channel %d", primary);
+        // log_msg(TAG, "Secondary channel %d", second);
     }
 
     // get country info
     wifi_country_t country;
     err = esp_wifi_get_country(&country);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error on getting country %d", err);
+        log_msg(TAG, "Error on getting country %d", err);
     } else {
         sta_info_strings_t *info = get_country_info(country);
         for (int i = 0; i < info->count; i++) {
-            log_mqtt(LOG_INFO, TAG, true, "Country [%d] : %s", i, info->lines[i]);
+            log_msg(TAG, "Country [%d] : %s", i, info->lines[i]);
         }
     }
 
@@ -1839,9 +1844,9 @@ void wifi_scan_esp() {
     if (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA) {
         err = esp_wifi_get_mac(WIFI_IF_STA, mac);
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Error on getting mac STA %d", err);
+            log_msg(TAG, "Error on getting mac STA %d", err);
         } else {
-            log_mqtt(LOG_INFO, TAG, true, "MAC STA : %s", get_bssid_str(mac));
+            log_msg(TAG, "MAC STA : %s", get_bssid_str(mac));
         }
     }
 
@@ -1849,9 +1854,9 @@ void wifi_scan_esp() {
     if (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA) {
         err = esp_wifi_get_mac(WIFI_IF_AP, mac);
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Error on getting mac AP %d", err);
+            log_msg(TAG, "Error on getting mac AP %d", err);
         } else {
-            log_mqtt(LOG_INFO, TAG, true, "MAC AP : %s", get_bssid_str(mac));
+            log_msg(TAG, "MAC AP : %s", get_bssid_str(mac));
         }
     }
 
@@ -1859,9 +1864,9 @@ void wifi_scan_esp() {
     bool en;
     err = esp_wifi_get_promiscuous(&en);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error on getting promiscuous %d", err);
+        log_msg(TAG, "Error on getting promiscuous %d", err);
     } else {
-        log_mqtt(LOG_INFO, TAG, true, "Promiscuous mode : %s", en ? "enabled" : "disabled");
+        log_msg(TAG, "Promiscuous mode : %s", en ? "enabled" : "disabled");
     }
 
     // if promiscuous, get filter info
@@ -1869,22 +1874,22 @@ void wifi_scan_esp() {
         wifi_promiscuous_filter_t filter;
         err = esp_wifi_get_promiscuous_filter(&filter);
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Error on getting promiscuous filter %d", err);
+            log_msg(TAG, "Error on getting promiscuous filter %d", err);
         } else {
             sta_info_strings_t *info = get_promiscuous_filter_info(filter);
             for (int i = 0; i < info->count; i++) {
-                log_mqtt(LOG_INFO, TAG, true, "Promiscuous filter [%d]: %s", i, info->lines[i]);
+                log_msg(TAG, "Promiscuous filter [%d]: %s", i, info->lines[i]);
             }
 
             if (filter.filter_mask & WIFI_PROMIS_FILTER_MASK_CTRL) {
                 wifi_promiscuous_filter_t ctrl_filter;
                 err = esp_wifi_get_promiscuous_ctrl_filter(&ctrl_filter);
                 if (err != ESP_OK) {
-                    log_mqtt(LOG_ERROR, TAG, true, "Error on getting promiscuous control filter %d", err);
+                    log_msg(TAG, "Error on getting promiscuous control filter %d", err);
                 } else {
                     sta_info_strings_t *ctrl_info = get_promiscuous_ctrl_filter_info(ctrl_filter);
                     for (int i = 0; i < ctrl_info->count; i++) {
-                        log_mqtt(LOG_INFO, TAG, true, "Promiscuous CTRL filter [%d]: %s", i, ctrl_info->lines[i]);
+                        log_msg(TAG, "Promiscuous CTRL filter [%d]: %s", i, ctrl_info->lines[i]);
                     }
                 }
             }
@@ -1896,11 +1901,11 @@ void wifi_scan_esp() {
     if (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA) {
         err = esp_wifi_get_config(WIFI_IF_STA, &conf);
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Error on getting config STA %d", err);
+            log_msg(TAG, "Error on getting config STA %d", err);
         } else {
             sta_info_strings_t *info = get_config_sta_info(conf.sta);
             for (int i = 0; i < info->count; i++) {
-                log_mqtt(LOG_INFO, TAG, true, "STA config [%d]: %s", i, info->lines[i]);
+                log_msg(TAG, "STA config [%d]: %s", i, info->lines[i]);
             }
         }
     }
@@ -1909,11 +1914,11 @@ void wifi_scan_esp() {
     if (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA) {
         err = esp_wifi_get_config(WIFI_IF_AP, &conf);
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Error on getting config AP %d", err);
+            log_msg(TAG, "Error on getting config AP %d", err);
         } else {
             sta_info_strings_t *info = get_config_ap_info(conf.ap);
             for (int i = 0; i < info->count; i++) {
-                log_mqtt(LOG_INFO, TAG, true, "AP config [%d]: %s", i, info->lines[i]);
+                log_msg(TAG, "AP config [%d]: %s", i, info->lines[i]);
             }
         }
     }
@@ -1923,12 +1928,12 @@ void wifi_scan_esp() {
         wifi_sta_list_t stas;
         err = esp_wifi_ap_get_sta_list(&stas);
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Error on getting STA list %d", err);
+            log_msg(TAG, "Error on getting STA list %d", err);
         } else {
             for (int i = 0; i < stas.num; i++) {
                 sta_info_strings_t *info = get_sta_info(stas.sta[i]);
                 for (int j = 0; j < info->count; j++) {
-                    log_mqtt(LOG_INFO, TAG, true, "STA [%d] info [%d]: %s", i, j, info->lines[j]);
+                    log_msg(TAG, "STA [%d] info [%d]: %s", i, j, info->lines[j]);
                 }
             }
         }
@@ -1943,45 +1948,45 @@ void wifi_scan_esp() {
     int8_t power;
     err = esp_wifi_get_max_tx_power(&power);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error on max tx power %d", err);
+        log_msg(TAG, "Error on max tx power %d", err);
     } else {
-        log_mqtt(LOG_INFO, TAG, true, "ESP max TX power : %.2f dBm", power * 0.25f);
+        log_msg(TAG, "ESP max TX power : %.2f dBm", power * 0.25f);
     }
 
     // get wifi event mask
     uint32_t mask;
     err = esp_wifi_get_event_mask(&mask);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error on getting wifi event mask %d", err);
+        log_msg(TAG, "Error on getting wifi event mask %d", err);
     } else {
         sta_info_strings_t *info = get_wifi_event_mask_info(mask);
         for (int i = 0; i < info->count; i++) {
-            log_mqtt(LOG_INFO, TAG, true, "Event mask [%d]: %s", i, info->lines[i]);
+            log_msg(TAG, "Event mask [%d]: %s", i, info->lines[i]);
         }
     }
 
     // get TSF time: Timing Synchronization Function
     // To sync devices on a same network
-    log_mqtt(LOG_INFO, TAG, true, "TSF time STA: %" PRId64 " us", esp_wifi_get_tsf_time(WIFI_IF_STA));
-    log_mqtt(LOG_INFO, TAG, true, "TSF time AP: %" PRId64 " us", esp_wifi_get_tsf_time(WIFI_IF_AP));
+    log_msg(TAG, "TSF time STA: %" PRId64 " us", esp_wifi_get_tsf_time(WIFI_IF_STA));
+    log_msg(TAG, "TSF time AP: %" PRId64 " us", esp_wifi_get_tsf_time(WIFI_IF_AP));
 
     // get inactive times
     uint16_t sec;
     if (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA) {
         err = esp_wifi_get_inactive_time(WIFI_IF_STA, &sec);
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Error on getting inactive time STA %d", err);
+            log_msg(TAG, "Error on getting inactive time STA %d", err);
         } else {
-            log_mqtt(LOG_INFO, TAG, true, "Inactive time for ESP STA: %d s", sec);
+            log_msg(TAG, "Inactive time for ESP STA: %d s", sec);
         }
     }
 
     if (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA) {
         err = esp_wifi_get_inactive_time(WIFI_IF_AP, &sec);
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Error on getting inactive time AP %d", err);
+            log_msg(TAG, "Error on getting inactive time AP %d", err);
         } else {
-            log_mqtt(LOG_INFO, TAG, true, "Inactive time for ESP AP: %d s", sec);
+            log_msg(TAG, "Inactive time for ESP AP: %d s", sec);
         }
     }
 
@@ -1990,9 +1995,9 @@ void wifi_scan_esp() {
         uint16_t aid;
         err = esp_wifi_sta_get_aid(&aid);
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Error on getting ESP aid %d", err);
+            log_msg(TAG, "Error on getting ESP aid %d", err);
         } else {
-            log_mqtt(LOG_INFO, TAG, true, "AP's association id of ESP: %d", aid);
+            log_msg(TAG, "AP's association id of ESP: %d", aid);
         }
     }
 
@@ -2001,9 +2006,9 @@ void wifi_scan_esp() {
         wifi_phy_mode_t phymode;
         err = esp_wifi_sta_get_negotiated_phymode(&phymode);
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Error on getting used phymode STA %d", err);
+            log_msg(TAG, "Error on getting used phymode STA %d", err);
         } else {
-            log_mqtt(LOG_INFO, TAG, true, "Negotiated phymode : %s", get_phy_str(phymode));
+            log_msg(TAG, "Negotiated phymode : %s", get_phy_str(phymode));
         }
     }
 
@@ -2012,16 +2017,16 @@ void wifi_scan_esp() {
         int rssi;
         err = esp_wifi_sta_get_rssi(&rssi);
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Error on getting RSSI %d", err);
+            log_msg(TAG, "Error on getting RSSI %d", err);
         } else {
-            log_mqtt(LOG_INFO, TAG, true, "RSSI : %d dBm", rssi);
+            log_msg(TAG, "RSSI : %d dBm", rssi);
         }
     }
 
     // print all statistics (low level)
     // esp_wifi_statis_dump(WIFI_STATIS_ALL);
 
-    log_mqtt(LOG_INFO, TAG, true, "=============== Getting ESP wifi info End ===============");
+    log_msg(TAG, "=============== Getting ESP wifi info End ===============");
 }
 #endif
 

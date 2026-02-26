@@ -79,17 +79,18 @@ esp_err_t log_init() {
     esp_log_level_set("*", LOG_LEVEL);
 
     //for our own libraries
-    esp_log_level_set("udp_library", LOG_LEVEL);
-    esp_log_level_set("mqtt_library", LOG_LEVEL);
-    esp_log_level_set("nvs_library", LOG_LEVEL);
-    esp_log_level_set("udp_library", LOG_LEVEL);
-    esp_log_level_set("wifi_library", LOG_LEVEL);
-    esp_log_level_set("ota_library", LOG_LEVEL);
-    esp_log_level_set("led_library", LOG_LEVEL);
-    esp_log_level_set("cmd_library", LOG_LEVEL);
-    esp_log_level_set("lcd_library", LOG_LEVEL);
-    esp_log_level_set("ws_library", LOG_LEVEL);
-    esp_log_level_set("log_library", LOG_LEVEL);
+    esp_log_level_set("udp_library", ESP_LOG_WARN);
+    esp_log_level_set("mqtt_library", ESP_LOG_WARN);
+    esp_log_level_set("nvs_library", ESP_LOG_WARN);
+    esp_log_level_set("udp_library", ESP_LOG_WARN);
+    esp_log_level_set("wifi_library", ESP_LOG_WARN);
+    esp_log_level_set("ota_library", ESP_LOG_WARN);
+    esp_log_level_set("led_library", ESP_LOG_WARN);
+    esp_log_level_set("cmd_library", ESP_LOG_WARN);
+    esp_log_level_set("lcd_library", ESP_LOG_WARN);
+    esp_log_level_set("ws_library", ESP_LOG_WARN);
+    esp_log_level_set("log_library", ESP_LOG_WARN);
+    esp_log_level_set("screen_library", ESP_LOG_WARN);
 
     #if LOG_UDP || LOG_MQTT
     log_queue = xQueueCreate(64, LOG_BUFFER_SIZE);

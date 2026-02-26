@@ -10,7 +10,7 @@
 #include "driver/i2c_master.h"
 #include "esp_system.h"
 #include "esp_log.h"
-#include "mqttLib.h"
+#include "logLib.h"
 #include "nvsLib.h"
 #include "esp_lcd_io_i2c.h"
 #include "esp_lcd_types.h"

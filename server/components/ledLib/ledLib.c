@@ -5,10 +5,11 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "nvsLib.h"
-#include "mqttLib.h"
+#include "logLib.h"
 #include <stdarg.h>
 #include <esp_err.h>
 #include "driver/ledc.h"
+#include "screenLib.h"
 
 #if USE_LVGL_SCREEN
 #include "lcdLib.h"
@@ -222,8 +223,8 @@ static soc_module_clk_t get_clock_source_by_register(const ledc_timer_config_t t
     uint32_t tick_sel = LEDC.timer_group[timer.speed_mode].timer[timer.timer_num].conf.tick_sel;
     uint32_t slow_clk_sel = LEDC.conf.slow_clk_sel;
 
-    log_mqtt(LOG_INFO, TAG, true, "High speed clock raw : %d", tick_sel);
-    log_mqtt(LOG_INFO, TAG, true, "Low speed clock raw : %d", slow_clk_sel);
+    log_msg(TAG, "High speed clock raw : %d", tick_sel);
+    log_msg(TAG, "Low speed clock raw : %d", slow_clk_sel);
     
     // 0 est la valeur par défaut sécurisée (souvent REF_TICK ou INVALID selon le contexte)
     soc_module_clk_t clk = (soc_module_clk_t)0;
@@ -247,32 +248,32 @@ static soc_module_clk_t get_clock_source_by_register(const ledc_timer_config_t t
 }
 
 static void print_timer_config(const ledc_timer_config_t config) {
-    log_mqtt(LOG_INFO, TAG, true, "Timer index : %d", config.timer_num); //max?
-    log_mqtt(LOG_INFO, TAG, true, "Duty resolution : %d", config.duty_resolution); //max?
-    log_mqtt(LOG_INFO, TAG, true, "Frequency : %d", config.freq_hz);
-    log_mqtt(LOG_INFO, TAG, true, "Speed mode : %s", mode_str(config.speed_mode));
-    log_mqtt(LOG_INFO, TAG, true, "Clock : %s", clock_str(config.clk_cfg));
-    log_mqtt(LOG_INFO, TAG, true, "Deconfigure : %s", config.deconfigure ? "Yes" : "No");
+    log_msg(TAG, "Timer index : %d", config.timer_num); //max?
+    log_msg(TAG, "Duty resolution : %d", config.duty_resolution); //max?
+    log_msg(TAG, "Frequency : %d", config.freq_hz);
+    log_msg(TAG, "Speed mode : %s", mode_str(config.speed_mode));
+    log_msg(TAG, "Clock : %s", clock_str(config.clk_cfg));
+    log_msg(TAG, "Deconfigure : %s", config.deconfigure ? "Yes" : "No");
 }
 
 static void print_channel_config(const ledc_channel_config_t config) {
-    log_mqtt(LOG_INFO, TAG, true, "Channel : %d", config.channel); //max?
-    log_mqtt(LOG_INFO, TAG, true, "GPIO num : %d", config.gpio_num);
-    log_mqtt(LOG_INFO, TAG, true, "Speed mode : %s", mode_str(config.speed_mode));
-    log_mqtt(LOG_INFO, TAG, true, "Interrupt type (deprecated) : %s", itr_str(config.intr_type));
-    log_mqtt(LOG_INFO, TAG, true, "Timer index : %d", config.timer_sel); //max?
-    log_mqtt(LOG_INFO, TAG, true, "Duty : %d", config.duty);
-    log_mqtt(LOG_INFO, TAG, true, "Hpoint : %d", config.hpoint);
-    log_mqtt(LOG_INFO, TAG, true, "Sleep mode : %s", sleep_str(config.sleep_mode));
-    log_mqtt(LOG_INFO, TAG, true, "Deconfigure : %s", config.deconfigure ? "Yes" : "No");
-    log_mqtt(LOG_INFO, TAG, true, "Output invert : %s", config.flags.output_invert ? "Yes" : "No");
+    log_msg(TAG, "Channel : %d", config.channel); //max?
+    log_msg(TAG, "GPIO num : %d", config.gpio_num);
+    log_msg(TAG, "Speed mode : %s", mode_str(config.speed_mode));
+    log_msg(TAG, "Interrupt type (deprecated) : %s", itr_str(config.intr_type));
+    log_msg(TAG, "Timer index : %d", config.timer_sel); //max?
+    log_msg(TAG, "Duty : %d", config.duty);
+    log_msg(TAG, "Hpoint : %d", config.hpoint);
+    log_msg(TAG, "Sleep mode : %s", sleep_str(config.sleep_mode));
+    log_msg(TAG, "Deconfigure : %s", config.deconfigure ? "Yes" : "No");
+    log_msg(TAG, "Output invert : %s", config.flags.output_invert ? "Yes" : "No");
 }
 
 static void print_callback_param(const ledc_cb_param_t cb) {
-    log_mqtt(LOG_INFO, TAG, true, "Channel : %d", cb.channel);
-    log_mqtt(LOG_INFO, TAG, true, "Event : %s", event_str(cb.event));
-    log_mqtt(LOG_INFO, TAG, true, "Speed mode : %s", mode_str(cb.speed_mode));
-    log_mqtt(LOG_INFO, TAG, true, "Duty : %s", cb.duty);
+    log_msg(TAG, "Channel : %d", cb.channel);
+    log_msg(TAG, "Event : %s", event_str(cb.event));
+    log_msg(TAG, "Speed mode : %s", mode_str(cb.speed_mode));
+    log_msg(TAG, "Duty : %s", cb.duty);
 }
 #endif
 
@@ -297,34 +298,34 @@ static char * drive_cap_str(const gpio_drive_cap_t drive) {
 
 static void print_gpio_config(const gpio_io_config_t config) {
     //current (mA) to change pin level
-    log_mqtt(LOG_INFO, TAG, true, "Drive strength : %s", drive_cap_str(config.drv));
+    log_msg(TAG, "Drive strength : %s", drive_cap_str(config.drv));
 
     //multiplexer, owner of pin (uart, spi..)
-    log_mqtt(LOG_INFO, TAG, true, "IOMUX function : %u", config.fun_sel);
+    log_msg(TAG, "IOMUX function : %u", config.fun_sel);
     //GPIO Matrix : component using pin
-    log_mqtt(LOG_INFO, TAG, true, "Outputting index : %u", config.sig_out);
+    log_msg(TAG, "Outputting index : %u", config.sig_out);
 
     //Pull signal up to 3.3v when nothing is connected (internal resistances)
-    log_mqtt(LOG_INFO, TAG, true, "Pull-up enabled : %s", config.pu ? "Yes" : "No");
+    log_msg(TAG, "Pull-up enabled : %s", config.pu ? "Yes" : "No");
     //Pull signal down to 0v when nothing is connected (internal resistances)
-    log_mqtt(LOG_INFO, TAG, true, "Pull-down enabled : %s", config.pd ? "Yes" : "No");
+    log_msg(TAG, "Pull-down enabled : %s", config.pd ? "Yes" : "No");
 
     //input mode : reading signal
-    log_mqtt(LOG_INFO, TAG, true, "Input enabled : %s", config.ie ? "Yes" : "No");
+    log_msg(TAG, "Input enabled : %s", config.ie ? "Yes" : "No");
     //output mode : generating signal
-    log_mqtt(LOG_INFO, TAG, true, "Output enabled : %s", config.oe ? "Yes" : "No");
+    log_msg(TAG, "Output enabled : %s", config.oe ? "Yes" : "No");
 
     //Software, or Peripheral (Hardware) for complex protocols (I2C/SPI)
-    log_mqtt(LOG_INFO, TAG, true, "Output from peripheral enabled : %s", config.oe_ctrl_by_periph ? "Yes" : "No");
+    log_msg(TAG, "Output from peripheral enabled : %s", config.oe_ctrl_by_periph ? "Yes" : "No");
 
     //signal inversed
-    log_mqtt(LOG_INFO, TAG, true, "Output inversed enabled : %s", config.oe_inv ? "Yes" : "No");
+    log_msg(TAG, "Output inversed enabled : %s", config.oe_inv ? "Yes" : "No");
 
     //Modes : Push-pull (normal), Open-drain -> pin tends to gnd 0v, for I2C
-    log_mqtt(LOG_INFO, TAG, true, "Open-drain enabled : %s", config.od ? "Yes" : "No");
+    log_msg(TAG, "Open-drain enabled : %s", config.od ? "Yes" : "No");
 
     //define pin's behaviour when sleeping
-    log_mqtt(LOG_INFO, TAG, true, "Pin sleep status enabled : %s", config.slp_sel ? "Yes" : "No");
+    log_msg(TAG, "Pin sleep status enabled : %s", config.slp_sel ? "Yes" : "No");
 }
 #endif
 
@@ -363,7 +364,7 @@ void led_init() {
 
     if( xMutex != NULL )
     {
-        log_mqtt(LOG_WARN, TAG, true, "Mutex already initialized");
+        log_msg(TAG, "Mutex already initialized");
         return;
     }
 
@@ -371,37 +372,37 @@ void led_init() {
 
     if( xMutex == NULL )
     {
-        log_mqtt(LOG_ERROR, TAG, true, "Error on mutex creation");
+        log_msg(TAG, "Error on mutex creation");
         return;
     }
 
     //reset gpio pin
     esp_err_t err = gpio_reset_pin(LED_PIN);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) resetting pin %d", esp_err_to_name(err), LED_PIN);
+        log_msg(TAG, "Error (%s) resetting pin %d", esp_err_to_name(err), LED_PIN);
         return;
     }
 
     //set output mode for gpio
     err = gpio_set_direction(LED_PIN, GPIO_MODE_OUTPUT);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) setting direction pin %d", esp_err_to_name(err), LED_PIN);
+        log_msg(TAG, "Error (%s) setting direction pin %d", esp_err_to_name(err), LED_PIN);
         return;
     }
 
     //load led state in nvs and apply it to gpio
     err = load_nvs_int("led_state", &led_state);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) loading nvs int : led_state", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) loading nvs int : led_state", esp_err_to_name(err));
         return;
     }
     err = gpio_set_level(LED_PIN, led_state);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) setting level on pin : %d", esp_err_to_name(err), LED_PIN);
+        log_msg(TAG, "Error (%s) setting level on pin : %d", esp_err_to_name(err), LED_PIN);
         return;
     }
 
-    log_mqtt(LOG_INFO, TAG, true, "Led initialized on pin %d", LED_PIN);
+    log_msg(TAG, "Led initialized on pin %d", LED_PIN);
 
 }
 
@@ -411,7 +412,7 @@ void led_init() {
 void led_on() {
 
     if (xMutex == NULL) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error on mutex creation");
+        log_msg(TAG, "Error on mutex creation");
         return;
     }
 
@@ -420,17 +421,17 @@ void led_on() {
             led_state = 1;
             esp_err_t err = gpio_set_level(LED_PIN, led_state);
             if (err != ESP_OK) {
-                log_mqtt(LOG_ERROR, TAG, true, "Error (%s) setting level on pin : %d", esp_err_to_name(err), LED_PIN);
+                log_msg(TAG, "Error (%s) setting level on pin : %d", esp_err_to_name(err), LED_PIN);
                 xSemaphoreGive(xMutex);
                 return;
             }
             err = save_nvs_int("led_state", led_state);
             if (err != ESP_OK) {
-                log_mqtt(LOG_ERROR, TAG, true, "Error (%s) loading saving led_state in nvs", esp_err_to_name(err));
+                log_msg(TAG, "Error (%s) loading saving led_state in nvs", esp_err_to_name(err));
                 xSemaphoreGive(xMutex);
                 return;
             }
-            log_mqtt(LOG_INFO, TAG, true, "Led on");
+            log_msg(TAG, "Led on");
         }
         xSemaphoreGive(xMutex);
     }
@@ -442,7 +443,7 @@ void led_on() {
 void led_off() {
 
     if (xMutex == NULL) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error on mutex creation");
+        log_msg(TAG, "Error on mutex creation");
         return;
     }
 
@@ -451,17 +452,17 @@ void led_off() {
             led_state = 0;
             esp_err_t err = gpio_set_level(LED_PIN, led_state);
             if (err != ESP_OK) {
-                log_mqtt(LOG_ERROR, TAG, true, "Error (%s) setting level on pin : %d", esp_err_to_name(err), LED_PIN);
+                log_msg(TAG, "Error (%s) setting level on pin : %d", esp_err_to_name(err), LED_PIN);
                 xSemaphoreGive(xMutex);
                 return;
             }
             err = save_nvs_int("led_state", led_state);
             if (err != ESP_OK) {
-                log_mqtt(LOG_ERROR, TAG, true, "Error (%s) loading saving led_state in nvs", esp_err_to_name(err));
+                log_msg(TAG, "Error (%s) loading saving led_state in nvs", esp_err_to_name(err));
                 xSemaphoreGive(xMutex);
                 return;
             }
-            log_mqtt(LOG_INFO, TAG, true, "Led off");
+            log_msg(TAG, "Led off");
         }
         xSemaphoreGive(xMutex);
     }
@@ -473,7 +474,7 @@ void led_off() {
 void led_toggle() {
 
     if (xMutex == NULL) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error on mutex creation");
+        log_msg(TAG, "Error on mutex creation");
         return;
     }
 
@@ -481,17 +482,17 @@ void led_toggle() {
         led_state = !led_state;
         esp_err_t err = gpio_set_level(LED_PIN, led_state);
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) setting level on pin : %d", esp_err_to_name(err), LED_PIN);
+            log_msg(TAG, "Error (%s) setting level on pin : %d", esp_err_to_name(err), LED_PIN);
             xSemaphoreGive(xMutex);
             return;
         }
         err = save_nvs_int("led_state", led_state);
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) loading saving led_state in nvs", esp_err_to_name(err));
+            log_msg(TAG, "Error (%s) loading saving led_state in nvs", esp_err_to_name(err));
             xSemaphoreGive(xMutex);
             return;
         }
-        log_mqtt(LOG_INFO, TAG, true, "Led toggled to : %d", led_state);
+        log_msg(TAG, "Led toggled to : %d", led_state);
         xSemaphoreGive(xMutex);
     }
 }
@@ -504,7 +505,7 @@ void led_toggle() {
 void close_led() {
 
     if (xMutex == NULL) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error on mutex creation");
+        log_msg(TAG, "Error on mutex creation");
         return;
     }
 
@@ -514,27 +515,27 @@ void close_led() {
         //idle level to 0 = LOW?
         err = ledc_stop(ledc_channel[i].speed_mode, ledc_channel[i].channel, 0);
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) on stop ledc channel %d", esp_err_to_name(err), i);
+            log_msg(TAG, "Error (%s) on stop ledc channel %d", esp_err_to_name(err), i);
         }
     }
     ledc_fade_func_uninstall();
 
     err = ledc_timer_rst(ledc_timer_bts.speed_mode, ledc_timer_bts.timer_num);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) on reset ledc timer BTS", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) on reset ledc timer BTS", esp_err_to_name(err));
     }
     err = ledc_timer_rst(ledc_timer_mg.speed_mode, ledc_timer_mg.timer_num);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) on reset ledc timer MG", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) on reset ledc timer MG", esp_err_to_name(err));
     }
 
     err = ledc_timer_pause(ledc_timer_bts.speed_mode, ledc_timer_bts.timer_num);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) on pause ledc timer BTS", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) on pause ledc timer BTS", esp_err_to_name(err));
     }
     err = ledc_timer_pause(ledc_timer_mg.speed_mode, ledc_timer_mg.timer_num);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) on pause ledc timer MG", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) on pause ledc timer MG", esp_err_to_name(err));
     }
 
     if (counting_sem != NULL) {
@@ -545,7 +546,7 @@ void close_led() {
     vSemaphoreDelete(xMutex);
     xMutex = NULL;
 
-    log_mqtt(LOG_INFO, TAG, true, "Led & Ledc closed");
+    log_msg(TAG, "Led & Ledc closed");
 }
 
 /**
@@ -556,7 +557,7 @@ int get_led_state() {
     int led = -1;
 
     if (xMutex == NULL) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error on mutex creation");
+        log_msg(TAG, "Error on mutex creation");
         return led;
     }
 
@@ -579,13 +580,13 @@ void init_ledc() {
     // Set configuration of timer bts & mg for high speed channels
     err = ledc_timer_config(&ledc_timer_bts);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) setting timer for BTS", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) setting timer for BTS", esp_err_to_name(err));
         return;
     }
 
     err = ledc_timer_config(&ledc_timer_mg);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) setting timer for MG", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) setting timer for MG", esp_err_to_name(err));
         return;
     }
 
@@ -593,7 +594,7 @@ void init_ledc() {
     for (ch = 0; ch < LEDC_NUM_TEST; ch++) {
         err = ledc_channel_config(&ledc_channel[ch]);
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) setting channel %d",
+            log_msg(TAG, "Error (%s) setting channel %d",
                 esp_err_to_name(err), ch);
             return;
         }
@@ -602,7 +603,7 @@ void init_ledc() {
     // Initialize fade service.
     err = ledc_fade_func_install(0);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) installing fade", esp_err_to_name(err));
+        log_msg(TAG, "Error (%s) installing fade", esp_err_to_name(err));
         return;
     }
     ledc_cbs_t callbacks = {
@@ -610,7 +611,7 @@ void init_ledc() {
     };
     counting_sem = xSemaphoreCreateCounting(LEDC_NUM_TEST, 0);
     if (counting_sem == NULL) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error creating ledc semaphore");
+        log_msg(TAG, "Error creating ledc semaphore");
         return;
     }
 
@@ -618,12 +619,12 @@ void init_ledc() {
     for (ch = 0; ch < LEDC_NUM_TEST; ch++) {
         err = ledc_cb_register(ledc_channel[ch].speed_mode, ledc_channel[ch].channel, &callbacks, (void *) counting_sem);
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) registering callback on channel %d", esp_err_to_name(err), ch);
+            log_msg(TAG, "Error (%s) registering callback on channel %d", esp_err_to_name(err), ch);
             return;
         }
     }
 
-    log_mqtt(LOG_INFO, TAG, true, "LEDC initialized");
+    log_msg(TAG, "LEDC initialized");
 
 #if DEBUG_LEDC || DEBUG_GPIO
     print_esp_info_ledc();
@@ -647,7 +648,7 @@ void ledc_duty_fade(const uint32_t duty, const uint8_t idx) {
     err = ledc_set_fade_with_time(ledc_channel[idx].speed_mode,
                                 ledc_channel[idx].channel, duty, LEDC_TEST_FADE_TIME);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) setting fade duty %d on channel %d",
+        log_msg(TAG, "Error (%s) setting fade duty %d on channel %d",
             esp_err_to_name(err), duty, idx);
         return;
     }
@@ -658,12 +659,12 @@ void ledc_duty_fade(const uint32_t duty, const uint8_t idx) {
     err = ledc_fade_start(ledc_channel[idx].speed_mode,
                     ledc_channel[idx].channel, fade_mode);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) starting fade duty %d on channel %d",
+        log_msg(TAG, "Error (%s) starting fade duty %d on channel %d",
             esp_err_to_name(err), duty, idx);
         return;
     }
 
-    log_mqtt(LOG_INFO, TAG, true, "Starting fade : %d, on channel %d", duty, idx);
+    log_msg(TAG, "Starting fade : %d, on channel %d", duty, idx);
     xSemaphoreTake(counting_sem, portMAX_DELAY);
 }
 
@@ -677,19 +678,19 @@ void ledc_duty(const uint32_t duty, const uint8_t idx) {
 
     err = ledc_set_duty(ledc_channel[idx].speed_mode, ledc_channel[idx].channel, duty);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) setting duty %d on channel %d",
+        log_msg(TAG, "Error (%s) setting duty %d on channel %d",
             esp_err_to_name(err), duty, idx);
         return;
     }
 
     err = ledc_update_duty(ledc_channel[idx].speed_mode, ledc_channel[idx].channel);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) updating duty %d on channel %d",
+        log_msg(TAG, "Error (%s) updating duty %d on channel %d",
             esp_err_to_name(err), duty, idx);
         return;
     }
 
-    log_mqtt(LOG_DEBUG, TAG, true, "Duty : %d, on channel %d", duty, idx);
+    log_msg(TAG, "Duty : %d, on channel %d", duty, idx);
 }
 
 /**
@@ -718,7 +719,7 @@ void ledc_angle(int16_t angle) {
             MIN_SERVO_DUTY + ((MAX_SERVO_DUTY - MIN_SERVO_DUTY) * angle) / 180, DIRECTION_IDX
         );
 
-        log_mqtt(LOG_DEBUG, TAG, true, "Angle : %d, on pin %d", angle, MG_GPIO);
+        log_msg(TAG, "Angle : %d, on pin %d", angle, MG_GPIO);
 
 #if WRITE_ANGLE_SCREEN
 
@@ -776,7 +777,7 @@ void ledc_motor(int16_t motor_percent) {
             ledc_duty(0, MOTOR_IDX_BWD);
         }
         
-        log_mqtt(LOG_DEBUG, TAG, true, "Motor : %d, on pins; fwd : %d, bwd : %d",
+        log_msg(TAG, "Motor : %d, on pins; fwd : %d, bwd : %d",
             current_motor, BTS_GPIO_FWD, BTS_GPIO_BWD);
 
 #if WRITE_MOTOR_SCREEN
@@ -800,30 +801,30 @@ void print_esp_info_ledc() {
     esp_err_t err;
 
 #if DEBUG_LEDC
-    log_mqtt(LOG_INFO, TAG, true, "============= LEDC capabilities =============");
+    log_msg(TAG, "============= LEDC capabilities =============");
 
-    log_mqtt(LOG_INFO, TAG, true, "LEDC timers        : %d", SOC_LEDC_TIMER_NUM);
-    log_mqtt(LOG_INFO, TAG, true, "LEDC channels      : %d", SOC_LEDC_CHANNEL_NUM);
-    log_mqtt(LOG_INFO, TAG, true, "Max duty resolution: %d bits", SOC_LEDC_TIMER_BIT_WIDTH);
+    log_msg(TAG, "LEDC timers        : %d", SOC_LEDC_TIMER_NUM);
+    log_msg(TAG, "LEDC channels      : %d", SOC_LEDC_CHANNEL_NUM);
+    log_msg(TAG, "Max duty resolution: %d bits", SOC_LEDC_TIMER_BIT_WIDTH);
 
     //SOC_LEDC_HAS_TIMER_SPECIFIC_MUX;
 
     #if SOC_LEDC_SUPPORT_HS_MODE
-        log_mqtt(LOG_INFO, TAG, true, "High Speed mode    : SUPPORTED");
+        log_msg(TAG, "High Speed mode    : SUPPORTED");
     #else
-        log_mqtt(LOG_INFO, TAG, true, "High Speed mode    : NOT supported (LS only)");
+        log_msg(TAG, "High Speed mode    : NOT supported (LS only)");
     #endif
 
     #if SOC_LEDC_SUPPORT_REF_TICK
-        log_mqtt(LOG_INFO, TAG, true, "REF_TICK clock     : SUPPORTED (light sleep safe)");
+        log_msg(TAG, "REF_TICK clock     : SUPPORTED (light sleep safe)");
     #else
-        log_mqtt(LOG_INFO, TAG, true, "REF_TICK clock     : NOT supported");
+        log_msg(TAG, "REF_TICK clock     : NOT supported");
     #endif
 
     #if SOC_LEDC_SUPPORT_APB_CLOCK
-        log_mqtt(LOG_INFO, TAG, true, "APB clock (80 MHz) : SUPPORTED");
+        log_msg(TAG, "APB clock (80 MHz) : SUPPORTED");
     #else
-        log_mqtt(LOG_INFO, TAG, true, "APB clock (80 MHz) : NOT supported");
+        log_msg(TAG, "APB clock (80 MHz) : NOT supported");
     #endif
 
     uint32_t val;
@@ -832,16 +833,16 @@ void print_esp_info_ledc() {
     for (int i = 0; i < LEDC_NUM_TEST; i++) {
         print_channel_config(ledc_channel[i]);
         val_int = ledc_get_hpoint(ledc_channel[i].speed_mode, ledc_channel[i].channel);
-        log_mqtt(LOG_INFO, TAG, true, "Hpoint channel %d : %d", i, val_int);
+        log_msg(TAG, "Hpoint channel %d : %d", i, val_int);
         val = ledc_get_duty(ledc_channel[i].speed_mode, ledc_channel[i].channel);
-        log_mqtt(LOG_INFO, TAG, true, "Duty channel %d : %d", i, val);
+        log_msg(TAG, "Duty channel %d : %d", i, val);
     }
 
     print_timer_config(ledc_timer_bts);
     print_timer_config(ledc_timer_mg);
 
     val = ledc_get_freq(ledc_timer_bts.speed_mode, ledc_timer_bts.timer_num);
-    log_mqtt(LOG_INFO, TAG, true, "BTS Frequence : %d", val);
+    log_msg(TAG, "BTS Frequence : %d", val);
 
     //clock : APB, REF_TICK, RC_FAST
     soc_module_clk_t clock = get_clock_source_by_register(ledc_timer_bts);
@@ -851,59 +852,59 @@ void print_esp_info_ledc() {
     esp_clk_tree_src_freq_precision_t precision = ESP_CLK_TREE_SRC_FREQ_PRECISION_EXACT; //exact
     err = esp_clk_tree_src_get_freq_hz(clock, precision, &val);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) getting clock frequency for BTS",
+        log_msg(TAG, "Error (%s) getting clock frequency for BTS",
             esp_err_to_name(err));
     }
-    log_mqtt(LOG_INFO, TAG, true, "BTS clock frequency : %d", val);
+    log_msg(TAG, "BTS clock frequency : %d", val);
 
     val = ledc_find_suitable_duty_resolution(val, BTS_FREQ);
-    log_mqtt(LOG_INFO, TAG, true, "BTS suitable duty resolution : %d", val);
+    log_msg(TAG, "BTS suitable duty resolution : %d", val);
 
     val = ledc_get_freq(ledc_timer_mg.speed_mode, ledc_timer_mg.timer_num);
-    log_mqtt(LOG_INFO, TAG, true, "MG Frequence : %d", val);
+    log_msg(TAG, "MG Frequence : %d", val);
 
     clock = get_clock_source_by_register(ledc_timer_mg);
 
     precision = ESP_CLK_TREE_SRC_FREQ_PRECISION_EXACT; //exact
     err = esp_clk_tree_src_get_freq_hz(clock, precision, &val);
     if (err != ESP_OK) {
-        log_mqtt(LOG_ERROR, TAG, true, "Error (%s) getting clock frequency for MG",
+        log_msg(TAG, "Error (%s) getting clock frequency for MG",
             esp_err_to_name(err));
     }
-    log_mqtt(LOG_INFO, TAG, true, "MG clock frequency : %d", val);
+    log_msg(TAG, "MG clock frequency : %d", val);
 
     val = ledc_find_suitable_duty_resolution(val, MG_FREQ);
-    log_mqtt(LOG_INFO, TAG, true, "MG suitable duty resolution : %d", val);
+    log_msg(TAG, "MG suitable duty resolution : %d", val);
 #endif
 
 #if DEBUG_GPIO
-    log_mqtt(LOG_INFO, TAG, true, "============= GPIO capabilities =============");
-    log_mqtt(LOG_INFO, TAG, true, "GPIO pin count        : %d", GPIO_PIN_COUNT);
+    log_msg(TAG, "============= GPIO capabilities =============");
+    log_msg(TAG, "GPIO pin count        : %d", GPIO_PIN_COUNT);
 
     gpio_io_config_t out_io_config;
     gpio_drive_cap_t drive_cap;
     for (int i = 0; i < GPIO_PIN_COUNT; i++) {
         err = gpio_get_io_config(i, &out_io_config);
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) getting GPIO config for pin %d",
+            log_msg(TAG, "Error (%s) getting GPIO config for pin %d",
                 esp_err_to_name(err), i);
         }
-        log_mqtt(LOG_INFO, TAG, true, "GPIO pin %d; valid : %d, valid output: %d, valid pad : %d",
+        log_msg(TAG, "GPIO pin %d; valid : %d, valid output: %d, valid pad : %d",
             i, GPIO_IS_VALID_GPIO(i), GPIO_IS_VALID_OUTPUT_GPIO(i), GPIO_IS_VALID_DIGITAL_IO_PAD(i));
         ;
-        log_mqtt(LOG_INFO, TAG, true, "Reserved : %s", esp_gpio_is_reserved(BIT64(i)) ? "Yes" : "No");
+        log_msg(TAG, "Reserved : %s", esp_gpio_is_reserved(BIT64(i)) ? "Yes" : "No");
         print_gpio_config(out_io_config);
-        log_mqtt(LOG_INFO, TAG, true, "Level : %d", gpio_get_level(i));
+        log_msg(TAG, "Level : %d", gpio_get_level(i));
         err = gpio_get_drive_capability(i, &drive_cap);
         if (err != ESP_OK) {
-            log_mqtt(LOG_ERROR, TAG, true, "Error (%s) getting GPIO drive capability for pin %d",
+            log_msg(TAG, "Error (%s) getting GPIO drive capability for pin %d",
                 esp_err_to_name(err), i);
         }
-        log_mqtt(LOG_INFO, TAG, true, "Strength : %s", drive_cap_str(drive_cap));
+        log_msg(TAG, "Strength : %s", drive_cap_str(drive_cap));
     }
 #endif
 
-    log_mqtt(LOG_INFO, TAG, true, "=============================================");
+    log_msg(TAG, "=============================================");
 }
 #endif
 

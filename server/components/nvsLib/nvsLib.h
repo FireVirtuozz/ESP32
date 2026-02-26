@@ -1,14 +1,8 @@
 #ifndef NVSLIB_H_
 #define NVSLIB_H_
 
-#include <nvs_flash.h>
 #include <esp_err.h>
-#include <esp_log.h>
-#include <nvs.h>
 #include <inttypes.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
-#include "mqttLib.h"
 
 /**
  * Initialize nvs

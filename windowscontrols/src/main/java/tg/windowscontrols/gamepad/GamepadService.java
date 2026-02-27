@@ -41,17 +41,18 @@ public class GamepadService {
     }
 
     public byte[] getCompressedState(GLFWGamepadState glfwState) {
-        byte[] payload = new byte[8]; // 1 type + 6 axes + 1 button byte
+        byte[] payload = new byte[9]; // 1 type + 1 size + 6 axes + 1 button byte
 
         payload[0] = 0; // gamepad type
-        payload[1] = axisToByte(glfwState.axes(GLFW.GLFW_GAMEPAD_AXIS_LEFT_X));
-        payload[2] = axisToByte(glfwState.axes(GLFW.GLFW_GAMEPAD_AXIS_LEFT_Y));
-        payload[3] = axisToByte(glfwState.axes(GLFW.GLFW_GAMEPAD_AXIS_RIGHT_X));
-        payload[4] = axisToByte(glfwState.axes(GLFW.GLFW_GAMEPAD_AXIS_RIGHT_Y));
-        payload[5] = axisToByte(glfwState.axes(GLFW.GLFW_GAMEPAD_AXIS_LEFT_TRIGGER));
-        payload[6] = axisToByte(glfwState.axes(GLFW.GLFW_GAMEPAD_AXIS_RIGHT_TRIGGER));
+        payload[1] = 7; // payload size
+        payload[2] = axisToByte(glfwState.axes(GLFW.GLFW_GAMEPAD_AXIS_LEFT_X));
+        payload[3] = axisToByte(glfwState.axes(GLFW.GLFW_GAMEPAD_AXIS_LEFT_Y));
+        payload[4] = axisToByte(glfwState.axes(GLFW.GLFW_GAMEPAD_AXIS_RIGHT_X));
+        payload[5] = axisToByte(glfwState.axes(GLFW.GLFW_GAMEPAD_AXIS_RIGHT_Y));
+        payload[6] = axisToByte(glfwState.axes(GLFW.GLFW_GAMEPAD_AXIS_LEFT_TRIGGER));
+        payload[7] = axisToByte(glfwState.axes(GLFW.GLFW_GAMEPAD_AXIS_RIGHT_TRIGGER));
 
-        payload[7] = buttonsToByte(
+        payload[8] = buttonsToByte(
             glfwState.buttons(GLFW.GLFW_GAMEPAD_BUTTON_A) == GLFW.GLFW_PRESS,
             glfwState.buttons(GLFW.GLFW_GAMEPAD_BUTTON_B) == GLFW.GLFW_PRESS,
             glfwState.buttons(GLFW.GLFW_GAMEPAD_BUTTON_X) == GLFW.GLFW_PRESS,

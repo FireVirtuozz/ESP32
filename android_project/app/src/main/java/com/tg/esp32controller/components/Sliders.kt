@@ -8,17 +8,19 @@ import androidx.compose.runtime.*
 fun ControlSliders(
     //declares callback taking 2 Int
     //Unit : return void
-    onValueChanged: (accel: Int, direction: Int) -> Unit
+    onValueChanged: (accel: Int, direction: Int) -> Unit,
+    controlByRotation: Boolean = false,
+    directionValue: Int = 0 // valeur initiale du slider
 ) {
     //variables remembered through every UI changes
     var acceleration by remember { mutableStateOf(0f) }
-    var direction by remember { mutableStateOf(0f) }
+    val direction = rememberUpdatedState(directionValue.toFloat())
 
     //callback called by Sliders
     fun notify() {
         onValueChanged(
             acceleration.toInt(),
-            direction.toInt()
+            direction.value.toInt()
         )
     }
 
@@ -34,13 +36,16 @@ fun ControlSliders(
         valueRange = -100f..100f
     )
 
-    Text("Direction: ${direction.toInt()}")
+    Text("Direction: ${direction.value.toInt()}")
     Slider(
-        value = direction,
+        value = direction.value,
         onValueChange = {
-            direction = it
-            notify()
+            if (!controlByRotation) {
+                onValueChanged(acceleration.toInt(), it.toInt()) // passer la valeur du slider
+            }
         },
-        valueRange = -40f..40f
+        valueRange = -40f..40f,
+        enabled = !controlByRotation
     )
+
 }

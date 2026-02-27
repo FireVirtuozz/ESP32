@@ -12,8 +12,8 @@ public class Main {
 
     private static Boolean useMqtt = false;
     private static Boolean useWs = false;
-    private static Boolean useUdp = false;
-    private static Boolean useTcp = true; 
+    private static Boolean useUdp = true;
+    private static Boolean useTcp = false;
     private static long frameTimeMs = 1000 / 30;
     private static Integer numDataSent = 0;
 
@@ -72,7 +72,7 @@ public class Main {
             }
         } else if (useUdp) {
             try {
-                UdpClientEsp clientUdpEsp = new UdpClientEsp("10.122.242.90", 3334);
+                UdpClientEsp clientUdpEsp = new UdpClientEsp("192.168.4.1", 3333);
 
                 while (true) {
                 long start = System.currentTimeMillis();

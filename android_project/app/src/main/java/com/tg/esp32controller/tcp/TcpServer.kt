@@ -36,12 +36,12 @@ class TcpServer(private val port: Int, private val gamepadData: GamepadData) {
                         Log.i("server tcp", "Client OK: ${clientSocket!!.inetAddress}")
                     }
 
-                    // LECTURE
+                    // reading
                     inputStream?.let { input ->
                         clientSocket?.let { client ->
                             if (client.isConnected) {
                                 val buffer = ByteArray(64)
-                                val bytesRead = input.read(buffer, 0, buffer.size)  // ← FIX !
+                                val bytesRead = input.read(buffer, 0, buffer.size)
 
                                 if (bytesRead > 0) {
                                     nbPackets++
@@ -57,7 +57,7 @@ class TcpServer(private val port: Int, private val gamepadData: GamepadData) {
 
                                     onPacket(data, InetSocketAddress(client.inetAddress, client.port), nbPackets)
                                 } else if (bytesRead == -1) {
-                                    Log.i("server tcp", "Client déconnecté")
+                                    Log.i("server tcp", "Client disconnected")
                                     clientSocket = null
                                     inputStream = null
                                 }
@@ -65,12 +65,12 @@ class TcpServer(private val port: Int, private val gamepadData: GamepadData) {
                         }
                     }
                 }
-                // CRUCIAL : catch les timeouts !
+                // catch timeouts so that it doesn't stop
                 catch (e: java.net.SocketTimeoutException) {
                     // Pas de données = NORMAL
                 }
                 catch (e: Exception) {
-                    Log.e("server tcp", "ERREUR: ${e.message}")
+                    Log.e("server tcp", "ERROR: ${e.message}")
                     clientSocket?.close()
                     inputStream?.close()
                     clientSocket = null

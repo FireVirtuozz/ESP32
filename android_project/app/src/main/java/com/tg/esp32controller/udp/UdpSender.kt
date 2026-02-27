@@ -14,7 +14,7 @@ class UdpSender(
     private val socket = DatagramSocket()
     private val address = InetSocketAddress(ip, port)
 
-    suspend fun send(accel: Int, direction: Int) {
+    suspend fun sendAccelReverse(accel: Int, direction: Int) {
         //withContext ??
         withContext(Dispatchers.IO) {
             //send a byteArray, values clamped between -100 .. 100
@@ -28,6 +28,45 @@ class UdpSender(
             socket.send(packet)
         }
     }
+
+    fun sendBytesMJPEG(data: ByteArray) {
+
+        val maxPacketSize = 1300
+        var offset = 0
+
+        while (offset < data.size) {
+
+            val size = minOf(maxPacketSize, data.size - offset)
+            val chunk = data.copyOfRange(offset, offset + size)
+
+            val packet = DatagramPacket(chunk, size, address)
+            socket.send(packet)
+
+            offset += size
+        }
+
+        socket.send(DatagramPacket(ByteArray(0), 0, address))
+
+    }
+
+    fun sendNal(nal: ByteArray) {
+
+        val maxPacketSize = 1300
+        var offset = 0
+
+        while (offset < nal.size) {
+
+            val size = minOf(maxPacketSize, nal.size - offset)
+            val chunk = nal.copyOfRange(offset, offset + size)
+
+            val packet = DatagramPacket(chunk, chunk.size, address)
+            socket.send(packet)
+
+            offset += size
+        }
+    }
+
+
 
     fun close() {
         socket.close()

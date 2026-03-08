@@ -91,6 +91,8 @@ esp_err_t log_init() {
     esp_log_level_set("ws_library", ESP_LOG_WARN);
     esp_log_level_set("log_library", ESP_LOG_WARN);
     esp_log_level_set("screen_library", ESP_LOG_WARN);
+    esp_log_level_set("sensors_library", ESP_LOG_INFO);
+    esp_log_level_set("main", ESP_LOG_INFO);
 
     #if LOG_UDP || LOG_MQTT
     log_queue = xQueueCreate(64, LOG_BUFFER_SIZE);

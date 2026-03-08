@@ -40,7 +40,13 @@ Add partition `nvs_keys` in custom partition, erase it if already used. Make sur
 parttool.py erase_partition --partition-subtype nvs_keys
 ```
 
-To flash, use
+To flash for the first time, use
+
+```bash
+idf.py flash
+```
+
+and then after:
 
 ```bash
 idf.py encrypted-flash

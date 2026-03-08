@@ -11,6 +11,8 @@
 #include "driver/ledc.h"
 #include "screenLib.h"
 
+#define USE_LVGL_SCREEN 0
+
 #if USE_LVGL_SCREEN
 #include "lcdLib.h"
 #endif

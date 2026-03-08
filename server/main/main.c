@@ -1,22 +1,41 @@
+#define USE_LEDLIB 0
+#define USE_SCREENLIB 0
+#define USE_LVGL_SCREEN 0
+#define USE_UDPLIB 0
+#define USE_WSLIB 0
+#define USE_MQTTLIB 0
+
 #include <stdio.h>
 #include "wifiLib.h"
+#if USE_WSLIB
 #include "wsLib.h"
+#endif
+#if USE_UDPLIB
 #include "udpLib.h"
+#endif
+#if USE_LEDLIB
 #include "ledLib.h"
+#endif
 #include "nvsLib.h"
-#include "efuseLib.h"
-#include "otaLib.h"
+#if USE_MQTTLIB
 #include "mqttLib.h"
+#endif
 #include "logLib.h"
 #include <stdarg.h>
 
 #if USE_LVGL_SCREEN
 #include "lcdLib.h"
-#else
+#endif
+#if USE_SCREENLIB
 #include "screenLib.h"
 #endif
 
-//static const char * TAG = "main";
+#include "sensorsLib.h"
+
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
+static const char * TAG = "main";
 
 void app_main()
 {
@@ -31,25 +50,43 @@ void app_main()
 
 #if USE_LVGL_SCREEN
     lcd_init();
-#else
+#endif
+#if USE_SCREENLIB
     ssd1306_setup(); //init oled screen
     screen_full_off();
 #endif
 
     wifi_init();
+#if USE_UDPLIB
     udp_server_init();
-    //mqtt_start();
-    //ws_server_init();
+#endif
+#if USE_MQTTLIB
+    mqtt_start();
+#endif
+#if USE_WSLIB
+    ws_server_init();
+#endif
 
-    //wifi_init_apsta(); useful only if esp32 = router
-
+#if USE_LEDLIB
     init_all_gpios();
+    led_on();
+#endif
 
 #if USE_LVGL_SCREEN
     set_label_ip(wifi_get_ip());
-#else
+#endif
+#if USE_SCREENLIB
     ssd1306_draw_string(wifi_get_ip(), 0, 0);
 #endif
-    led_on();
 
+    init_hcsr();
+    int64_t val;
+
+    while(1) {
+        log_msg(TAG, "sending trig to HC-SR04");
+        val = trigger_echo(); //blocking
+        log_msg(TAG, "value received: %d, to centimeters: %.1fcm", val, val / 58.0);
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+    
 }

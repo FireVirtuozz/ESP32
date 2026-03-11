@@ -4,6 +4,23 @@ use std::cmp::Ordering;
 
 use rand::Rng; //include Rng from rand
 
+//new type between 1 & 100
+pub struct Guess {
+    value: u32,
+}
+
+impl Guess {
+    pub fn new(value: u32) -> Guess {
+        if value < 1 || value > 100 {
+            panic!("Guess value must be between 1 and 100, got {value}.");
+        }
+        Guess { value }
+    }
+    pub fn value(&self) -> u32 {
+        self.value
+    }
+}
+
 //https://doc.rust-lang.org/std/prelude/index.html
 
 fn main() {
@@ -49,12 +66,14 @@ fn main() {
             Err(_) => continue, //restart loop
         };
 
+        let guess : Guess = Guess::new(guess);
+
         //panic : when overflow, to handle
 
-        println!("U guessed : {guess}");
+        println!("U guessed : {}", guess.value());
 
         //pass a reference of secret_number in cmp
-        match guess.cmp(&secret_number) { //compare (strcmp) & match (switch case)
+        match guess.value.cmp(&secret_number) { //compare (strcmp) & match (switch case)
             Ordering::Equal => { //case Equal from Ordering's Enum
                 println!("Won");
                 break;

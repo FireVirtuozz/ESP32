@@ -2,10 +2,10 @@
 
 ```bash
 rustc main.rs #compile
-./main
+./main #run
 ```
 
-Cargo
+**Cargo**
 
 ```bash
 cargo --version
@@ -21,7 +21,21 @@ cargo build --release # debug by default
 cargo update # update dependencies (crates)
 
 cargo doc --open
+
+cargo fmt #format
+
+cargo new restaurant --lib
 ```
 
-https://doc.rust-lang.org/std/prelude/index.html
-https://crates.io/
+Doc : https://doc.rust-lang.org/std/prelude/index.html
+
+Packages : https://crates.io/
+
+## Variables
+
+## Ownership
+
+## Structures
+
+
+

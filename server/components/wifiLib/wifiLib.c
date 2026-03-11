@@ -7,6 +7,7 @@
 #include <freertos/event_groups.h>
 #include <string.h>
 #include <esp_mac.h>
+#include "nvsLib.h"
 
 /**
  * WiFi library
@@ -32,8 +33,6 @@
 #define DEFAULT_SCAN_LIST_SIZE 16
 
 //ESP AP Config
-#define ESP_SSID "big_esp"
-#define ESP_PASS "espdegigachad"
 #define ESP_MAX_CONNECTION 4
 
 /*DHCP server option flag*/
@@ -1216,29 +1215,68 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
 /* Initialize simpel soft AP config netif*/
 esp_netif_t *wifi_init_softap_netif(void)
 {
+    esp_err_t err;
     //create netif TCP/IP for AP mode
     esp_netif_t *esp_netif_ap = esp_netif_create_default_wifi_ap();
+
+    /*
+    Uncomment & edit this if you want to encrypt your AP's credentials
+    */
+    const char * ap_ssid = "big_esp";
+    const char * ap_pass = "espdegigachad";
+    err = save_nvs_str("AP_SSID", ap_ssid);
+    if (err != ESP_OK) {
+        log_msg(TAG, "Error (%s) on saving AP_SSID to NVS",
+            esp_err_to_name(err));
+    } else {
+        log_msg(TAG, "%s saved to NVS to AP_SSID",
+            ap_ssid);
+    }
+    err = save_nvs_str("AP_PASS", ap_pass);
+    if (err != ESP_OK) {
+        log_msg(TAG, "Error (%s) on saving AP_PASS to NVS",
+            esp_err_to_name(err));
+    } else {
+        log_msg(TAG, "%s saved to NVS to AP_PASS",
+            ap_pass);
+    }
+
+    char broker_ssid[32];
+    char broker_password[32];
+    err = load_nvs_str("AP_SSID", broker_ssid);
+    if (err != ESP_OK) {
+        log_msg(TAG, "Error (%s) on loading AP_SSID to NVS",
+            esp_err_to_name(err));
+    } else {
+        log_msg(TAG, "AP_SSID loaded");
+    }
+    err = load_nvs_str("AP_PASS", broker_password);
+    if (err != ESP_OK) {
+        log_msg(TAG, "Error (%s) on loading AP_PASS to NVS",
+            esp_err_to_name(err));
+    }
 
     //config : ssid, length, password, max connection, authmode
     wifi_config_t wifi_ap_config = {
         .ap = {
-            .ssid = ESP_SSID,
-            .ssid_len = strlen(ESP_SSID),
-            .password = ESP_PASS,
+            .ssid_len = strlen(broker_ssid),
             .max_connection = ESP_MAX_CONNECTION,
             .authmode = WIFI_AUTH_WPA2_PSK
         },
     };
 
+    memcpy(wifi_ap_config.ap.ssid, broker_ssid, strlen(broker_ssid));
+    memcpy(wifi_ap_config.ap.password, broker_password, strlen(broker_password));
+
     //apply config AP to ESP
-    esp_err_t err = esp_wifi_set_config(WIFI_IF_AP, &wifi_ap_config);
+    err = esp_wifi_set_config(WIFI_IF_AP, &wifi_ap_config);
     if (err != ESP_OK) {
         log_msg(TAG, "Error (%s) setting wifi config", esp_err_to_name(err));
         return esp_netif_ap;
     }
 
     log_msg(TAG, "wifi_init_softap finished. SSID:%s password:%s",
-             ESP_SSID, ESP_PASS);
+             broker_ssid, broker_password);
 
     return esp_netif_ap;
 }
@@ -1484,8 +1522,7 @@ static void wifi_init_ap(void)
                  IPSTR, IP2STR(&ip_info.ip));
 
     //debug
-    log_msg(TAG, "Wifi Soft-AP initialized; SSID : %s, PASS : %s, IP : " IPSTR,
-        ESP_SSID, ESP_PASS, s_ip_str);
+    log_msg(TAG, "Wifi Soft-AP initialized; IP : %s", s_ip_str);
 }
 #endif
 

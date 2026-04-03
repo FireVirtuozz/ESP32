@@ -2,7 +2,8 @@ mod gui;
 mod monitor;
 mod udp; 
 
-fn main() -> Result<(), eframe::Error> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /*
     eframe::run_native(
         "RC Car Monitor",
         eframe::NativeOptions {
@@ -12,4 +13,7 @@ fn main() -> Result<(), eframe::Error> {
         },
         Box::new(|_| Box::new(gui::RcMonitor::new())),
     )
+    */
+    udp::udp_server_init()?;
+    Ok(())
 }

@@ -22,7 +22,7 @@ static QueueHandle_t log_queue;
 #endif
 
 static void log_msg_va(const log_level_t level, const char* tag, const char* fmt, va_list args) {
-    if (level < LOG_LEVEL) return;
+    if (level > LOG_LEVEL) return;
 
     char buf[LOG_BUFFER_SIZE];
     vsnprintf(buf, sizeof(buf), fmt, args);
@@ -79,19 +79,20 @@ esp_err_t log_init() {
     esp_log_level_set("*", LOG_LEVEL);
 
     //for our own libraries
-    esp_log_level_set("udp_library", ESP_LOG_WARN);
-    esp_log_level_set("mqtt_library", ESP_LOG_WARN);
-    esp_log_level_set("nvs_library", ESP_LOG_WARN);
-    esp_log_level_set("udp_library", ESP_LOG_WARN);
-    esp_log_level_set("wifi_library", ESP_LOG_WARN);
-    esp_log_level_set("ota_library", ESP_LOG_WARN);
-    esp_log_level_set("led_library", ESP_LOG_WARN);
-    esp_log_level_set("cmd_library", ESP_LOG_WARN);
-    esp_log_level_set("lcd_library", ESP_LOG_WARN);
-    esp_log_level_set("ws_library", ESP_LOG_WARN);
-    esp_log_level_set("log_library", ESP_LOG_WARN);
-    esp_log_level_set("screen_library", ESP_LOG_WARN);
+    esp_log_level_set("udp_library", ESP_LOG_VERBOSE);
+    esp_log_level_set("mqtt_library", ESP_LOG_VERBOSE);
+    esp_log_level_set("nvs_library", ESP_LOG_VERBOSE);
+    esp_log_level_set("udp_library", ESP_LOG_VERBOSE);
+    esp_log_level_set("wifi_library", ESP_LOG_VERBOSE);
+    esp_log_level_set("ota_library", ESP_LOG_VERBOSE);
+    esp_log_level_set("led_library", ESP_LOG_VERBOSE);
+    esp_log_level_set("cmd_library", ESP_LOG_VERBOSE);
+    esp_log_level_set("lcd_library", ESP_LOG_VERBOSE);
+    esp_log_level_set("ws_library", ESP_LOG_VERBOSE);
+    esp_log_level_set("log_library", ESP_LOG_VERBOSE);
+    esp_log_level_set("screen_library", ESP_LOG_VERBOSE);
     esp_log_level_set("sensors_library", ESP_LOG_INFO);
+    esp_log_level_set("system_library", ESP_LOG_INFO);
     esp_log_level_set("main", ESP_LOG_INFO);
 
     #if LOG_UDP || LOG_MQTT

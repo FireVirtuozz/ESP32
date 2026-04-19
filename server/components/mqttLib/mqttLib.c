@@ -24,7 +24,7 @@
 
 #include "ledLib.h"
 #include "nvsLib.h"
-#include "efuseLib.h"
+#include "systemLib.h"
 #include "otaLib.h"
 #include "wifiLib.h"
 #include "screenLib.h"

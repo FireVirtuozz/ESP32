@@ -1,5 +1,5 @@
-#ifndef EFUSELIB_H_
-#define EFUSELIB_H_
+#ifndef SYSTEMLIB_H_
+#define SYSTEMLIB_H_
 
 //print chip info
 void print_chip_info();

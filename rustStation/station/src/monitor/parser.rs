@@ -2,9 +2,9 @@ use std::error::Error;
 
 use eframe::Frame;
 
-use crate::monitor::{PacketEsp, PacketImu, PacketTemperature, PacketUltrasonic};
+use crate::{error::AppError, monitor::{PacketEsp, PacketImu, PacketTemperature, PacketUltrasonic}};
 
-pub fn parse_buffer_ina(buffer : &[u8]) -> Result<super::PacketIna, Box<dyn Error>> {
+pub fn parse_buffer_ina(buffer : &[u8]) -> Result<super::PacketIna, AppError> {
     let bus_voltage       = i16::from_le_bytes(buffer[0..2].try_into()?);
     let current         = u16::from_le_bytes(buffer[2..4].try_into()?);
     let power   = u16::from_le_bytes(buffer[4..6].try_into()?);
@@ -18,7 +18,7 @@ pub fn parse_buffer_ina(buffer : &[u8]) -> Result<super::PacketIna, Box<dyn Erro
     })
 }
 
-pub fn parse_buffer_ultrasonic(buffer : &[u8]) -> Result<super::PacketUltrasonic, Box<dyn Error>> {
+pub fn parse_buffer_ultrasonic(buffer : &[u8]) -> Result<super::PacketUltrasonic, AppError> {
     let duration = i64::from_le_bytes(buffer[0..8].try_into()?);
 
     Ok(super::PacketUltrasonic {
@@ -26,7 +26,7 @@ pub fn parse_buffer_ultrasonic(buffer : &[u8]) -> Result<super::PacketUltrasonic
     })
 }
 
-pub fn parse_buffer_hall(buffer : &[u8]) -> Result<super::PacketHall, Box<dyn Error>> {
+pub fn parse_buffer_hall(buffer : &[u8]) -> Result<super::PacketHall, AppError> {
     let revolution_count       = u64::from_le_bytes(buffer[0 .. 8].try_into()?);
     let revolution_duration         = i64::from_le_bytes(buffer[8 .. 16].try_into()?);
 
@@ -37,7 +37,7 @@ pub fn parse_buffer_hall(buffer : &[u8]) -> Result<super::PacketHall, Box<dyn Er
 }
 
 
-pub fn parse_buffer_mpu(buffer : &[u8]) -> Result<super::PacketImu, Box<dyn Error>> {
+pub fn parse_buffer_mpu(buffer : &[u8]) -> Result<super::PacketImu, AppError> {
     let accel_x       = i16::from_le_bytes(buffer[0 .. 2].try_into()?);
     let accel_y         = i16::from_le_bytes(buffer[2 .. 4].try_into()?);
     let accel_z   = i16::from_le_bytes(buffer[4 .. 6].try_into()?);
@@ -72,7 +72,7 @@ pub struct FrameUdpHeader {
 pub const HEADER_SIZE: usize = 7;
 
 impl FrameUdpHeader {
-    pub fn header_from_buffer(buf: &[u8]) -> Result<Self, Box<dyn Error>> {
+    pub fn header_from_buffer(buf: &[u8]) -> Result<Self, AppError> {
         if buf.len() < HEADER_SIZE {
             return Err("Header not valid".into())
         }

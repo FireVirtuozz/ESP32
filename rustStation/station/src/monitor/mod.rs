@@ -24,7 +24,7 @@ pub struct PacketHall {
 
 impl PacketHall {
 
-    fn get_speed_m_s(&self) -> Result<f64, Box<dyn Error>> {
+    pub fn get_speed_m_s(&self) -> Result<f64, Box<dyn Error>> {
 
         if self.revolution_duration == 0 {
             //same thing, into converts automatically
@@ -38,18 +38,18 @@ impl PacketHall {
         Ok((1.0 / dt) * PI * diam * 1.0e-3) //1 revolution per dt
     }
 
-    fn get_speed_km_h(&self) -> Result<f64, Box<dyn Error>> {
+    pub fn get_speed_km_h(&self) -> Result<f64, Box<dyn Error>> {
         let speed_m_s = self.get_speed_m_s()?; //error propagation
         Ok(speed_m_s * 3.6)
     }
 
-    fn get_distance_m(&self) -> f64 {
+    pub fn get_distance_m(&self) -> f64 {
         let revs = self.revolution_count as f64;
         let diam = TIRE_DIAMETER as f64;
         revs * PI * diam * 1.0e-3
     }
 
-    fn get_distance_km(&self) -> f64 {
+    pub fn get_distance_km(&self) -> f64 {
         self.get_distance_m() * 1.0e-3
     }
 }
@@ -66,26 +66,26 @@ pub struct PacketIna {
 }
 
 impl PacketIna {
-    fn get_current_ma(&self) -> f64 {
+    pub fn get_current_ma(&self) -> f64 {
         let curr = self.current as f64;
         curr * INA_CURRENT_LSB * 1.0e3
     }
 
-    fn get_power_mw(&self) -> f64 {
+    pub fn get_power_mw(&self) -> f64 {
         let pow = self.power as f64;
         let ratio: f64 = INA_LSB_POWER as f64;
         pow * ratio * INA_CURRENT_LSB * 1.0e3
     }
 
-    fn get_bus_voltage_mv(&self) -> f64 { //max: 40.96V
+    pub fn get_bus_voltage_mv(&self) -> f64 { //max: 40.96V
         self.bus_voltage as f64 * INA_LSB_BUS_VOLTAGE * 1.0e3
     }
 
-    fn get_bus_voltage_v(&self) -> f64 { //max: 40.96V
+    pub fn get_bus_voltage_v(&self) -> f64 { //max: 40.96V
         self.bus_voltage as f64 * INA_LSB_BUS_VOLTAGE
     }
 
-    fn get_shunt_voltage_mv(&self) -> f64 { //max: 81.92mV
+    pub fn get_shunt_voltage_mv(&self) -> f64 { //max: 81.92mV
         self.shunt_voltage as f64 * INA_LSB_SHUNT_VOLTAGE * 1.0e3
     }
 
@@ -121,29 +121,29 @@ pub struct PacketImu {
 }
 
 impl PacketImu {
-    fn get_pressure_bar(&self) -> f64 {
+    pub fn get_pressure_bar(&self) -> f64 {
         let press = self.pressure as f64;
         press * 1e-5
     }
 
-    fn get_temperature_deg(&self) -> f64 {
+    pub fn get_temperature_deg(&self) -> f64 {
         let temp =  self.temperature as f64;
         temp / 100.0
     }
 
-    fn get_temperature_chip_deg(&self) -> f64 {
+    pub fn get_temperature_chip_deg(&self) -> f64 {
         let temp = self.temperature_chip as f64;
         (temp - 0.0)/333.87 + 21.0
     }
 
-    fn get_accel_g(&self) -> (f64, f64, f64) {
+    pub fn get_accel_g(&self) -> (f64, f64, f64) {
         let accel_x = self.accel_x as f64 / 16384.0;
         let accel_y = self.accel_y as f64 / 16384.0;
         let accel_z = self.accel_z as f64 / 16384.0;
         (accel_x, accel_y, accel_z)
     }
 
-    fn get_gyro_deg_s(&self) -> (f64, f64, f64) {
+    pub fn get_gyro_deg_s(&self) -> (f64, f64, f64) {
         let gyro_x = self.gyro_x as f64 / 131.0;
         let gyro_y = self.gyro_y as f64 / 131.0;
         let gyro_z = self.gyro_z as f64 / 131.0;
@@ -190,7 +190,7 @@ pub struct PacketUltrasonic {
 }
 
 impl PacketUltrasonic {
-    fn get_distance_cm(&self) -> f64 {
+    pub fn get_distance_cm(&self) -> f64 {
         let dur = self.duration as f64;
         dur / 58.0
     }
@@ -202,13 +202,10 @@ impl PacketUltrasonic {
 
 //Buffer from ESP
 pub struct TelemetryPacket {
-    timestamp_ms: u32,
-    hall: PacketHall,
-    ina: PacketIna,
-    imu: PacketImu,
-    temperature: PacketTemperature,
-    ultrasonic: PacketUltrasonic,
-    esp: PacketEsp,
+    pub hall: Option<PacketHall>,
+    pub ina: Option<PacketIna>,
+    pub imu: Option<PacketImu>,
+    pub ultrasonic: Option<PacketUltrasonic>,
 }
 
 

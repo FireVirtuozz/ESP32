@@ -36,7 +36,7 @@ fn main() -> Result<(), AppError> {
             data: VecDeque::new(),
             start: Instant::now(),
             screen: ScreensTypes::Home,
-            sensors_screen: SensorsScreen,
+            sensors_screen: SensorsScreen::default(),
             commands_screen: CommandsScreen,
             home_screen: HomeScreen,
             logs_screen: LogsScreen,

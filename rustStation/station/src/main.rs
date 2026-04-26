@@ -13,14 +13,20 @@ mod gui;
 mod monitor;
 mod udp;
 mod error;
+mod controller;
 
 fn main() -> Result<(), AppError> {
 
     let (tx, rx) = mpsc::channel();
 
-    let udp_connected = Arc::new(AtomicBool::new(false));
+    let (tx_ctrl, rx_ctrl) = mpsc::channel();
+
     let sensors_connected = Arc::new(AtomicBool::new(false));
     let logs_connected = Arc::new(AtomicBool::new(false));
+    let controller_connected = Arc::new(AtomicBool::new(false));
+
+    let handle_ctrl = controller::init_controller(tx_ctrl, 
+        Arc::clone(&controller_connected));
 
     let handle_udp = udp::udp_server_init(
         tx,
@@ -37,15 +43,18 @@ fn main() -> Result<(), AppError> {
             start: Instant::now(),
             screen: ScreensTypes::Home,
             sensors_screen: SensorsScreen::default(),
-            commands_screen: CommandsScreen,
+            commands_screen: CommandsScreen::default(),
             home_screen: HomeScreen,
             logs_screen: LogsScreen,
             main_screen: MainScreen,
             logs_connected,
             sensors_connected,
+            rx_ctrl,
+            controller_connected,
             })),
     );
 
     handle_udp.join()?;
+    handle_ctrl.join()?;
     Ok(())
 }

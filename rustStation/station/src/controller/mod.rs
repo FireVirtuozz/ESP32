@@ -40,8 +40,8 @@ impl ControllerPacket {
         frame[3] = self.left_y as u8;
         frame[4] = self.right_x as u8;
         frame[5] = self.right_y as u8;
-        frame[6] = self.left_trig as u8;
-        frame[7] = self.right_trig as u8;
+        frame[6] = (self.left_trig as i16 * 2 - 100) as u8;
+        frame[7] = (self.right_trig as i16 * 2 - 100) as u8;
         frame[8] = self.buttons_mask;
         frame
     }
@@ -60,6 +60,13 @@ fn controller_loop(tx: Sender<ControllerPacket>, controller_connected: Arc<Atomi
     let mut gilrs = Gilrs::new().unwrap();
     let mut controller_pck = ControllerPacket::default();
     let socket = UdpSocket::bind("0.0.0.0:0")?;
+
+    for (_id, gamepad) in gilrs.gamepads() {
+        if gamepad.is_connected() {
+            controller_connected.store(true, Ordering::Relaxed);
+            break;
+        }
+    }
 
     loop {
         while let Some(Event { id, event, .. }) = gilrs.next_event() {

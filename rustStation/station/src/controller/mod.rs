@@ -59,6 +59,7 @@ pub fn init_controller(tx: Sender<ControllerPacket>, controller_connected: Arc<A
 fn controller_loop(tx: Sender<ControllerPacket>, controller_connected: Arc<AtomicBool>) -> Result<(), AppError> {
     let mut gilrs = Gilrs::new().unwrap();
     let mut controller_pck = ControllerPacket::default();
+    let socket = UdpSocket::bind("0.0.0.0:0")?;
 
     loop {
         while let Some(Event { id, event, .. }) = gilrs.next_event() {
@@ -145,8 +146,7 @@ fn controller_loop(tx: Sender<ControllerPacket>, controller_connected: Arc<Atomi
             }
         }
 
-        // let socket = UdpSocket::bind("192.168.4.1:3333")?;
-        // socket.send_to(&controller_pck.to_udp_frame(), "192.168.4.1:3333")?;
+        socket.send_to(&controller_pck.to_udp_frame(), "192.168.4.1:3333")?;
         tx.send(controller_pck)?;
         thread::sleep(std::time::Duration::from_millis(30));
     }

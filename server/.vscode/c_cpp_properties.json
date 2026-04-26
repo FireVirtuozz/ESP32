@@ -2,17 +2,15 @@
   "configurations": [
     {
       "name": "ESP-IDF",
-      "compilerPath": "/root/.espressif/tools/xtensa-esp-elf/esp-15.2.0_20251204/xtensa-esp-elf/bin/xtensa-esp32-elf-gcc",
-      "compileCommands": "${config:idf.buildPath}/compile_commands.json",
+      "compilerPath": "/home/azoxvirtuozz/.espressif/tools/xtensa-esp-elf/esp-15.2.0_20251204/xtensa-esp-elf/bin/xtensa-esp32-elf-gcc",
+      "compileCommands": "${workspaceFolder}/build/compile_commands.json",
       "includePath": [
-        "${config:idf.espIdfPath}/components/**",
-        "${config:idf.espIdfPathWin}/components/**",
+        "/home/azoxvirtuozz/esp/esp-idf/components/**",
         "${workspaceFolder}/**"
       ],
       "browse": {
         "path": [
-          "${config:idf.espIdfPath}/components",
-          "${config:idf.espIdfPathWin}/components",
+          "/home/azoxvirtuozz/esp/esp-idf/components",
           "${workspaceFolder}"
         ],
         "limitSymbolsToIncludedHeaders": true

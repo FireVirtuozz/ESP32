@@ -851,13 +851,6 @@ static void mpu_task(void * params) {
 
 #endif
 
-typedef struct header_frame_st {
-    uint8_t type;
-    uint32_t id;
-    uint8_t flags;
-    uint8_t size;
-} header_frame_t;
-
 static void monitoring_task(void* params) {
 
     uint16_t count = 0;
@@ -899,7 +892,7 @@ static void monitoring_task(void* params) {
     }
 #endif
 
-    uint8_t frame_size = sizeof(header_frame_t);
+    uint8_t frame_size = sizeof(header_udp_frame_t);
 
 #if USE_KY003
     frame_size += sizeof(ky_info_t);
@@ -915,7 +908,7 @@ static void monitoring_task(void* params) {
 #endif
     uint8_t frame_buf[frame_size];
 
-    header_frame_t frame = {0};
+    header_udp_frame_t frame = {0};
 #if USE_KY003
     frame.flags |= 1 << 0;
 #endif
@@ -928,9 +921,9 @@ static void monitoring_task(void* params) {
 #if USE_INA226
     frame.flags |= 1 << 3;
 #endif
-    frame.size = frame_size;
 
     frame.type = 0; //monitor frame type
+    frame.timestamp = (uint32_t)(esp_timer_get_time() / 1000);
 
     while (monitoring)
     {
@@ -939,9 +932,7 @@ static void monitoring_task(void* params) {
         offset_frame++;
         frame_buf[offset_frame] = frame.flags;
         offset_frame++;
-        frame_buf[offset_frame] = frame.size;
-        offset_frame++;
-        memcpy(&frame_buf[offset_frame], &frame.id, sizeof(uint32_t));
+        memcpy(&frame_buf[offset_frame], &frame.timestamp, sizeof(uint32_t));
         offset_frame += sizeof(uint32_t);
         
     #if USE_KY003
@@ -1061,8 +1052,6 @@ static void monitoring_task(void* params) {
         memcpy(&frame_buf[offset_frame], &ina.shunt, sizeof(ina.shunt));
         offset_frame += sizeof(ina.shunt);
     #endif
-
-        frame.id++;
 
         udp_msg_t msg;
         memcpy(msg.data, frame_buf, frame_size);

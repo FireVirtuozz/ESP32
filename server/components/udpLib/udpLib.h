@@ -15,6 +15,12 @@ typedef struct udp_msg_st {
     uint8_t len;
 } udp_msg_t;
 
+typedef struct header_udp_frame_st {
+    uint8_t type;
+    uint8_t flags;
+    uint32_t timestamp;
+} header_udp_frame_t;
+
 // Send a UDP message
 void send_udp_msg(udp_msg_t *msg);
 

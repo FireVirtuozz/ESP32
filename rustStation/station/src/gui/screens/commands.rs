@@ -37,56 +37,60 @@ impl CommandsScreen {
             });
             ui.separator();
 
-            if let Some(pkt) = &self.last_packet {
-                ui.columns(3, |cols| {
-                    // left stick
-                    cols[0].label("left stick");
-                    draw_stick(&mut cols[0], pkt.left_x, pkt.left_y);
-                    cols[0].label(format!("x: {}  y: {}", pkt.left_x, pkt.left_y));
+            if connected {
+                if let Some(pkt) = &self.last_packet {
+                    ui.columns(3, |cols| {
+                        // left stick
+                        cols[0].label("left stick");
+                        draw_stick(&mut cols[0], pkt.left_x, pkt.left_y);
+                        cols[0].label(format!("x: {}  y: {}", pkt.left_x, pkt.left_y));
 
-                    // right stick
-                    cols[1].label("right stick");
-                    draw_stick(&mut cols[1], pkt.right_x, pkt.right_y);
-                    cols[1].label(format!("x: {}  y: {}", pkt.right_x, pkt.right_y));
+                        // right stick
+                        cols[1].label("right stick");
+                        draw_stick(&mut cols[1], pkt.right_x, pkt.right_y);
+                        cols[1].label(format!("x: {}  y: {}", pkt.right_x, pkt.right_y));
 
-                    // triggers
-                    cols[2].label("L trigger");
-                    let lt_pct = pkt.left_trig as f32 / 100.0;
-                    cols[2].add(egui::ProgressBar::new(lt_pct).text(format!("{}", pkt.left_trig)));
+                        // triggers
+                        cols[2].label("L trigger");
+                        let lt_pct = pkt.left_trig as f32 / 100.0;
+                        cols[2].add(egui::ProgressBar::new(lt_pct).text(format!("{}", pkt.left_trig)));
 
-                    cols[2].add_space(8.0);
-                    cols[2].label("R trigger");
-                    let rt_pct = pkt.right_trig as f32 / 100.0;
-                    cols[2].add(egui::ProgressBar::new(rt_pct).text(format!("{}", pkt.right_trig)));
-                });
+                        cols[2].add_space(8.0);
+                        cols[2].label("R trigger");
+                        let rt_pct = pkt.right_trig as f32 / 100.0;
+                        cols[2].add(egui::ProgressBar::new(rt_pct).text(format!("{}", pkt.right_trig)));
+                    });
 
-                ui.separator();
+                    ui.separator();
 
-                // buttons mask
-                ui.label(format!("buttons  0x{:02X}", pkt.buttons_mask));
-                ui.horizontal_wrapped(|ui| {
-                    let names = ["A","B","X","Y","Down","Left","Right","Up"];
-                    for (i, name) in names.iter().enumerate() {
-                        let active = (pkt.buttons_mask >> i) & 1 == 1;
-                        let (bg, fg) = if active {
-                            (egui::Color32::from_rgb(24, 95, 165), egui::Color32::WHITE)
-                        } else {
-                            (egui::Color32::from_gray(40), egui::Color32::GRAY)
-                        };
-                        egui::Frame::none()
-                            .fill(bg)
-                            .rounding(6.0)
-                            .inner_margin(egui::Margin::symmetric(10.0, 4.0))
-                            .show(ui, |ui| {
-                                ui.colored_label(fg, *name);
+                    // buttons mask
+                    ui.label(format!("buttons  0x{:02X}", pkt.buttons_mask));
+                    ui.horizontal_wrapped(|ui| {
+                        let names = ["A","B","X","Y","Down","Left","Right","Up"];
+                        for (i, name) in names.iter().enumerate() {
+                            let active = (pkt.buttons_mask >> i) & 1 == 1;
+                            let (bg, fg) = if active {
+                                (egui::Color32::from_rgb(24, 95, 165), egui::Color32::WHITE)
+                            } else {
+                                (egui::Color32::from_gray(40), egui::Color32::GRAY)
+                            };
+                            egui::Frame::none()
+                                .fill(bg)
+                                .rounding(6.0)
+                                .inner_margin(egui::Margin::symmetric(10.0, 4.0))
+                                .show(ui, |ui| {
+                                    ui.colored_label(fg, *name);
                             });
-                    }
-                });
+                        }
+                    });
+                } 
             } else {
                 ui.centered_and_justified(|ui| {
                     ui.label("waiting for controller data…");
                 });
             }
+
+            
         });
 
         ctx.request_repaint(); // force repaint continu pour le polling

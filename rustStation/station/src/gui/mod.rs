@@ -46,7 +46,7 @@ impl eframe::App for MyApp {
 
         match self.screen {
             ScreensTypes::Sensors => self.sensors_screen.show(ctx, &self.data),
-            ScreensTypes::Commands => self.commands_screen.show(ctx, &self.controller_connected, &self.rx_ctrl),
+            ScreensTypes::Commands => self.commands_screen.show(ctx, &self.controller_connected, &self.rx_ctrl, &mut self.screen),
             ScreensTypes::Home => self.home_screen.show(ctx, &mut self.screen),
             ScreensTypes::Logs => self.logs_screen.show(ctx),
             ScreensTypes::Main => self.main_screen.show(ctx, &mut self.screen, &self.sensors_connected, &self.logs_connected),

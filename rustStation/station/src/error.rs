@@ -3,7 +3,7 @@
 
 use std::{any::Any, array::TryFromSliceError, sync::mpsc::SendError};
 
-use crate::{controller::ControllerPacket, monitor::TelemetryPacket};
+use crate::{controller::ControllerPacket, monitor::{LogPacket, TelemetryPacket}};
 
 #[derive(Debug)]
 pub enum AppError {
@@ -44,6 +44,12 @@ impl From<Box<dyn Any + Send>> for AppError {
 
 impl From<SendError<TelemetryPacket>> for AppError {
     fn from(e: SendError<TelemetryPacket>) -> Self {
+        AppError::Send(e.to_string())
+    }
+}
+
+impl From<SendError<LogPacket>> for AppError {
+    fn from(e: SendError<LogPacket>) -> Self {
         AppError::Send(e.to_string())
     }
 }

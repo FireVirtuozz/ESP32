@@ -208,5 +208,9 @@ pub struct TelemetryPacket {
     pub ultrasonic: Option<PacketUltrasonic>,
 }
 
+pub struct LogPacket {
+    pub msg: Option<String>,
+}
+
 
 

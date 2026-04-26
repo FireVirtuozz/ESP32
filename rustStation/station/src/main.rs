@@ -19,6 +19,8 @@ fn main() -> Result<(), AppError> {
 
     let (tx, rx) = mpsc::channel();
 
+    let (tx_logs, rx_logs) = mpsc::channel();
+
     let (tx_ctrl, rx_ctrl) = mpsc::channel();
 
     let sensors_connected = Arc::new(AtomicBool::new(false));
@@ -30,6 +32,7 @@ fn main() -> Result<(), AppError> {
 
     let handle_udp = udp::udp_server_init(
         tx,
+        tx_logs,
         Arc::clone(&sensors_connected),
         Arc::clone(&logs_connected),
     );

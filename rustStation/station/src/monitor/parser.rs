@@ -63,13 +63,13 @@ pub fn parse_buffer_mpu(buffer : &[u8]) -> Result<super::PacketImu, AppError> {
 
 pub struct FrameUdpHeader {
     pub ftype: u8,
-    pub size: u8,
     pub flags: u8,
-    pub id: u32,
+    pub timestamp: u32,
+    //pub checksum: u16, for later use
 }
 
 //size from a manual constant, to avoid padding from struct in memory when using "sizeof"
-pub const HEADER_SIZE: usize = 7;
+pub const HEADER_SIZE: usize = 6;
 
 impl FrameUdpHeader {
     pub fn header_from_buffer(buf: &[u8]) -> Result<Self, AppError> {
@@ -93,19 +93,17 @@ impl FrameUdpHeader {
         };
 
         let flags = buf[1];
-        let size = buf[2];
-        let id = u32::from_le_bytes([
+        let timestamp = u32::from_le_bytes([
+            buf[2],
             buf[3],
             buf[4],
             buf[5],
-            buf[6],
         ]);
 
         Ok(Self {
             ftype,
-            size,
             flags,
-            id,
+            timestamp,
         })
     }
 }

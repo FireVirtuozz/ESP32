@@ -4,18 +4,19 @@ use std::sync::mpsc::Sender;
 use std::{error::Error, net::UdpSocket};
 use std::thread;
 use crate::error::AppError;
-use crate::monitor::{PacketImu, TelemetryPacket};
+use crate::monitor::{LogPacket, PacketImu, TelemetryPacket};
 use crate::monitor::{HC_SIZE, INA_SIZE, KY_SIZE, MPU_SIZE, parser::{self, FrameUdpHeader, HEADER_SIZE, parse_buffer_hall, parse_buffer_ina, parse_buffer_mpu, parse_buffer_ultrasonic}};
 
 //return Result, allows us to use ? error propagation in fn 
 pub fn udp_server_init(
     tx: Sender<TelemetryPacket>,
+    tx_log: Sender<LogPacket>,
     sensors_connected: Arc<AtomicBool>,
     logs_connected: Arc<AtomicBool>
 ) -> thread::JoinHandle<()> {
 
     let handle = thread::spawn(move || {
-        if let Err(e) = udp_loop(tx, sensors_connected, logs_connected) {
+        if let Err(e) = udp_loop(tx, tx_log, sensors_connected, logs_connected) {
             eprintln!("UDP error: {:?}", e);
         }
     });
@@ -24,6 +25,7 @@ pub fn udp_server_init(
 
 fn udp_loop(
     tx: Sender<TelemetryPacket>,
+    tx_log: Sender<LogPacket>,
     sensors_connected: Arc<AtomicBool>,
     logs_connected: Arc<AtomicBool>
 ) -> Result<(), AppError> {
@@ -42,15 +44,15 @@ fn udp_loop(
 
         let frame_udp = FrameUdpHeader::header_from_buffer(buf)?;
 
-        let mut packet_telem = TelemetryPacket {
-            hall: None,
-            ina: None,
-            imu: None,
-            ultrasonic: None,
-        };
-
         match frame_udp.ftype {
             0 => {
+                let mut packet_telem = TelemetryPacket {
+                    hall: None,
+                    ina: None,
+                    imu: None,
+                    ultrasonic: None,
+                };
+
                 sensors_connected.store(true, Ordering::Relaxed);
                 let mut offset_size = HEADER_SIZE;
                 println!("Frame type of monitor");
@@ -90,6 +92,14 @@ fn udp_loop(
                 }
                 tx.send(packet_telem)?;
             },
+            1 => {
+                let msg_bytes = &buf[HEADER_SIZE..amt];
+                let log_pck = LogPacket {
+                    msg: Some(String::from_utf8_lossy(msg_bytes).to_string()),
+                };
+                println!("msg: {:?}", log_pck.msg.as_ref().unwrap());
+                tx_log.send(log_pck)?;
+            }
             _ => return Err("Invalid frame type".into()),
         }
     }

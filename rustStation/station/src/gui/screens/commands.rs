@@ -1,6 +1,6 @@
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}, mpsc};
 
-use crate::controller::ControllerPacket;
+use crate::{controller::ControllerPacket, gui::ScreensTypes};
 
 pub struct CommandsScreen {
     last_packet: Option<ControllerPacket>,
@@ -16,7 +16,7 @@ impl Default for CommandsScreen {
 
 impl CommandsScreen {
     pub fn show(&mut self, ctx: &egui::Context, controller_connected: &Arc<AtomicBool>,
-        rx_ctrl: &mpsc::Receiver<ControllerPacket>,) {
+        rx_ctrl: &mpsc::Receiver<ControllerPacket>, screen: &mut ScreensTypes) {
 
         while let Ok(pkt) = rx_ctrl.try_recv() {
             self.last_packet = Some(pkt);
@@ -86,14 +86,19 @@ impl CommandsScreen {
                 } 
             } else {
                 ui.centered_and_justified(|ui| {
-                    ui.label("waiting for controller data…");
+                    ui.label("Please connect your controller");
                 });
             }
+            ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
+                if ui.button("Back").clicked() {
+                    *screen = ScreensTypes::Main;
+                }
+            });
 
             
         });
 
-        ctx.request_repaint(); // force repaint continu pour le polling
+        ctx.request_repaint();
     }
 }
 
@@ -106,14 +111,14 @@ fn draw_stick(ui: &mut egui::Ui, x: i8, y: i8) {
         let center = rect.center();
         let radius = rect.width() / 2.0 - 4.0;
         
-        // cercle de fond + croix
+        // circle background + cross
         painter.circle_stroke(center, radius, egui::Stroke::new(1.0, egui::Color32::DARK_GRAY));
         painter.line_segment([center - egui::vec2(radius, 0.0), center + egui::vec2(radius, 0.0)],
             egui::Stroke::new(0.5, egui::Color32::DARK_GRAY));
         painter.line_segment([center - egui::vec2(0.0, radius), center + egui::vec2(0.0, radius)],
             egui::Stroke::new(0.5, egui::Color32::DARK_GRAY));
         
-        // point de position
+        // position point
         let nx = (x as f32 / 127.0) * radius;
         let ny = (y as f32 / 127.0) * radius;
         let dot = center + egui::vec2(nx, ny);

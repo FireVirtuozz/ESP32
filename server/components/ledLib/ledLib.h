@@ -3,7 +3,7 @@
 
 #include <inttypes.h>
 
-#define DEBUG_GPIO 0
+#define DEBUG_GPIO 1
 #define DEBUG_LEDC 0
 
 #define WRITE_MOTOR_SCREEN 1

@@ -1,39 +1,50 @@
-#define USE_LEDLIB 0
+#define USE_LEDLIB 1
 #define USE_SCREENLIB 0
 #define USE_LVGL_SCREEN 0
-#define USE_UDPLIB 0
+#define USE_UDPLIB 1
 #define USE_WSLIB 0
 #define USE_MQTTLIB 0
+#define USE_SENSORS 1
 
 #include <stdio.h>
 #include "wifiLib.h"
+
 #if USE_WSLIB
 #include "wsLib.h"
 #endif
+
 #if USE_UDPLIB
 #include "udpLib.h"
 #endif
+
 #if USE_LEDLIB
 #include "ledLib.h"
 #endif
+
 #include "nvsLib.h"
+
 #if USE_MQTTLIB
 #include "mqttLib.h"
 #endif
+
 #include "logLib.h"
 #include <stdarg.h>
 
 #if USE_LVGL_SCREEN
 #include "lcdLib.h"
 #endif
+
 #if USE_SCREENLIB
 #include "screenLib.h"
 #endif
 
+#if USE_SENSORS
 #include "sensorsLib.h"
-
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#endif
+
+#include "systemLib.h"
 
 static const char * TAG = "main";
 
@@ -58,7 +69,7 @@ void app_main()
 
     wifi_init();
 #if USE_UDPLIB
-    udp_server_init();
+    //udp_server_init();
 #endif
 #if USE_MQTTLIB
     mqtt_start();
@@ -68,8 +79,9 @@ void app_main()
 #endif
 
 #if USE_LEDLIB
+/*
     init_all_gpios();
-    led_on();
+    led_on();*/
 #endif
 
 #if USE_LVGL_SCREEN
@@ -79,14 +91,14 @@ void app_main()
     ssd1306_draw_string(wifi_get_ip(), 0, 0);
 #endif
 
-    init_hcsr();
-    int64_t val;
+#if USE_SENSORS
 
-    while(1) {
-        log_msg(TAG, "sending trig to HC-SR04");
-        val = trigger_echo(); //blocking
-        log_msg(TAG, "value received: %d, to centimeters: %.1fcm", val, val / 58.0);
-        vTaskDelay(pdMS_TO_TICKS(50));
-    }
+    start_monitoring_task();
+
+#endif
+
+    udp_client_init();
+
+    //print_chip_info();
     
 }

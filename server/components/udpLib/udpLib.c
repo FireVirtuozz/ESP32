@@ -11,6 +11,9 @@
 #include "lwip/sys.h"
 #include <lwip/netdb.h>
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
 #include "freertos/idf_additions.h"
 
 #define TIME_STATS 0 //for time statistics
@@ -475,4 +478,74 @@ void udp_server_init()
         log_msg(TAG, "Error (%d) create UDP task on core 1", res);
     }
     
+}
+
+#define HOST_IP_ADDR "192.168.4.2"
+#define HOST_PORT 34254
+
+static QueueHandle_t queue_send = NULL;
+
+static void udp_client_task(void *pvParameters)
+{
+    int addr_family = 0;
+    int ip_protocol = 0;
+
+    if (queue_send != NULL) {
+        log_msg_lvl(ESP_LOG_WARN, TAG, "UDP client aldready initialized");
+        return;
+    }
+
+    queue_send = xQueueCreate(32, sizeof(udp_msg_t));
+    if (queue_send == NULL) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error creating UDP queue");
+        return;
+    }
+
+    //setup socket
+    struct sockaddr_in dest_addr;
+    dest_addr.sin_addr.s_addr = inet_addr(HOST_IP_ADDR);
+    dest_addr.sin_family = AF_INET;
+    dest_addr.sin_port = htons(HOST_PORT);
+    addr_family = AF_INET;
+    ip_protocol = IPPROTO_IP;
+
+    int sock = socket(addr_family, SOCK_DGRAM, ip_protocol);
+    if (sock < 0) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Unable to create socket: errno %d", errno);
+        return;
+    }
+
+    log_msg(TAG, "Socket created, sending to %s:%d", HOST_IP_ADDR, HOST_PORT);
+
+    udp_msg_t msg_temp;
+    while (xQueueReceive(queue_send, &msg_temp, portMAX_DELAY) == pdTRUE) {
+        int err;
+        err = sendto(sock, msg_temp.data, msg_temp.len, 0, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+        if (err < 0) {
+            log_msg_lvl(ESP_LOG_ERROR, TAG, "Error occurred during sending: errno %d", errno);
+        } else {
+            log_msg(TAG, "Message sent");
+        }
+    }
+    vTaskDelete(NULL);
+}
+
+/**
+ * Function to init server : 
+ * Create task udp server with 15 priority & on core 1
+ */
+void udp_client_init()
+{
+    BaseType_t res = xTaskCreate(udp_client_task, "udp_client", 8192, (void*)AF_INET, 4, NULL);
+    if (res != pdPASS) {
+        log_msg(TAG, "Error (%d) create client UDP task", res);
+    }
+    
+}
+
+void send_udp_msg(udp_msg_t *msg){
+    if (queue_send == NULL || msg == NULL) {
+        return;
+    }
+    xQueueSend(queue_send, msg, 0);
 }

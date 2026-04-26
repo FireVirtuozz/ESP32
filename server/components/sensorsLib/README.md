@@ -2,6 +2,11 @@
 
 This is a library to control & understand several sensors.
 
+## TODO
+
+- send raw values by udp, delete dead code. For BMP, send calibration values special frame at the beginning.
+- KY: implement behaviour with ESP's ADC functions.
+
 ## HC-SR04
 
 This is an ultrasonic sensor to detect obstacles & estimate their location in a range of 2cm - 4m.

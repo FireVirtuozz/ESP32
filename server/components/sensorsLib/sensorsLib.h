@@ -1,10 +1,12 @@
 #ifndef SENSORSLIB_H_
 #define SENSORSLIB_H_
 
-#define USE_HCSR04 1
-#define USE_INA226 1
+#define USE_HCSR04 0
+#define USE_INA226 0
 #define USE_KY003 1
-#define USE_MPU9250 1
+#define USE_MPU9250 0
+
+#define USE_UDP 0
 
 #include <inttypes.h>
 #include <esp_err.h>

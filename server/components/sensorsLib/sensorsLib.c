@@ -394,14 +394,37 @@ static void ina_task(void * params) {
 #if USE_KY003
 
 #define KY_GPIO 34
-#define KY_PERIOD 80
+#define KY_PERIOD 10
+
+#include "esp_adc/adc_oneshot.h"
+#include "esp_adc/adc_cali.h"
+#include "esp_adc/adc_cali_scheme.h"
+
+// Variables globales pour le driver
+static adc_oneshot_unit_handle_t adc1_handle = NULL;
+static adc_cali_handle_t adc1_cali_handle = NULL;
+
+// Choisis ton canal (ADC1_CHANNEL_6 est sur le GPIO 34)
+#define HALL_ADC_CHANNEL ADC1_CHANNEL_6
 
 static volatile ky_info_t ky_info = {0};
 static QueueHandle_t ky_queue = NULL;
 
 static void print_ky(ky_info_t *ky) {
-    log_msg(TAG, "KY signal count: %llu", ky->signal_count);
-    log_msg(TAG, "KY signal duration: %lldus", ky->signal_duration);
+    if (ky->signal_duration == 0) {
+        log_msg(TAG, "[mean]; tr/s : 0.000, v: 0.000km/h (Stopped), count: %d",
+            ky->signal_count);
+        return;
+    }
+
+    // On utilise ky->signal_duration qui est déjà la moyenne des deltas de la fenêtre
+    double duration_s = ky->signal_duration * 1e-6;
+    double tr_per_s = 1.0 / duration_s;
+    double v_ms = 3.14159 * 6.75e-2 * tr_per_s;
+    double v_kmh = v_ms * 3.6;
+
+    log_msg(TAG, "[mean]; tr/s : %.3f, v: %.3fm/s, v: %.3fkm/h, count: %d",
+        tr_per_s, v_ms, v_kmh, ky->signal_count);
 }
 
 /**
@@ -421,6 +444,7 @@ esp_err_t init_ky() {
         return ESP_ERR_NOT_ALLOWED;
     }
 
+    /*
     err = gpio_reset_pin(KY_GPIO);
     if (err != ESP_OK) {
         log_msg(TAG, "Error (%s) resetting pin %d", esp_err_to_name(err), KY_GPIO);
@@ -432,9 +456,45 @@ esp_err_t init_ky() {
         log_msg(TAG, "Error (%s) setting direction pin %d", esp_err_to_name(err), KY_GPIO);
         return err;
     }
+        */
 
     ky_info.signal_count = 0;
     ky_info.signal_duration = 0;
+
+    // 1. Init unité ADC1
+    adc_oneshot_unit_init_cfg_t init_config = {
+        .unit_id = ADC_UNIT_1,
+        .ulp_mode = ADC_ULP_MODE_DISABLE,
+    };
+    err = adc_oneshot_new_unit(&init_config, &adc1_handle);
+    if (err != ESP_OK) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "adc_oneshot_new_unit failed: %s", esp_err_to_name(err));
+        return err;
+    }
+
+    // 2. Config canal (GPIO34 = ADC1_CHANNEL_6 sur ESP32)
+    adc_oneshot_chan_cfg_t chan_config = {
+        .bitwidth = ADC_BITWIDTH_DEFAULT,
+        .atten = ADC_ATTEN_DB_12,   // 0~3.1V
+    };
+    err = adc_oneshot_config_channel(adc1_handle, ADC_CHANNEL_6, &chan_config);
+    if (err != ESP_OK) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "adc_oneshot_config_channel failed: %s", esp_err_to_name(err));
+        return err;
+    }
+
+    // 3. Calibration (line fitting, ESP32 classique)
+    adc_cali_line_fitting_config_t cali_config = {
+        .unit_id = ADC_UNIT_1,
+        .atten = ADC_ATTEN_DB_12,
+        .bitwidth = ADC_BITWIDTH_DEFAULT,
+    };
+    err = adc_cali_create_scheme_line_fitting(&cali_config, &adc1_cali_handle);
+    if (err != ESP_OK) {
+        // Pas bloquant, on continue sans calibration
+        log_msg_lvl(ESP_LOG_WARN, TAG, "Calibration non disponible: %s", esp_err_to_name(err));
+        adc1_cali_handle = NULL;
+    }
 
     log_msg(TAG, "KY-003 initialized");
 
@@ -462,17 +522,23 @@ ky_info_t* get_signal_info() {
         ky_info.signal_count++;
         ky_info.signal_duration = now - last_timestamp;
         last_timestamp = now;
+        log_msg(TAG, "[instant]; tr/s : %.3f, v: %.3fm/s, v: %.3fkm/h", 
+            1.0 / (ky_info.signal_duration * 1e-6),
+            3.14 * 6.75e-2 / (ky_info.signal_duration * 1e-6),
+            3.6 * 3.14 * 6.75e-2 / (ky_info.signal_duration * 1e-6));
+        return (ky_info_t*)&ky_info;
     }
-
+    
     last_lvl = lvl;
 
-    return (ky_info_t*)&ky_info;
+    return NULL;
 }
 
 /**
  * Periodic KY monitoring task
  */
 static void ky_task(void * params) {
+    /*
     esp_err_t err;
     ky_info_t *ky_info;
 
@@ -492,6 +558,41 @@ static void ky_task(void * params) {
         vTaskDelay(pdMS_TO_TICKS(KY_PERIOD));
     }
     return;
+    */
+
+    int raw_val;
+    int64_t last_timestamp = 0;
+    bool last_state = false;
+    const TickType_t poll_delay = pdMS_TO_TICKS(10);
+
+    while (monitoring) {
+        esp_err_t err = adc_oneshot_read(adc1_handle, ADC_CHANNEL_6, &raw_val);
+        if (err != ESP_OK) {
+            vTaskDelay(poll_delay);
+            continue;
+        }
+
+        bool current_state = (raw_val < 1800);
+        //log_msg(TAG, "voltage: %dmV", raw_val);
+
+        if (current_state && !last_state) {
+            int64_t now = esp_timer_get_time();
+            if (last_timestamp != 0) {
+                ky_info_t snapshot = {
+                    .signal_count    = ++ky_info.signal_count,
+                    .signal_duration = now - last_timestamp,
+                };
+                ky_info.signal_duration = snapshot.signal_duration;
+                xQueueSend(ky_queue, &snapshot, 0);
+            }
+            last_timestamp = now;
+        }
+
+        last_state = current_state;
+        vTaskDelay(poll_delay);
+    }
+
+    vTaskDelete(NULL);
 }
 
 //signal of KY-003 is analogic, so edge interruptions don't work.
@@ -884,12 +985,19 @@ static void monitoring_task(void* params) {
 #endif
 
 #if USE_KY003
+esp_err_t err;
+   err = init_ky();
+    if (err != ESP_OK){
+        return;
+    }
     ky_info_t ky = {0}, ky_temp;
     res = xTaskCreate(ky_task, "ky_monitoring", 2048, NULL, 5, NULL);
     if (res != pdPASS) {
         log_msg(TAG, "Error (%d) creating KY monitoring task", res);
         return;
     }
+
+    
 #endif
 
     uint8_t frame_size = sizeof(header_udp_frame_t);
@@ -936,18 +1044,24 @@ static void monitoring_task(void* params) {
         offset_frame += sizeof(uint32_t);
         
     #if USE_KY003
-        if (ky_queue != NULL && uxQueueMessagesWaiting(ky_queue) > 0) {
-            memset(&ky, 0, sizeof(ky_info_t));
-            count = 0;
+        int signals_in_this_window = 0;
+        if (ky_queue != NULL) {
+            int64_t total_duration = 0;
+
             while (xQueueReceive(ky_queue, &ky_temp, 0) == pdTRUE) {
-                ky.signal_count += ky_temp.signal_count;
-                ky.signal_duration += ky_temp.signal_duration;
-                count++;
+                signals_in_this_window++;
+                total_duration += ky_temp.signal_duration;
             }
-            if (count > 0) {
-                ky.signal_count /= count;
-                ky.signal_duration /= count;
+
+            if (signals_in_this_window > 0) {
+                // VRAIE MOYENNE : Somme des temps / nombre d'impulsions
+                ky.signal_duration = total_duration / signals_in_this_window;
+                ky.signal_count += signals_in_this_window; // Cumul total
+            } else {
+                // Optionnel : si on n'a rien reçu, la vitesse est peut-être 0
+                ky.signal_duration = 0; 
             }
+            //log_msg(TAG, "count window: %d", signals_in_this_window);
         }
         print_ky(&ky);
         memcpy(&frame_buf[offset_frame], &ky.signal_count, sizeof(ky.signal_count));
@@ -1053,10 +1167,12 @@ static void monitoring_task(void* params) {
         offset_frame += sizeof(ina.shunt);
     #endif
 
+    #if USE_UDP
         udp_msg_t msg;
         memcpy(msg.data, frame_buf, frame_size);
         msg.len = frame_size;
         send_udp_msg(&msg);
+    #endif
 
         vTaskDelay(pdMS_TO_TICKS(MONITOR_PERIOD));
     }

@@ -1,13 +1,19 @@
 #define USE_LEDLIB 1
 #define USE_SCREENLIB 0
 #define USE_LVGL_SCREEN 0
-#define USE_UDPLIB 1
-#define USE_WSLIB 0
-#define USE_MQTTLIB 0
 #define USE_SENSORS 1
+#define USE_WIFI 0
+
+#define USE_UDPLIB (1 && USE_WIFI)
+#define USE_WSLIB (0 && USE_WIFI)
+#define USE_MQTTLIB (0 && USE_WIFI)
+
 
 #include <stdio.h>
+
+#if USE_WIFI
 #include "wifiLib.h"
+#endif
 
 #if USE_WSLIB
 #include "wsLib.h"
@@ -62,12 +68,16 @@ void app_main()
 #if USE_LVGL_SCREEN
     lcd_init();
 #endif
+
 #if USE_SCREENLIB
     ssd1306_setup(); //init oled screen
     screen_full_off();
 #endif
 
+#if USE_WIFI
     wifi_init();
+#endif
+
 #if USE_UDPLIB
     //udp_server_init();
 #endif
@@ -92,12 +102,12 @@ void app_main()
 #endif
 
 #if USE_SENSORS
-
     start_monitoring_task();
-
 #endif
 
+#if USE_UDPLIB
     udp_client_init();
+#endif
 
     //print_chip_info();
     

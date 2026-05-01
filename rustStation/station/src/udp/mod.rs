@@ -39,8 +39,8 @@ fn udp_loop(
 
         let buf = &buf[..amt]; //reference only to received data
 
-        println!("buf raw received : {:?}, size: {}, from: {:?}", buf, amt, src);
-        println!("{}", String::from_utf8_lossy(buf));
+        //println!("buf raw received : {:?}, size: {}, from: {:?}", buf, amt, src);
+        //println!("{}", String::from_utf8_lossy(buf));
 
         let frame_udp = FrameUdpHeader::header_from_buffer(buf)?;
 
@@ -99,7 +99,7 @@ fn udp_loop(
                 };
                 println!("msg: {:?}", log_pck.msg.as_ref().unwrap());
                 tx_log.send(log_pck)?;
-            }
+            },
             _ => return Err("Invalid frame type".into()),
         }
     }

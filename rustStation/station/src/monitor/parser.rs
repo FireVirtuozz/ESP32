@@ -84,7 +84,11 @@ impl FrameUdpHeader {
             //otherwise, if "var" only, then "var = &u8"
             Some(&frame_type) => match frame_type {
                 0 => {
-                    println!("Frame valid, of type monitor");
+                    //println!("Frame valid, of type monitor");
+                    frame_type
+                },
+                1 => {
+                    //println!("Frame valid, of type log");
                     frame_type
                 },
                 _ => return Err("Unvalid type in frame".into()),

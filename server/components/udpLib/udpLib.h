@@ -1,6 +1,8 @@
 #ifndef UDPLIB_H_
 #define UDPLIB_H_
 
+#define UDP_MSG_SIZE 255
+
 #include <inttypes.h>
 #include <esp_err.h>
 
@@ -11,7 +13,7 @@ void udp_server_init();
 void udp_client_init();
 
 typedef struct udp_msg_st {
-    uint8_t data[255];
+    uint8_t data[UDP_MSG_SIZE];
     uint8_t len;
 } udp_msg_t;
 

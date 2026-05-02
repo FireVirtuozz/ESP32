@@ -522,7 +522,7 @@ static void udp_client_task(void *pvParameters)
         int err;
         err = sendto(sock, msg_temp.data, msg_temp.len, 0, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
         if (err < 0) {
-            log_msg_lvl(ESP_LOG_ERROR, TAG, "Error occurred during sending: errno %d", errno);
+            //log_msg_lvl(ESP_LOG_ERROR, TAG, "Error occurred during sending: errno %d", errno);
         } else {
             log_msg(TAG, "Message sent");
         }

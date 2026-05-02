@@ -3,7 +3,7 @@ use std::{collections::VecDeque, sync::{Arc, atomic::AtomicBool, mpsc}, time::In
 use egui::Vec2b;
 use egui_plot::{Line, Plot, PlotBounds, PlotPoints};
 
-use crate::{controller::ControllerPacket, gui::screens::{commands::CommandsScreen, home::HomeScreen, logs::LogsScreen, main::MainScreen, sensors::SensorsScreen}, monitor::TelemetryPacket};
+use crate::{controller::ControllerPacket, gui::screens::{commands::CommandsScreen, home::HomeScreen, logs::LogsScreen, main::MainScreen, sensors::SensorsScreen}, monitor::{LogPacket, TelemetryPacket}};
 
 pub mod screens;
 
@@ -19,17 +19,23 @@ pub enum ScreensTypes {
 pub struct MyApp {
     pub rx: mpsc::Receiver<TelemetryPacket>,
     pub data: VecDeque<(TelemetryPacket, f64)>,
+    pub logs: VecDeque<LogPacket>,
     pub start: Instant,
     pub screen: ScreensTypes,
+
     pub sensors_screen: SensorsScreen,
     pub commands_screen: CommandsScreen,
     pub home_screen: HomeScreen,
     pub logs_screen: LogsScreen,
     pub main_screen: MainScreen,
+
     pub logs_connected: Arc<AtomicBool>,
     pub sensors_connected: Arc<AtomicBool>,
-    pub rx_ctrl: mpsc::Receiver<ControllerPacket>,
     pub controller_connected: Arc<AtomicBool>,
+
+    pub rx_ctrl: mpsc::Receiver<ControllerPacket>,
+    pub rx_logs: mpsc::Receiver<LogPacket>,
+    
 }
 
 impl eframe::App for MyApp {
@@ -44,11 +50,18 @@ impl eframe::App for MyApp {
             }
         }
 
+        while let Ok(packet) = self.rx_logs.try_recv() {
+            self.logs.push_back(packet);
+            if self.logs.len() > 1000 {
+                self.logs.pop_front();
+            }
+        }
+
         match self.screen {
             ScreensTypes::Sensors => self.sensors_screen.show(ctx, &self.data),
             ScreensTypes::Commands => self.commands_screen.show(ctx, &self.controller_connected, &self.rx_ctrl, &mut self.screen),
             ScreensTypes::Home => self.home_screen.show(ctx, &mut self.screen),
-            ScreensTypes::Logs => self.logs_screen.show(ctx),
+            ScreensTypes::Logs => self.logs_screen.show(ctx, &self.logs),
             ScreensTypes::Main => self.main_screen.show(ctx, &mut self.screen, &self.sensors_connected, &self.logs_connected),
         }
 

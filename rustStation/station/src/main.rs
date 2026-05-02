@@ -41,19 +41,25 @@ fn main() -> Result<(), AppError> {
         "Station",
         eframe::NativeOptions::default(),
         Box::new(|_cc| Box::new(MyApp {
-            rx,
+            
             data: VecDeque::new(),
+            logs: VecDeque::new(),
             start: Instant::now(),
             screen: ScreensTypes::Home,
+
             sensors_screen: SensorsScreen::default(),
             commands_screen: CommandsScreen::default(),
             home_screen: HomeScreen,
-            logs_screen: LogsScreen,
+            logs_screen: LogsScreen::default(),
             main_screen: MainScreen,
+
             logs_connected,
             sensors_connected,
-            rx_ctrl,
             controller_connected,
+            
+            rx,
+            rx_ctrl,
+            rx_logs,
             })),
     );
 

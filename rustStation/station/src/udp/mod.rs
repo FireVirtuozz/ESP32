@@ -93,6 +93,7 @@ fn udp_loop(
                 tx.send(packet_telem)?;
             },
             1 => {
+                logs_connected.store(true, Ordering::Relaxed);
                 let msg_bytes = &buf[HEADER_SIZE..amt];
                 let log_pck = LogPacket {
                     msg: Some(String::from_utf8_lossy(msg_bytes).to_string()),

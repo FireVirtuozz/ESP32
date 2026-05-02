@@ -11,6 +11,12 @@
 #include "freertos/task.h"
 #include "freertos/idf_additions.h"
 
+#include "esp_timer.h"
+
+#if LOG_UDP
+#include "udpLib.h"
+#endif
+
 #define LOG_BUFFER_SIZE 256
 
 //#include "esp_log_write.h" for esp_log_set_vprintf, override ESP_LOGx function. Performance loss.
@@ -39,8 +45,27 @@ static void log_msg_va(const log_level_t level, const char* tag, const char* fmt
     }
     #endif
 
-#if LOG_UDP || LOG_MQTT
-    xQueueSend(log_queue, buf, (TickType_t)0);
+#if LOG_UDP
+    udp_msg_t msg = {0};
+    uint8_t msg_len = 0;
+
+    header_udp_frame_t frame = {
+        .type = 1,
+        .flags = 0,
+        .timestamp = (uint32_t)(esp_timer_get_time() / 1000),
+    };
+
+    msg.data[0] = frame.type;
+    msg_len++;
+    msg.data[1] = frame.flags;
+    msg_len++;
+    memcpy(&msg.data[2], &frame.timestamp, sizeof(uint32_t));
+    msg_len += sizeof(uint32_t);
+
+    memcpy(msg.data + msg_len, buf, strlen(buf));
+    msg.len = msg_len + strlen(buf);
+
+    send_udp_msg(&msg);
 #endif
 }
 
@@ -57,21 +82,6 @@ void log_msg_lvl(const log_level_t level, const char* tag, const char* fmt, ...)
     log_msg_va(level, tag, fmt, args);
     va_end(args);
 }
-
-#if LOG_UDP || LOG_MQTT
-static void log_task(void *arg) {
-    char entry[LOG_BUFFER_SIZE];
-    while(1) {
-        xQueueReceive(log_queue, entry, portMAX_DELAY);
-        #if LOG_UDP
-        //udp_send(entry.buf);
-        #endif
-        #if LOG_MQTT
-        //mqtt_publish(entry.buf);
-        #endif
-    }
-}
-#endif
 
 esp_err_t log_init() {
 
@@ -94,11 +104,6 @@ esp_err_t log_init() {
     esp_log_level_set("sensors_library", ESP_LOG_INFO);
     esp_log_level_set("system_library", ESP_LOG_INFO);
     esp_log_level_set("main", ESP_LOG_INFO);
-
-    #if LOG_UDP || LOG_MQTT
-    log_queue = xQueueCreate(64, LOG_BUFFER_SIZE);
-    xTaskCreatePinnedToCore(log_task, "log_task", 4096, NULL, 2, NULL, 0);
-    #endif
 
     return ESP_OK;
 }

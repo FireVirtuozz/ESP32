@@ -2,7 +2,7 @@
 #define USE_SCREENLIB 0
 #define USE_LVGL_SCREEN 0
 #define USE_SENSORS 1
-#define USE_WIFI 0
+#define USE_WIFI 1
 
 #define USE_UDPLIB (1 && USE_WIFI)
 #define USE_WSLIB (0 && USE_WIFI)

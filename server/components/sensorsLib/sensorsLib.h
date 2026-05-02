@@ -6,7 +6,7 @@
 #define USE_KY003 1
 #define USE_MPU9250 0
 
-#define USE_UDP 0
+#define USE_UDP 1
 
 #include <inttypes.h>
 #include <esp_err.h>

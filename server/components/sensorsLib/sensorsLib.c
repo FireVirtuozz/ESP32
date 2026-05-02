@@ -444,20 +444,6 @@ esp_err_t init_ky() {
         return ESP_ERR_NOT_ALLOWED;
     }
 
-    /*
-    err = gpio_reset_pin(KY_GPIO);
-    if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) resetting pin %d", esp_err_to_name(err), KY_GPIO);
-        return err;
-    }
-
-    err = gpio_set_direction(KY_GPIO, GPIO_MODE_INPUT);
-    if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) setting direction pin %d", esp_err_to_name(err), KY_GPIO);
-        return err;
-    }
-        */
-
     ky_info.signal_count = 0;
     ky_info.signal_duration = 0;
 
@@ -538,27 +524,6 @@ ky_info_t* get_signal_info() {
  * Periodic KY monitoring task
  */
 static void ky_task(void * params) {
-    /*
-    esp_err_t err;
-    ky_info_t *ky_info;
-
-    err = init_ky();
-    if (err != ESP_OK){
-        return;
-    }
-
-    while (monitoring)
-    {
-        ky_info = get_signal_info();
-
-        if (ky_info != NULL) {
-            xQueueSend(ky_queue, ky_info, 0);
-        }
-
-        vTaskDelay(pdMS_TO_TICKS(KY_PERIOD));
-    }
-    return;
-    */
 
     int raw_val;
     int64_t last_timestamp = 0;
@@ -603,7 +568,9 @@ static void ky_task(void * params) {
 //another way is by using ADC with one shot read
 //and according to voltage, decide if the magnet should be considered or not
 //this would correct the error of invalid count
-//todo if there is too much errors
+
+//still same issue, and if period < 10ms, the ADC oneshot generates an error
+//due to mutex timeout for adc
 
 #endif
 

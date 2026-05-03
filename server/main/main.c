@@ -109,7 +109,7 @@ void app_main()
     udp_client_init();
 #endif
 
-    vTaskDelay(pdMS_TO_TICKS(20000));
+    vTaskDelay(pdMS_TO_TICKS(10));
     print_chip_info();
     
 }

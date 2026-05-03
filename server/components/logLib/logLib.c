@@ -165,7 +165,7 @@ esp_err_t dump_deploy(dump_t ** dump) {
 
     (*dump)->buffer[(*dump)->offset] = '\0';
 
-  /*  
+  
 #if LOG_SERIAL
 
     char *saveptr;
@@ -176,7 +176,7 @@ esp_err_t dump_deploy(dump_t ** dump) {
     }
         
 #endif
-*/
+
 
 
 

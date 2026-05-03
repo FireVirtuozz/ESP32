@@ -4,7 +4,7 @@
 #define WIFI_AP_MODE 1
 #define WIFI_STA_MODE 0
 
-#define DEBUG_WIFI 0
+#define DEBUG_WIFI 1
 
 //Get the IP address of ESP
 const char* wifi_get_ip(void);

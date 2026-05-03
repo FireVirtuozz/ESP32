@@ -1,7 +1,7 @@
 #define USE_LEDLIB 1
 #define USE_SCREENLIB 0
 #define USE_LVGL_SCREEN 0
-#define USE_SENSORS 1
+#define USE_SENSORS 0
 #define USE_WIFI 1
 
 #define USE_UDPLIB (1 && USE_WIFI)
@@ -46,11 +46,11 @@
 
 #if USE_SENSORS
 #include "sensorsLib.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #endif
 
 #include "systemLib.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 static const char * TAG = "main";
 
@@ -79,7 +79,7 @@ void app_main()
 #endif
 
 #if USE_UDPLIB
-    //udp_server_init();
+    udp_server_init();
 #endif
 #if USE_MQTTLIB
     mqtt_start();
@@ -89,9 +89,9 @@ void app_main()
 #endif
 
 #if USE_LEDLIB
-/*
+
     init_all_gpios();
-    led_on();*/
+    led_on();
 #endif
 
 #if USE_LVGL_SCREEN
@@ -111,5 +111,7 @@ void app_main()
 
     vTaskDelay(pdMS_TO_TICKS(10000));
     print_chip_info();
+    wifi_scan_esp();
+    wifi_scan_aps();
     
 }

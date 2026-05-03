@@ -885,63 +885,49 @@ static sta_info_strings_t *get_sta_info(wifi_sta_info_t sta) {
 //bandwidth : type of bandwidth used by wifi channel
 //vht : for wifi 5/6, center channel frequencies
 static void print_record(wifi_ap_record_t ap_info) {
-    sta_info_strings_t * info;
-
-    log_msg(TAG, "=================== SSID %s ===============",
-        ap_info.ssid);
-
-    log_msg(TAG, "RSSI : %d dBm",
-        ap_info.rssi);
-
-    log_msg(TAG, "Authmode : %s",
-        get_authmode_str(ap_info.authmode));
-
+    char tag[64];
+    snprintf(tag, sizeof(tag), "AP %s", ap_info.ssid);
+    dump_t *d = dump_init(tag);
+ 
+    dump_add_line(d, "RSSI : %d dBm", ap_info.rssi);
+    dump_add_line(d, "Auth : %s", get_authmode_str(ap_info.authmode));
+ 
     if (ap_info.authmode != WIFI_AUTH_WEP) {
-        log_msg(TAG, "Cipher: Pair: %s / Type : %s",
-            get_cipher_type_str(ap_info.pairwise_cipher), get_cipher_type_str(ap_info.group_cipher));
+        dump_add_line(d, "Cipher: Pair: %s / Group: %s",
+            get_cipher_type_str(ap_info.pairwise_cipher),
+            get_cipher_type_str(ap_info.group_cipher));
     }
-
-    log_msg(TAG, "Channel : %d",
-        ap_info.primary);
-    //ESP_LOGI(TAG, "Secondary channel \t\t%d", ap_info.second);
-
-    log_msg(TAG, "bssid : %s",
-        get_bssid_str(ap_info.bssid));
-
-    log_msg(TAG, "antenna : %s",
-        get_antenna_str(ap_info.ant));
-
+ 
+    dump_add_line(d, "Channel : %d", ap_info.primary);
+    dump_add_line(d, "BSSID : %s", get_bssid_str(ap_info.bssid));
+    dump_add_line(d, "Antenna : %s", get_antenna_str(ap_info.ant));
+    dump_add_line(d, "Bandwidth : %s", get_bandwidth_str(ap_info.bandwidth));
+ 
+    sta_info_strings_t *info;
+ 
     info = get_country_info(ap_info.country);
     for (int i = 0; i < info->count; i++) {
-        log_msg(TAG, "country [%d] : %s",
-            i, info->lines[i]);
+        dump_add_line(d, "Country : %s", info->lines[i]);
     }
-
+ 
     info = get_phy_info(ap_info);
     for (int i = 0; i < info->count; i++) {
-        log_msg(TAG, "phy [%d] : %s",
-            i, info->lines[i]);
+        dump_add_line(d, "PHY : %s", info->lines[i]);
     }
-    
+ 
     if (ap_info.phy_11ax) {
         info = get_he_info(ap_info.he_ap);
         for (int i = 0; i < info->count; i++) {
-            log_msg(TAG, "he [%d] : %s",
-                i, info->lines[i]);
+            dump_add_line(d, "HE : %s", info->lines[i]);
         }
     }
-
-    log_msg(TAG, "Bandwidth  : %s",
-        get_bandwidth_str(ap_info.bandwidth));
-    
+ 
     info = get_vht_channels_info(ap_info);
     for (int i = 0; i < info->count; i++) {
-        log_msg(TAG, "vht [%d] : %s",
-            i, info->lines[i]);
+        dump_add_line(d, "VHT : %s", info->lines[i]);
     }
-    
-    log_msg(TAG, "=================== %s end ===============",
-        ap_info.ssid);
+ 
+    dump_deploy(&d);
 }
 
 #endif
@@ -1681,61 +1667,66 @@ bool is_scanning() {
 
 #if DEBUG_WIFI
 void wifi_scan_task(void *pvParameter) {
-
-    sta_info_strings_t *info;
-
-    log_msg(TAG, "=============== Scanning APs ===============");
-
+ 
+    dump_t *d = NULL;
+    esp_err_t err;
+ 
+    // ========== SCAN PARAMS ==========
+    d = dump_init("WIFI SCAN PARAMS");
     wifi_scan_default_params_t params;
-    esp_err_t err = esp_wifi_get_scan_parameters(&params);
+    err = esp_wifi_get_scan_parameters(&params);
     if (err != ESP_OK) {
-        log_msg(TAG, "Error on getting scan parameters : %d", err);
+        dump_add_line(d, "Error on getting scan parameters : %d", err);
     } else {
-        info = get_scan_params_info(params);
+        sta_info_strings_t *info = get_scan_params_info(params);
         for (int i = 0; i < info->count; i++) {
-            log_msg(TAG, "scan params [%d] : %s", i, info->lines[i]);
+            dump_add_line(d, "%s", info->lines[i]);
         }
     }
-
-    // init info array
+    dump_deploy(&d);
+ 
+    // ========== SCAN ==========
     uint16_t number = DEFAULT_SCAN_LIST_SIZE;
     wifi_ap_record_t ap_info[DEFAULT_SCAN_LIST_SIZE];
     uint16_t ap_count = 0;
     memset(ap_info, 0, sizeof(ap_info));
-
-    // launch scan
-    //null : a scan config is possible
+ 
     err = esp_wifi_scan_start(NULL, true); // blocking
     if (err != ESP_OK) {
-        log_msg(TAG, "Scan failed: %d", err);
+        log_msg(TAG, "Scan failed: %s", esp_err_to_name(err));
+        scanning = false;
+        vTaskDelete(NULL);
         return;
     }
-
-    // if fail : esp_wifi_clear_ap_list
-
-    log_msg(TAG, "Max AP number ap_info can hold = %u",
-        number);
-
-    //get num & records of scan
+ 
     err = esp_wifi_scan_get_ap_num(&ap_count);
     if (err != ESP_OK) {
         log_msg(TAG, "Error (%s) getting AP number", esp_err_to_name(err));
+        scanning = false;
+        vTaskDelete(NULL);
         return;
     }
-    
+ 
     err = esp_wifi_scan_get_ap_records(&number, ap_info);
     if (err != ESP_OK) {
         log_msg(TAG, "Error (%s) getting AP records", esp_err_to_name(err));
+        scanning = false;
+        vTaskDelete(NULL);
         return;
     }
-    
-    log_msg(TAG, "Total APs scanned = %u, actual AP number ap_info holds = %u",
-        ap_count, number);
-
-    // go through each record and print authmode, ssid, rssi, cipher, channel..
+ 
+    // ========== SCAN SUMMARY ==========
+    d = dump_init("WIFI SCAN SUMMARY");
+    dump_add_line(d, "Max slots : %u", DEFAULT_SCAN_LIST_SIZE);
+    dump_add_line(d, "Total APs found : %u", ap_count);
+    dump_add_line(d, "APs stored : %u", number);
+    dump_deploy(&d);
+ 
+    // ========== UN DUMP PAR AP ==========
     for (int i = 0; i < number; i++) {
         print_record(ap_info[i]);
     }
+ 
     scanning = false;
     vTaskDelete(NULL);
 }
@@ -1769,301 +1760,300 @@ void get_ap_info() {
 #if DEBUG_WIFI
 void wifi_scan_esp() {
 
-    // Launching scan
-    log_msg(TAG, "=============== Getting ESP wifi info ===============");
-
-    // get current wifi mode
+    dump_t *d = NULL;
+    esp_err_t err;
     wifi_mode_t mode;
-    esp_err_t err = esp_wifi_get_mode(&mode);
+
+    // ========== WIFI MODE / PS / BAND ==========
+    d = dump_init("WIFI GENERAL");
+    err = esp_wifi_get_mode(&mode);
     if (err != ESP_OK) {
-        log_msg(TAG, "Error on getting wifi mode %d", err);
+        dump_add_line(d, "Error on getting wifi mode %d", err);
     } else {
-        log_msg(TAG, "Wifi mode : %s", get_wifi_mode_str(mode));
+        dump_add_line(d, "Wifi mode : %s", get_wifi_mode_str(mode));
     }
 
-    // get power saving type
     wifi_ps_type_t type;
     err = esp_wifi_get_ps(&type);
     if (err != ESP_OK) {
-        log_msg(TAG, "Error on getting wifi power save type %d", err);
+        dump_add_line(d, "Error on getting wifi power save type %d", err);
     } else {
-        log_msg(TAG, "Power save : %s", get_ps_str(type));
+        dump_add_line(d, "Power save : %s", get_ps_str(type));
     }
 
-    // get wifi band
     wifi_band_mode_t band;
     err = esp_wifi_get_band_mode(&band);
     if (err != ESP_OK) {
-        log_msg(TAG, "Error on getting wifi band mode %d", err);
+        dump_add_line(d, "Error on getting wifi band mode %d", err);
     } else {
-        log_msg(TAG, "Band mode : %s", get_band_mode_str(band));
+        dump_add_line(d, "Band mode : %s", get_band_mode_str(band));
     }
 
-    wifi_protocols_t protocols;
-    // get protocols for STA
-    if (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA) {
-        err = esp_wifi_get_protocols(WIFI_IF_STA, &protocols);
-        if (err != ESP_OK) {
-            log_msg(TAG, "Error on getting wifi STA protocol %d", err);
-        } else {
-            log_msg(TAG, "ESP protocols for STA");
-            sta_info_strings_t *info = get_protocols_info(protocols);
-            for (int i = 0; i < info->count; i++) {
-                log_msg(TAG, "Protocols [%d] : %s",
-                    i, info->lines[i]);
-            }
+    uint8_t primary;
+    wifi_second_chan_t second;
+    err = esp_wifi_get_channel(&primary, &second);
+    if (err != ESP_OK) {
+        dump_add_line(d, "Error on getting channel %d", err);
+    } else {
+        dump_add_line(d, "Primary channel : %d", primary);
+    }
+
+    int8_t power;
+    err = esp_wifi_get_max_tx_power(&power);
+    if (err != ESP_OK) {
+        dump_add_line(d, "Error on max tx power %d", err);
+    } else {
+        dump_add_line(d, "Max TX power : %.2f dBm", power * 0.25f);
+    }
+
+    uint32_t mask;
+    err = esp_wifi_get_event_mask(&mask);
+    if (err != ESP_OK) {
+        dump_add_line(d, "Error on getting wifi event mask %d", err);
+    } else {
+        sta_info_strings_t *info = get_wifi_event_mask_info(mask);
+        for (int i = 0; i < info->count; i++) {
+            dump_add_line(d, "%s", info->lines[i]);
         }
     }
 
-    // get protocols for AP
+    dump_add_line(d, "TSF time STA: %" PRId64 " us", esp_wifi_get_tsf_time(WIFI_IF_STA));
+    dump_add_line(d, "TSF time AP:  %" PRId64 " us", esp_wifi_get_tsf_time(WIFI_IF_AP));
+    dump_deploy(&d);
+
+    // ========== WIFI PROTOCOLS ==========
+    d = dump_init("WIFI PROTOCOLS");
+    wifi_protocols_t protocols;
+    if (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA) {
+        err = esp_wifi_get_protocols(WIFI_IF_STA, &protocols);
+        if (err != ESP_OK) {
+            dump_add_line(d, "Error on getting wifi STA protocol %d", err);
+        } else {
+            dump_add_line(d, "--- STA ---");
+            sta_info_strings_t *info = get_protocols_info(protocols);
+            for (int i = 0; i < info->count; i++) {
+                dump_add_line(d, "%s", info->lines[i]);
+            }
+        }
+    }
     if (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA) {
         err = esp_wifi_get_protocols(WIFI_IF_AP, &protocols);
         if (err != ESP_OK) {
-            log_msg(TAG, "Error on getting wifi AP protocol %d", err);
+            dump_add_line(d, "Error on getting wifi AP protocol %d", err);
         } else {
-            log_msg(TAG, "ESP protocols for AP");
+            dump_add_line(d, "--- AP ---");
             sta_info_strings_t *info = get_protocols_info(protocols);
             for (int i = 0; i < info->count; i++) {
-                log_msg(TAG, "Protocols [%d] : %s",
-                    i, info->lines[i]);
+                dump_add_line(d, "%s", info->lines[i]);
             }
         }
     }
 
     wifi_bandwidth_t bw;
-    // get bandwidth for STA
     if (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA) {
         err = esp_wifi_get_bandwidth(WIFI_IF_STA, &bw);
         if (err != ESP_OK) {
-            log_msg(TAG, "Error on getting wifi STA bandwidth %d", err);
+            dump_add_line(d, "Error on getting wifi STA bandwidth %d", err);
         } else {
-            log_msg(TAG, "ESP STA Bandwidth : %s", get_bandwidth_str(bw));
+            dump_add_line(d, "STA Bandwidth : %s", get_bandwidth_str(bw));
         }
     }
-
-    // get bandwidth for AP
     if (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA) {
         err = esp_wifi_get_bandwidth(WIFI_IF_AP, &bw);
         if (err != ESP_OK) {
-            log_msg(TAG, "Error on getting wifi AP bandwidth %d", err);
+            dump_add_line(d, "Error on getting wifi AP bandwidth %d", err);
         } else {
-            log_msg(TAG, "ESP AP Bandwidth : %s", get_bandwidth_str(bw));
+            dump_add_line(d, "AP Bandwidth : %s", get_bandwidth_str(bw));
         }
     }
+    dump_deploy(&d);
 
-    // get channels
-    uint8_t primary;
-    wifi_second_chan_t second;
-    err = esp_wifi_get_channel(&primary, &second);
-    if (err != ESP_OK) {
-        log_msg(TAG, "Error on getting channel %d", err);
-    } else {
-        log_msg(TAG, "Wifi ESP primary channel %d", primary);
-        // log_msg(TAG, "Secondary channel %d", second);
-    }
-
-    // get country info
+    // ========== WIFI COUNTRY ==========
+    d = dump_init("WIFI COUNTRY");
     wifi_country_t country;
     err = esp_wifi_get_country(&country);
     if (err != ESP_OK) {
-        log_msg(TAG, "Error on getting country %d", err);
+        dump_add_line(d, "Error on getting country %d", err);
     } else {
         sta_info_strings_t *info = get_country_info(country);
         for (int i = 0; i < info->count; i++) {
-            log_msg(TAG, "Country [%d] : %s", i, info->lines[i]);
+            dump_add_line(d, "%s", info->lines[i]);
         }
     }
+    dump_deploy(&d);
 
-    // get MAC addresses
+    // ========== WIFI MAC ==========
+    d = dump_init("WIFI MAC");
     uint8_t mac[6];
-
-    // STA MAC
     if (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA) {
         err = esp_wifi_get_mac(WIFI_IF_STA, mac);
         if (err != ESP_OK) {
-            log_msg(TAG, "Error on getting mac STA %d", err);
+            dump_add_line(d, "Error on getting mac STA %d", err);
         } else {
-            log_msg(TAG, "MAC STA : %s", get_bssid_str(mac));
+            dump_add_line(d, "MAC STA : %s", get_bssid_str(mac));
         }
     }
-
-    // AP MAC
     if (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA) {
         err = esp_wifi_get_mac(WIFI_IF_AP, mac);
         if (err != ESP_OK) {
-            log_msg(TAG, "Error on getting mac AP %d", err);
+            dump_add_line(d, "Error on getting mac AP %d", err);
         } else {
-            log_msg(TAG, "MAC AP : %s", get_bssid_str(mac));
+            dump_add_line(d, "MAC AP : %s", get_bssid_str(mac));
         }
     }
+    dump_deploy(&d);
 
-    // get promiscuous mode
+    // ========== WIFI PROMISCUOUS ==========
+    d = dump_init("WIFI PROMISCUOUS");
     bool en;
     err = esp_wifi_get_promiscuous(&en);
     if (err != ESP_OK) {
-        log_msg(TAG, "Error on getting promiscuous %d", err);
+        dump_add_line(d, "Error on getting promiscuous %d", err);
     } else {
-        log_msg(TAG, "Promiscuous mode : %s", en ? "enabled" : "disabled");
-    }
-
-    // if promiscuous, get filter info
-    if (en) {
-        wifi_promiscuous_filter_t filter;
-        err = esp_wifi_get_promiscuous_filter(&filter);
-        if (err != ESP_OK) {
-            log_msg(TAG, "Error on getting promiscuous filter %d", err);
-        } else {
-            sta_info_strings_t *info = get_promiscuous_filter_info(filter);
-            for (int i = 0; i < info->count; i++) {
-                log_msg(TAG, "Promiscuous filter [%d]: %s", i, info->lines[i]);
-            }
-
-            if (filter.filter_mask & WIFI_PROMIS_FILTER_MASK_CTRL) {
-                wifi_promiscuous_filter_t ctrl_filter;
-                err = esp_wifi_get_promiscuous_ctrl_filter(&ctrl_filter);
-                if (err != ESP_OK) {
-                    log_msg(TAG, "Error on getting promiscuous control filter %d", err);
-                } else {
-                    sta_info_strings_t *ctrl_info = get_promiscuous_ctrl_filter_info(ctrl_filter);
-                    for (int i = 0; i < ctrl_info->count; i++) {
-                        log_msg(TAG, "Promiscuous CTRL filter [%d]: %s", i, ctrl_info->lines[i]);
+        dump_add_line(d, "Promiscuous mode : %s", en ? "enabled" : "disabled");
+        if (en) {
+            wifi_promiscuous_filter_t filter;
+            err = esp_wifi_get_promiscuous_filter(&filter);
+            if (err != ESP_OK) {
+                dump_add_line(d, "Error on getting promiscuous filter %d", err);
+            } else {
+                sta_info_strings_t *info = get_promiscuous_filter_info(filter);
+                for (int i = 0; i < info->count; i++) {
+                    dump_add_line(d, "%s", info->lines[i]);
+                }
+                if (filter.filter_mask & WIFI_PROMIS_FILTER_MASK_CTRL) {
+                    wifi_promiscuous_filter_t ctrl_filter;
+                    err = esp_wifi_get_promiscuous_ctrl_filter(&ctrl_filter);
+                    if (err != ESP_OK) {
+                        dump_add_line(d, "Error on getting promiscuous ctrl filter %d", err);
+                    } else {
+                        sta_info_strings_t *ctrl_info = get_promiscuous_ctrl_filter_info(ctrl_filter);
+                        for (int i = 0; i < ctrl_info->count; i++) {
+                            dump_add_line(d, "%s", ctrl_info->lines[i]);
+                        }
                     }
                 }
             }
         }
     }
+    dump_deploy(&d);
 
-    // get STA config
-    wifi_config_t conf;
+    // ========== WIFI STA CONFIG ==========
     if (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA) {
+        d = dump_init("WIFI STA CONFIG");
+        wifi_config_t conf;
         err = esp_wifi_get_config(WIFI_IF_STA, &conf);
         if (err != ESP_OK) {
-            log_msg(TAG, "Error on getting config STA %d", err);
+            dump_add_line(d, "Error on getting config STA %d", err);
         } else {
             sta_info_strings_t *info = get_config_sta_info(conf.sta);
             for (int i = 0; i < info->count; i++) {
-                log_msg(TAG, "STA config [%d]: %s", i, info->lines[i]);
+                dump_add_line(d, "%s", info->lines[i]);
             }
         }
+        dump_deploy(&d);
     }
 
-    // get AP config
+    // ========== WIFI AP CONFIG ==========
     if (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA) {
+        d = dump_init("WIFI AP CONFIG");
+        wifi_config_t conf;
         err = esp_wifi_get_config(WIFI_IF_AP, &conf);
         if (err != ESP_OK) {
-            log_msg(TAG, "Error on getting config AP %d", err);
+            dump_add_line(d, "Error on getting config AP %d", err);
         } else {
             sta_info_strings_t *info = get_config_ap_info(conf.ap);
             for (int i = 0; i < info->count; i++) {
-                log_msg(TAG, "AP config [%d]: %s", i, info->lines[i]);
+                dump_add_line(d, "%s", info->lines[i]);
             }
         }
+        dump_deploy(&d);
     }
 
-    // get list of connected STAs if in AP mode
+    // ========== WIFI AP CONNECTED STAs ==========
     if (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA) {
+        d = dump_init("WIFI AP STAS");
         wifi_sta_list_t stas;
         err = esp_wifi_ap_get_sta_list(&stas);
         if (err != ESP_OK) {
-            log_msg(TAG, "Error on getting STA list %d", err);
+            dump_add_line(d, "Error on getting STA list %d", err);
         } else {
+            dump_add_line(d, "Connected STAs : %d", stas.num);
             for (int i = 0; i < stas.num; i++) {
                 sta_info_strings_t *info = get_sta_info(stas.sta[i]);
                 for (int j = 0; j < info->count; j++) {
-                    log_msg(TAG, "STA [%d] info [%d]: %s", i, j, info->lines[j]);
+                    dump_add_line(d, "STA[%d] %s", i, info->lines[j]);
                 }
             }
         }
+        dump_deploy(&d);
     }
 
-    // if STA, print connected AP info
+    // ========== WIFI STA STATUS ==========
     if (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA) {
-        get_ap_info();
-    }
+        d = dump_init("WIFI STA STATUS");
 
-    // get max tx power
-    int8_t power;
-    err = esp_wifi_get_max_tx_power(&power);
-    if (err != ESP_OK) {
-        log_msg(TAG, "Error on max tx power %d", err);
-    } else {
-        log_msg(TAG, "ESP max TX power : %.2f dBm", power * 0.25f);
-    }
-
-    // get wifi event mask
-    uint32_t mask;
-    err = esp_wifi_get_event_mask(&mask);
-    if (err != ESP_OK) {
-        log_msg(TAG, "Error on getting wifi event mask %d", err);
-    } else {
-        sta_info_strings_t *info = get_wifi_event_mask_info(mask);
-        for (int i = 0; i < info->count; i++) {
-            log_msg(TAG, "Event mask [%d]: %s", i, info->lines[i]);
-        }
-    }
-
-    // get TSF time: Timing Synchronization Function
-    // To sync devices on a same network
-    log_msg(TAG, "TSF time STA: %" PRId64 " us", esp_wifi_get_tsf_time(WIFI_IF_STA));
-    log_msg(TAG, "TSF time AP: %" PRId64 " us", esp_wifi_get_tsf_time(WIFI_IF_AP));
-
-    // get inactive times
-    uint16_t sec;
-    if (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA) {
-        err = esp_wifi_get_inactive_time(WIFI_IF_STA, &sec);
+        // connected AP info
+        wifi_ap_record_t ap_info;
+        err = esp_wifi_sta_get_ap_info(&ap_info);
         if (err != ESP_OK) {
-            log_msg(TAG, "Error on getting inactive time STA %d", err);
+            dump_add_line(d, "Error on getting AP info %d", err);
         } else {
-            log_msg(TAG, "Inactive time for ESP STA: %d s", sec);
+            dump_add_line(d, "Connected AP : %s", ap_info.ssid);
+            dump_add_line(d, "BSSID : %s", get_bssid_str(ap_info.bssid));
+            dump_add_line(d, "RSSI : %d dBm", ap_info.rssi);
+            dump_add_line(d, "Channel : %d", ap_info.primary);
+            dump_add_line(d, "Auth : %s", get_authmode_str(ap_info.authmode));
+            dump_add_line(d, "Bandwidth : %s", get_bandwidth_str(ap_info.bandwidth));
         }
-    }
 
-    if (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA) {
-        err = esp_wifi_get_inactive_time(WIFI_IF_AP, &sec);
-        if (err != ESP_OK) {
-            log_msg(TAG, "Error on getting inactive time AP %d", err);
-        } else {
-            log_msg(TAG, "Inactive time for ESP AP: %d s", sec);
-        }
-    }
-
-    // get aid assigned to ESP if STA
-    if (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA) {
         uint16_t aid;
         err = esp_wifi_sta_get_aid(&aid);
         if (err != ESP_OK) {
-            log_msg(TAG, "Error on getting ESP aid %d", err);
+            dump_add_line(d, "Error on getting ESP aid %d", err);
         } else {
-            log_msg(TAG, "AP's association id of ESP: %d", aid);
+            dump_add_line(d, "AID : %d", aid);
         }
-    }
 
-    // get negotiated phymode
-    if (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA) {
         wifi_phy_mode_t phymode;
         err = esp_wifi_sta_get_negotiated_phymode(&phymode);
         if (err != ESP_OK) {
-            log_msg(TAG, "Error on getting used phymode STA %d", err);
+            dump_add_line(d, "Error on getting phymode %d", err);
         } else {
-            log_msg(TAG, "Negotiated phymode : %s", get_phy_str(phymode));
+            dump_add_line(d, "Negotiated phymode : %s", get_phy_str(phymode));
         }
-    }
 
-    // get RSSI if STA
-    if (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA) {
         int rssi;
         err = esp_wifi_sta_get_rssi(&rssi);
         if (err != ESP_OK) {
-            log_msg(TAG, "Error on getting RSSI %d", err);
+            dump_add_line(d, "Error on getting RSSI %d", err);
         } else {
-            log_msg(TAG, "RSSI : %d dBm", rssi);
+            dump_add_line(d, "RSSI : %d dBm", rssi);
         }
+
+        uint16_t inactive;
+        err = esp_wifi_get_inactive_time(WIFI_IF_STA, &inactive);
+        if (err != ESP_OK) {
+            dump_add_line(d, "Error on getting inactive time STA %d", err);
+        } else {
+            dump_add_line(d, "Inactive time : %d s", inactive);
+        }
+
+        dump_deploy(&d);
     }
 
-    // print all statistics (low level)
-    // esp_wifi_statis_dump(WIFI_STATIS_ALL);
-
-    log_msg(TAG, "=============== Getting ESP wifi info End ===============");
+    // ========== WIFI AP STATUS ==========
+    if (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA) {
+        d = dump_init("WIFI AP STATUS");
+        uint16_t inactive;
+        err = esp_wifi_get_inactive_time(WIFI_IF_AP, &inactive);
+        if (err != ESP_OK) {
+            dump_add_line(d, "Error on getting inactive time AP %d", err);
+        } else {
+            dump_add_line(d, "Inactive time : %d s", inactive);
+        }
+        dump_deploy(&d);
+    }
 }
 #endif
 

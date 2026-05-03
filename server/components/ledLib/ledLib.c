@@ -10,6 +10,7 @@
 #include <esp_err.h>
 #include "driver/ledc.h"
 #include "screenLib.h"
+#include "esp_timer.h"
 
 #define USE_LVGL_SCREEN 0
 
@@ -76,6 +77,7 @@
 //global variables
 static uint8_t current_angle = 0;
 static int8_t current_motor = 0;
+static volatile int8_t target_motor = 0;
 static int led_state = 0; //TODO : convert to uint8
 
 //mutex for changes to global variables
@@ -355,6 +357,65 @@ static IRAM_ATTR bool cb_ledc_fade_end_event(const ledc_cb_param_t *param, void 
     return (taskAwoken == pdTRUE);
 }
 
+#define MOTOR_CTRL_PERIOD 20000
+
+static void apply_target_motor(void* args) { 
+
+    if (current_motor != target_motor) {
+
+        if (target_motor > current_motor && current_motor >= 0) {
+            current_motor += 2;
+            if (current_motor > target_motor) current_motor = target_motor;
+        } else if (target_motor < current_motor && current_motor <= 0){
+            current_motor -= 2;
+            if (current_motor < target_motor) current_motor = target_motor;
+        } else if (target_motor < current_motor && current_motor >= 0) {
+            current_motor -= 15;
+            if (current_motor < target_motor) current_motor = target_motor;
+        } else { //target_motor > current_motor && current_motor <= 0
+            current_motor += 15;
+            if (current_motor > target_motor) current_motor = target_motor;
+        }
+
+        //applying duty forward et 0 backward
+        if (current_motor > 0) {
+            ledc_duty(
+                MIN_MOTOR_DUTY_FWD + ((MAX_MOTOR_DUTY_FWD - MIN_MOTOR_DUTY_FWD) * current_motor) / 100, MOTOR_IDX_FWD
+            );
+            ledc_duty(0, MOTOR_IDX_BWD);
+        }
+
+        //applying duty backward et 0 forward
+        else if (current_motor < 0) {
+            ledc_duty(
+                MIN_MOTOR_DUTY_BWD + ((MAX_MOTOR_DUTY_BWD - MIN_MOTOR_DUTY_BWD) * - current_motor) / 100, MOTOR_IDX_BWD
+            );
+            ledc_duty(0, MOTOR_IDX_FWD);
+        }
+
+        //applying 0 to backward & forward
+        else {
+            ledc_duty(0, MOTOR_IDX_FWD);
+            ledc_duty(0, MOTOR_IDX_BWD);
+        }
+        
+        log_msg(TAG, "Motor : %d/%d, on pins; fwd : %d, bwd : %d",
+            current_motor, target_motor, BTS_GPIO_FWD, BTS_GPIO_BWD);
+
+        #if WRITE_MOTOR_SCREEN
+
+#if USE_LVGL_SCREEN
+        set_bar_motor(current_motor);
+#else
+        //print to screen
+        char tmp[30];
+        snprintf(tmp, sizeof(tmp), "Motor : %d, Target: %d", current_motor, target_motor);
+        ssd1306_draw_string(tmp, 0, 4);
+#endif
+#endif
+    }
+}
+
 /**
  * Initalize led
  * -Initialize mutex
@@ -626,6 +687,23 @@ void init_ledc() {
         }
     }
 
+    log_msg(TAG, "Setting up control timer");
+    const esp_timer_create_args_t ctrl_timer_args = {
+        .callback = &apply_target_motor,
+        .name = "ctrl_timer"
+    };
+    esp_timer_handle_t ctrl_timer = NULL;
+    err = esp_timer_create(&ctrl_timer_args, &ctrl_timer);
+    if (err != ESP_OK) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "failed to create  control esp timer instance");
+        return;
+    }
+    err = esp_timer_start_periodic(ctrl_timer, MOTOR_CTRL_PERIOD);
+    if (err != ESP_OK) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "failed to start periodic timer");
+        return;
+    }
+
     log_msg(TAG, "LEDC initialized");
 
 #if DEBUG_LEDC || DEBUG_GPIO
@@ -692,7 +770,7 @@ void ledc_duty(const uint32_t duty, const uint8_t idx) {
         return;
     }
 
-    log_msg(TAG, "Duty : %d, on channel %d", duty, idx);
+    log_msg_lvl(ESP_LOG_VERBOSE, TAG, "Duty : %d, on channel %d", duty, idx);
 }
 
 /**
@@ -754,46 +832,7 @@ void ledc_motor(int16_t motor_percent) {
         motor_percent = 0;
     }
 
-    if (current_motor != motor_percent) {
-        current_motor = motor_percent;
-
-        //applying duty forward et 0 backward
-        if (current_motor > 0) {
-            ledc_duty(
-                MIN_MOTOR_DUTY_FWD + ((MAX_MOTOR_DUTY_FWD - MIN_MOTOR_DUTY_FWD) * current_motor) / 100, MOTOR_IDX_FWD
-            );
-            ledc_duty(0, MOTOR_IDX_BWD);
-        }
-
-        //applying duty backward et 0 forward
-        else if (current_motor < 0) {
-            ledc_duty(
-                MIN_MOTOR_DUTY_BWD + ((MAX_MOTOR_DUTY_BWD - MIN_MOTOR_DUTY_BWD) * - current_motor) / 100, MOTOR_IDX_BWD
-            );
-            ledc_duty(0, MOTOR_IDX_FWD);
-        }
-
-        //applying 0 to backward & forward
-        else {
-            ledc_duty(0, MOTOR_IDX_FWD);
-            ledc_duty(0, MOTOR_IDX_BWD);
-        }
-        
-        log_msg(TAG, "Motor : %d, on pins; fwd : %d, bwd : %d",
-            current_motor, BTS_GPIO_FWD, BTS_GPIO_BWD);
-
-#if WRITE_MOTOR_SCREEN
-
-#if USE_LVGL_SCREEN
-        set_bar_motor(current_motor);
-#else
-        //print to screen
-        char tmp[30];
-        snprintf(tmp, sizeof(tmp), "Motor : %d", current_motor);
-        ssd1306_draw_string(tmp, 0, 4);
-#endif
-#endif
-    }
+    target_motor = -motor_percent;
     
 }
 

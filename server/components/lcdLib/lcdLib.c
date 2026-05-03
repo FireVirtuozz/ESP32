@@ -322,7 +322,8 @@ static void example_lvgl_port_task(void *arg)
  */
 void lcd_init()
 {
-    ESP_LOGI(TAG, "Initialize I2C bus");
+    esp_err_t err;
+    log_msg(TAG, "Initialize I2C bus");
     i2c_master_bus_handle_t i2c_bus = NULL;
     i2c_master_bus_config_t bus_config = {
         .clk_source = I2C_CLK_SRC_DEFAULT,
@@ -332,9 +333,13 @@ void lcd_init()
         .scl_io_num = EXAMPLE_PIN_NUM_SCL,
         .flags.enable_internal_pullup = true,
     };
-    ESP_ERROR_CHECK(i2c_new_master_bus(&bus_config, &i2c_bus));
+    err = i2c_new_master_bus(&bus_config, &i2c_bus);
+    if (err != ESP_OK) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "failed to init new master bus");
+        return;
+    }
 
-    ESP_LOGI(TAG, "Install panel IO");
+    log_msg(TAG, "Install panel IO");
     esp_lcd_panel_io_handle_t io_handle = NULL;
     esp_lcd_panel_io_i2c_config_t io_config = {
         .dev_addr = EXAMPLE_I2C_HW_ADDR,
@@ -344,9 +349,13 @@ void lcd_init()
         .lcd_param_bits = EXAMPLE_LCD_CMD_BITS, // According to SSD1306 datasheet
         .dc_bit_offset = 6,                     // According to SSD1306 datasheet
     };
-    ESP_ERROR_CHECK(esp_lcd_new_panel_io_i2c(i2c_bus, &io_config, &io_handle));
+    err = esp_lcd_new_panel_io_i2c(i2c_bus, &io_config, &io_handle);
+    if (err != ESP_OK) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "failed to init LCD panel handle");
+        return;
+    }
 
-    ESP_LOGI(TAG, "Install SSD1306 panel driver");
+    log_msg(TAG, "Install SSD1306 panel driver");
     esp_lcd_panel_handle_t panel_handle = NULL;
     esp_lcd_panel_dev_config_t panel_config = {
         .bits_per_pixel = 1,
@@ -357,27 +366,50 @@ void lcd_init()
         .height = EXAMPLE_LCD_V_RES,
     };
     panel_config.vendor_config = &ssd1306_config;
-    ESP_ERROR_CHECK(esp_lcd_new_panel_ssd1306(io_handle, &panel_config, &panel_handle));
+    err = esp_lcd_new_panel_ssd1306(io_handle, &panel_config, &panel_handle);
+    if (err != ESP_OK) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "failed to init create ssd1306 panel LCD");
+        return;
+    }
 
-    ESP_ERROR_CHECK(esp_lcd_panel_reset(panel_handle));
-    ESP_ERROR_CHECK(esp_lcd_panel_init(panel_handle));
-    ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel_handle, true));
+    err = esp_lcd_panel_reset(panel_handle);
+    if (err != ESP_OK) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "failed to reset panel");
+        return;
+    }
+    err = esp_lcd_panel_init(panel_handle);
+    if (err != ESP_OK) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "failed to init panel");
+        return;
+    }
+    err = esp_lcd_panel_disp_on_off(panel_handle, true);
+    if (err != ESP_OK) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "failed to turn on the display");
+        return;
+    }
 
-    ESP_LOGI(TAG, "Initialize LVGL");
+    log_msg(TAG, "Initialize LVGL");
     lv_init();
     // create a lvgl display
     lv_display_t *display = lv_display_create(EXAMPLE_LCD_H_RES, EXAMPLE_LCD_V_RES);
+    if (display == NULL) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "failed create LVGL display");
+        return;
+    }
     // associate the i2c panel handle to the display
     lv_display_set_user_data(display, panel_handle);
     // create draw buffer
     void *buf = NULL;
-    ESP_LOGI(TAG, "Allocate separate LVGL draw buffers");
+    log_msg(TAG, "Allocate separate LVGL draw buffers");
     // LVGL reserves 2 x 4 bytes in the buffer, as these are assumed to be used as a palette.
     // size in bits x * y, / 8 --> bytes, + palette (color, even in monochrome)
     size_t draw_buffer_sz = EXAMPLE_LCD_H_RES * EXAMPLE_LCD_V_RES / 8 + EXAMPLE_LVGL_PALETTE_SIZE;
     //calloc : init 1 element to 0, in RAM (internal), and of bytes (8 bit)
     buf = heap_caps_calloc(1, draw_buffer_sz, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-    assert(buf);
+    if (buf == NULL) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "failed allocate draw buffer");
+        return;
+    }
 
     // LVGL9 suooprt new monochromatic format.
     lv_display_set_color_format(display, LV_COLOR_FORMAT_I1);
@@ -386,28 +418,40 @@ void lcd_init()
     // set the callback which can copy the rendered image to an area of the display
     lv_display_set_flush_cb(display, example_lvgl_flush_cb);
 
-    ESP_LOGI(TAG, "Register io panel event callback for LVGL flush ready notification");
+    log_msg(TAG, "Register io panel event callback for LVGL flush ready notification");
     const esp_lcd_panel_io_callbacks_t cbs = {
         .on_color_trans_done = example_notify_lvgl_flush_ready,
     };
     /* Register done callback */
-    esp_lcd_panel_io_register_event_callbacks(io_handle, &cbs, display);
+    err = esp_lcd_panel_io_register_event_callbacks(io_handle, &cbs, display);
+    if (err != ESP_OK) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "failed to register done callbacks");
+        return;
+    }
 
-    ESP_LOGI(TAG, "Use esp_timer as LVGL tick timer");
+    log_msg(TAG, "Use esp_timer as LVGL tick timer");
     const esp_timer_create_args_t lvgl_tick_timer_args = {
         .callback = &example_increase_lvgl_tick,
         .name = "lvgl_tick"
     };
     esp_timer_handle_t lvgl_tick_timer = NULL;
-    ESP_ERROR_CHECK(esp_timer_create(&lvgl_tick_timer_args, &lvgl_tick_timer));
-    ESP_ERROR_CHECK(esp_timer_start_periodic(lvgl_tick_timer, EXAMPLE_LVGL_TICK_PERIOD_MS * 1000));
+    err = esp_timer_create(&lvgl_tick_timer_args, &lvgl_tick_timer);
+    if (err != ESP_OK) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "failed to create esp timer instance");
+        return;
+    }
+    err = esp_timer_start_periodic(lvgl_tick_timer, EXAMPLE_LVGL_TICK_PERIOD_MS * 1000);
+    if (err != ESP_OK) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "failed to start periodic timer");
+        return;
+    }
 
-    ESP_LOGI(TAG, "Create LVGL task");
+    log_msg(TAG, "Create LVGL task");
     xTaskCreatePinnedToCore(example_lvgl_port_task, "LVGL", EXAMPLE_LVGL_TASK_STACK_SIZE,
         NULL, EXAMPLE_LVGL_TASK_PRIORITY, NULL, 1);
     //xTaskCreate(example_lvgl_port_task, "LVGL", EXAMPLE_LVGL_TASK_STACK_SIZE, NULL, EXAMPLE_LVGL_TASK_PRIORITY, NULL);
 
-    ESP_LOGI(TAG, "Display LVGL Scroll Text");
+    log_msg(TAG, "Display LVGL Scroll Text");
     // Lock the mutex due to the LVGL APIs are not thread-safe
     _lock_acquire(&lvgl_api_lock);
     example_lvgl_demo_ui(display);

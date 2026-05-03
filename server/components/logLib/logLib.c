@@ -174,7 +174,7 @@ esp_err_t dump_deploy(dump_t ** dump) {
         log_msg("", "%s", line);
         line = strtok_r(NULL, "\n", &saveptr);
     }
-  */      
+    */    
 #endif
 
 

@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
@@ -43,6 +44,8 @@ fn udp_loop(
         //println!("{}", String::from_utf8_lossy(buf));
 
         let frame_udp = FrameUdpHeader::header_from_buffer(buf)?;
+
+        let mut dump_log = VecDeque::<LogPacket>::new();
 
         match frame_udp.ftype {
             0 => {
@@ -101,6 +104,21 @@ fn udp_loop(
                 println!("msg: {:?}", log_pck.msg.as_ref().unwrap());
                 tx_log.send(log_pck)?;
             },
+            2 => {
+                logs_connected.store(true, Ordering::Relaxed);
+                let msg_id = &buf[HEADER_SIZE];
+                let msg_bytes = &buf[HEADER_SIZE + 1..amt];
+                let log_pck = LogPacket {
+                    msg: Some(String::from_utf8_lossy(msg_bytes).to_string()),
+                };
+                if *msg_id == 0 {
+                    while let Some(log_pck) = dump_log.pop_front() {
+                        tx_log.send(log_pck)?;
+                    }
+                } else {
+                    dump_log.push_back(log_pck);
+                }
+            }
             _ => return Err("Invalid frame type".into()),
         }
     }

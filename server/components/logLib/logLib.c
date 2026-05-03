@@ -167,12 +167,14 @@ esp_err_t dump_deploy(dump_t ** dump) {
 
     
 #if LOG_SERIAL
+/*
     char *saveptr;
     char *line = strtok_r((*dump)->buffer, "\n", &saveptr);
     while (line != NULL) {
         log_msg("", "%s", line);
         line = strtok_r(NULL, "\n", &saveptr);
     }
+        */
 #endif
 
 
@@ -192,32 +194,31 @@ esp_err_t dump_deploy(dump_t ** dump) {
     header_len = 2 + sizeof(uint32_t);
 
     uint8_t max_data_per_packet = UDP_MSG_SIZE - header_len - 1; 
-    uint8_t msg_id = 0;
     size_t total_len = (*dump)->offset;
     size_t sent_len = 0;
-    //log_msg(TAG, "DUMP START: total_len: %u, max_payload_per_packet: %u", total_len, max_data_per_packet);
+    uint8_t nb_msg = total_len / max_data_per_packet + 1;
+    //log_msg(TAG, "DUMP START: total_len: %u, max_payload_per_packet: %u, nb msg: %u", 
+    //    total_len, max_data_per_packet, nb_msg);
 
-    while (sent_len < total_len) {
+    for (uint8_t msg_id = nb_msg; msg_id > 0; msg_id--) {
         size_t to_send = total_len - sent_len;
         if (to_send > max_data_per_packet) {
             to_send = max_data_per_packet;
         }
 
-        msg.data[header_len] = msg_id;
+        msg.data[header_len] = msg_id - 1;
         memcpy(&msg.data[header_len + 1], (*dump)->buffer + sent_len, to_send);
         msg.len = header_len + 1 + to_send;
-
-        /*
+        
         char log_payload[to_send + 2]; 
         memcpy(log_payload, &msg.data[header_len], to_send + 1);
         log_payload[to_send + 1] = '\0'; 
 
-        log_msg(TAG, "Sending msg_id: %u, packet_len: %u, payload: %s", msg_id, msg.len, log_payload + 1);
-        */
+        //log_msg(TAG, "Sending msg_id: %u, packet_len: %u, payload: %s", msg_id - 1, msg.len, log_payload + 1);
+        
 
         send_udp_msg(&msg);
         sent_len += to_send;
-        msg_id++;
     }
 
 #endif

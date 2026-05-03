@@ -34,6 +34,7 @@ fn udp_loop(
     // Receives a single datagram message on the socket. If `buf` is too small to hold
     // the message, it will be cut off.
     let mut buf = [0; 256];
+    let mut dump_log = VecDeque::<LogPacket>::new();
     loop {
         
         let (amt, src) = socket.recv_from(&mut buf)?;
@@ -44,8 +45,6 @@ fn udp_loop(
         //println!("{}", String::from_utf8_lossy(buf));
 
         let frame_udp = FrameUdpHeader::header_from_buffer(buf)?;
-
-        let mut dump_log = VecDeque::<LogPacket>::new();
 
         match frame_udp.ftype {
             0 => {

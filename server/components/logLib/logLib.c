@@ -167,14 +167,14 @@ esp_err_t dump_deploy(dump_t ** dump) {
 
   
 #if LOG_SERIAL
-
+/*
     char *saveptr;
     char *line = strtok_r((*dump)->buffer, "\n", &saveptr);
     while (line != NULL) {
         log_msg("", "%s", line);
         line = strtok_r(NULL, "\n", &saveptr);
     }
-        
+  */      
 #endif
 
 

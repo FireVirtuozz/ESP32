@@ -91,6 +91,10 @@ impl FrameUdpHeader {
                     //println!("Frame valid, of type log");
                     frame_type
                 },
+                2 => {
+                    //println!("Frame valid, of type log");
+                    frame_type
+                },
                 _ => return Err("Unvalid type in frame".into()),
             },
             _ => return Err("Frame not valid".into()),

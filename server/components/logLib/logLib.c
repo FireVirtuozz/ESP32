@@ -165,17 +165,19 @@ esp_err_t dump_deploy(dump_t ** dump) {
 
     (*dump)->buffer[(*dump)->offset] = '\0';
 
-    
+  /*  
 #if LOG_SERIAL
-/*
+
     char *saveptr;
     char *line = strtok_r((*dump)->buffer, "\n", &saveptr);
     while (line != NULL) {
         log_msg("", "%s", line);
         line = strtok_r(NULL, "\n", &saveptr);
     }
-        */
+        
 #endif
+*/
+
 
 
 #if LOG_UDP
@@ -222,6 +224,7 @@ esp_err_t dump_deploy(dump_t ** dump) {
     }
 
 #endif
+
 
 #if LOG_MQTT
     //mqtt_publish(entry.buf);

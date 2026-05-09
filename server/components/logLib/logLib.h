@@ -6,10 +6,6 @@
 #include <esp_log.h>
 #include "esp_log_level.h"
 
-#define LOG_MQTT 0
-#define LOG_UDP 1
-#define LOG_SERIAL 0
-
 typedef esp_log_level_t log_level_t;
 
 #define LOG_LEVEL (ESP_LOG_INFO)

@@ -1,0 +1,4 @@
+menu "OTA"
+    depends on USE_WIFI && USE_OTA
+
+endmenu

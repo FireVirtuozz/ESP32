@@ -11,7 +11,13 @@
 
 #include "driver/i2c_master.h"
 
+#if CONFIG_USE_UDPLIB
 #include "udpLib.h"
+#endif
+
+#if CONFIG_USE_ESPNOW
+#include "espnowLib.h"
+#endif
 
 #define MONITOR_PERIOD 500
 
@@ -19,7 +25,7 @@ static const char * TAG = "sensors_library";
 
 static volatile bool monitoring = false;
 
-#if USE_HCSR04
+#if CONFIG_USE_HCSR04
 
 #define TRIG_PIN 27
 #define ECHO_PIN 26
@@ -174,7 +180,7 @@ static void hc_task(void * params) {
 
 #endif
 
-#if USE_INA226 || USE_MPU9250
+#if CONFIG_USE_INA226 || CONFIG_USE_MPU9250
 
 #define SCL_GPIO 33
 #define SDA_GPIO 32
@@ -192,7 +198,7 @@ i2c_master_bus_config_t master_cfg = {
 i2c_master_bus_handle_t master_handle = NULL;
 #endif
 
-#if USE_INA226
+#if CONFIG_USE_INA226
 
 #define INA_ADDR 0x40
 #define INA_PERIOD 70
@@ -391,7 +397,7 @@ static void ina_task(void * params) {
 
 #endif
 
-#if USE_KY003
+#if CONFIG_USE_KY003
 
 #define KY_GPIO 34
 #define KY_PERIOD 10
@@ -574,7 +580,7 @@ static void ky_task(void * params) {
 
 #endif
 
-#if USE_MPU9250
+#if CONFIG_USE_MPU9250
 
 #define AK8963_ADDR 0x0C
 #define BMP_ADDR 0x76
@@ -924,7 +930,7 @@ static void monitoring_task(void* params) {
     uint16_t count = 0;
     BaseType_t res;
 
-#if USE_HCSR04
+#if CONFIG_USE_HCSR04
     int64_t echo_temp = 0, echo_res = 0;
     res = xTaskCreate(hc_task, "hc_monitoring", 2048, NULL, 5, NULL);
     if (res != pdPASS) {
@@ -933,7 +939,7 @@ static void monitoring_task(void* params) {
     }
 #endif
 
-#if USE_INA226
+#if CONFIG_USE_INA226
     ina_info_t ina = {0}, ina_temp;
     res = xTaskCreate(ina_task, "ina_monitoring", 2048, NULL, 5, NULL);
     if (res != pdPASS) {
@@ -942,7 +948,7 @@ static void monitoring_task(void* params) {
     }
 #endif
 
-#if USE_MPU9250
+#if CONFIG_USE_MPU9250
     mpu_info_t mpu = {0}, mpu_temp;
     res = xTaskCreate(mpu_task, "mpu_monitoring", 2048, NULL, 5, NULL);
     if (res != pdPASS) {
@@ -951,7 +957,7 @@ static void monitoring_task(void* params) {
     }
 #endif
 
-#if USE_KY003
+#if CONFIG_USE_KY003
 esp_err_t err;
    err = init_ky();
     if (err != ESP_OK){
@@ -967,33 +973,40 @@ esp_err_t err;
     
 #endif
 
+#if CONFIG_USE_UDPLIB
     uint8_t frame_size = sizeof(header_udp_frame_t);
+    header_udp_frame_t frame = {0};
+#else
+#if CONFIG_USE_ESPNOW
+    uint8_t frame_size = sizeof(header_espnow_frame_t);
+    header_espnow_frame_t frame = {0};
+#endif
+#endif
 
-#if USE_KY003
+#if CONFIG_USE_KY003
     frame_size += sizeof(ky_info_t);
 #endif
-#if USE_HCSR04
+#if CONFIG_USE_HCSR04
     frame_size += sizeof(int64_t);
 #endif
-#if USE_MPU9250
+#if CONFIG_USE_MPU9250
     frame_size += sizeof(mpu_info_t);
 #endif
-#if USE_INA226
+#if CONFIG_USE_INA226
     frame_size += sizeof(ina_info_t);
 #endif
     uint8_t frame_buf[frame_size];
 
-    header_udp_frame_t frame = {0};
-#if USE_KY003
+#if CONFIG_USE_KY003
     frame.flags |= 1 << 0;
 #endif
-#if USE_HCSR04
+#if CONFIG_USE_HCSR04
     frame.flags |= 1 << 1;
 #endif
-#if USE_MPU9250
+#if CONFIG_USE_MPU9250
     frame.flags |= 1 << 2;
 #endif
-#if USE_INA226
+#if CONFIG_USE_INA226
     frame.flags |= 1 << 3;
 #endif
 
@@ -1010,7 +1023,7 @@ esp_err_t err;
         memcpy(&frame_buf[offset_frame], &frame.timestamp, sizeof(uint32_t));
         offset_frame += sizeof(uint32_t);
         
-    #if USE_KY003
+    #if CONFIG_USE_KY003
         int signals_in_this_window = 0;
         if (ky_queue != NULL) {
             int64_t total_duration = 0;
@@ -1037,7 +1050,7 @@ esp_err_t err;
         offset_frame += sizeof(ky.signal_duration);
     #endif
 
-    #if USE_HCSR04
+    #if CONFIG_USE_HCSR04
         if (hc_queue != NULL && uxQueueMessagesWaiting(hc_queue) > 0) {
             echo_res = 0;
             count = 0;
@@ -1055,7 +1068,7 @@ esp_err_t err;
 
     #endif
     
-    #if USE_MPU9250
+    #if CONFIG_USE_MPU9250
         if (mpu_queue != NULL && uxQueueMessagesWaiting(mpu_queue) > 0) {
             int32_t ax=0,ay=0,az=0,gx=0,gy=0,gz=0,tm=0,tb=0,p=0;
             count = 0;
@@ -1105,7 +1118,7 @@ esp_err_t err;
 
     #endif
 
-    #if USE_INA226
+    #if CONFIG_USE_INA226
         if (ina_queue != NULL && uxQueueMessagesWaiting(ina_queue) > 0) {
             int32_t sh=0, bu=0, cu=0, po=0;
             count = 0;
@@ -1134,11 +1147,18 @@ esp_err_t err;
         offset_frame += sizeof(ina.shunt);
     #endif
 
-    #if USE_UDP
+    #if CONFIG_USE_UDPLIB
         udp_msg_t msg;
         memcpy(msg.data, frame_buf, frame_size);
         msg.len = frame_size;
         send_udp_msg(&msg);
+    #else
+    #if CONFIG_USE_ESPNOW
+        espnow_msg_t msg;
+        memcpy(msg.data, frame_buf, frame_size);
+        msg.len = frame_size;
+        send_espnow_msg(&msg);
+    #endif
     #endif
 
         vTaskDelay(pdMS_TO_TICKS(MONITOR_PERIOD));

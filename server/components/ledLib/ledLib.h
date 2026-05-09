@@ -3,12 +3,6 @@
 
 #include <inttypes.h>
 
-#define DEBUG_GPIO 0
-#define DEBUG_LEDC 0
-
-#define WRITE_MOTOR_SCREEN 0
-#define WRITE_ANGLE_SCREEN 0
-
 //idx for channels
 #define MOTOR_IDX_FWD  0
 #define MOTOR_IDX_BWD  1
@@ -35,12 +29,12 @@ void close_led();
 //Get led state
 int get_led_state();
 
-#if DEBUG_LEDC || DEBUG_GPIO
+#if CONFIG_DEBUG_LEDC || CONFIG_DEBUG_GPIO
 //Print info on pwm signals ledc
 void print_esp_info_ledc();
 #endif
 
-#if DEBUG_GPIO
+#if CONFIG_DEBUG_GPIO
 //dump gpio on stdout
 void dump_gpio_stats();
 #endif

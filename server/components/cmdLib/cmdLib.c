@@ -10,7 +10,7 @@
 #define BUFFER_IDX_PAYLOAD_SIZE 1
 #define BUFFER_IDX_PAYLOAD 2
 
-const char* TAG = "cmd_library";
+static const char* TAG = "cmd_library";
 
 esp_err_t get_cmd_type(const int8_t *buf, command_type_t *cmd_type) {
 
@@ -182,4 +182,56 @@ void dump_android(const android_t *android) {
 
     log_msg(TAG, "Android raw: [%d,%d]", 
         android->sliderX, android->sliderY); 
+}
+
+esp_err_t cmd_dispatch(const int8_t *data) {
+    esp_err_t err;
+    command_type_t type;
+    err = get_cmd_type(data, &type);
+    if (err != ESP_OK) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) getting command type", 
+                esp_err_to_name(err));
+    }
+    switch (type) {
+        case CMD_GAMEPAD: //gamepad type control
+
+            gamepad_t gamepad;
+            err = gamepad_from_buffer(data, &gamepad);
+            if (err != ESP_OK) {
+                log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) getting gamepad from buffer", 
+                        esp_err_to_name(err));
+                break;
+            }
+
+            err = apply_gamepad_commands(&gamepad);
+            if (err != ESP_OK) {
+                log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) applying gamepad commands", 
+                        esp_err_to_name(err));
+                break;
+            }
+            break;
+        
+        case CMD_ANDROID: //android type control
+
+            android_t android;
+            err = android_from_buffer(data, &android);
+            if (err != ESP_OK) {
+                log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) getting android from buffer", 
+                        esp_err_to_name(err));
+                break;
+            }
+            
+            err = apply_android_commands(&android);
+            if (err != ESP_OK) {
+                log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) applying android commands", 
+                        esp_err_to_name(err));
+                break;
+            }
+            break;
+        
+        default:
+            log_msg_lvl(ESP_LOG_WARN, TAG, "Command type not valid");
+            break;
+    }
+    return err;
 }

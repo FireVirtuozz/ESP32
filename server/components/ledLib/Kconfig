@@ -1,0 +1,22 @@
+menu "LED - LEDC"
+    depends on USE_LEDLIB
+
+    config DEBUG_LEDC
+        bool "DEBUG LEDC"
+        default n
+
+    config DEBUG_GPIO
+        bool "DEBUG GPIO"
+        default n
+    
+    config WRITE_MOTOR_SCREEN
+        bool "Write motor on screen"
+        default n
+        depends on USE_SCREENLIB
+
+    config WRITE_ANGLE_SCREEN
+        bool "Write angle on screen"
+        default n
+        depends on USE_SCREENLIB
+
+endmenu

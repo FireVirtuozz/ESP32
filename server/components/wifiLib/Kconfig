@@ -1,0 +1,16 @@
+menu "Wifi"
+    depends on USE_WIFI
+
+    config USE_AP_MODE
+        bool "AP_MODE"
+        default y
+    
+    config USE_STA_MODE
+        bool "STA_MODE"
+        default n
+
+    config DEBUG_WIFI
+        bool "DEBUG_ALLOWED"
+        default n
+
+endmenu

@@ -1,0 +1,22 @@
+menu "Log"
+
+    config LOG_UDP
+        bool "Log through UDP"
+        default n
+        depends on USE_UDPLIB
+    
+    config LOG_ESPNOW
+        bool "Log through ESPNOW"
+        default n
+        depends on USE_ESPNOW
+
+    config LOG_MQTT
+        bool "Log through MQTT"
+        default n
+        depends on USE_MQTTLIB
+    
+    config LOG_SERIAL
+        bool "Log through Serial"
+        default n
+
+endmenu

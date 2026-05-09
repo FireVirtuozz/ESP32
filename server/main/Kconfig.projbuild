@@ -1,0 +1,54 @@
+menu "ESP RC Car"
+
+    config USE_LEDLIB
+        bool "LED library"
+        default y
+
+    menu "Screen"
+    config USE_SCREENLIB
+        bool "Screen library"
+        default n
+    
+    config USE_LVGL_SCREEN
+        bool "LVGL screen"
+        default n
+        depends on USE_SCREENLIB
+    endmenu
+
+    config USE_SENSORS
+        bool "Sensors"
+        default n
+
+    menu "Wifi"
+    config USE_WIFI
+        bool "WiFi"
+        default y
+
+    config USE_UDPLIB
+        bool "UDP"
+        default y
+        depends on USE_WIFI
+
+    config USE_WSLIB
+        bool "WebSocket"
+        default n
+        depends on USE_WIFI
+
+    config USE_MQTTLIB
+        bool "MQTT"
+        default n
+        depends on USE_WIFI
+
+    config USE_OTA
+        bool "OTA"
+        default n
+        depends on USE_WIFI
+    
+    config USE_ESPNOW
+        bool "ESP-NOW"
+        default n
+        depends on USE_WIFI
+    endmenu
+
+
+endmenu

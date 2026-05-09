@@ -1,0 +1,4 @@
+menu "LCD"
+    depends on USE_SCREENLIB && USE_LVGL_SCREEN
+
+endmenu

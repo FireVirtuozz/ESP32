@@ -1,0 +1,5 @@
+menu "MQTT"
+    depends on USE_WIFI && USE_MQTTLIB
+
+
+endmenu

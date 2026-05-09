@@ -16,8 +16,7 @@
 
 #include "freertos/idf_additions.h"
 
-#define TIME_STATS 0 //for time statistics
-#if TIME_STATS
+#if CONFIG_PACKET_DEBUG
 #include "esp_timer.h"
 #endif
 
@@ -27,13 +26,9 @@
 
 //TODO : IPv6 support, length commands buffer check, security
 
-#define PACKET_DEBUG_ACTIVATED 0 //for packet debug
-#define INFO_LOGS 0 //for info logs
-#define ADDRESS_DEBUG 0 //for address debug
-
 static const char *TAG = "udp_library"; // tag of this library
 
-#if PACKET_DEBUG_ACTIVATED
+#if CONFIG_PACKET_DEBUG
 static char * sock_type_to_str(int val) {
     switch (val)
     {
@@ -69,7 +64,7 @@ static char * cmsg_protocol_spe_to_str(int val) {
 
 #endif
 
-#if ADDRESS_DEBUG || PACKET_DEBUG_ACTIVATED
+#if CONFIG_PACKET_DEBUG
 static char * cmsg_protocol_to_str(int val) {
     switch (val)
     {
@@ -92,7 +87,7 @@ static char * cmsg_protocol_to_str(int val) {
 }
 #endif
 
-#if ADDRESS_DEBUG
+#if CONFIG_PACKET_DEBUG
 static char * addr_family_to_str(int val) {
     switch (val)
     {
@@ -146,18 +141,17 @@ static void udp_server_task(void *pvParameters)
     int ip_protocol = 0;
     struct sockaddr_in6 dest_addr;
 
-#if INFO_LOGS
+#if CONFIG_PACKET_DEBUG
     static int nb_packets_received = 0;
 #endif
 
     while (1) {
 
-#if TIME_STATS
+#if CONFIG_PACKET_DEBUG
         int64_t last_packet_time = 0;
         int64_t sum_intervals = 0;
         int packet_count = 0;
-#endif
-#if ADDRESS_DEBUG
+
         log_msg(TAG, "Address family : %s", addr_family_to_str(addr_family));
 #endif
 
@@ -180,7 +174,7 @@ static void udp_server_task(void *pvParameters)
             dest_addr_ip4->sin_family = AF_INET; //setting type ipv4
             dest_addr_ip4->sin_port = htons(PORT); //setting port
             ip_protocol = IPPROTO_IP; //setting ip protocol
-#if ADDRESS_DEBUG
+#if CONFIG_PACKET_DEBUG
             log_msg(TAG, "IP protocol : %s", cmsg_protocol_to_str(ip_protocol));
             log_msg(TAG, "IP : %s", source_ip_to_str(ntohl(dest_addr_ip4->sin_addr.s_addr)));
             log_msg(TAG, "Family : %s", addr_family_to_str(dest_addr_ip4->sin_family));
@@ -201,7 +195,7 @@ static void udp_server_task(void *pvParameters)
         }
         log_msg(TAG, "Socket created");
 
-#if PACKET_DEBUG_ACTIVATED
+#if CONFIG_PACKET_DEBUG
         //set receive packt info for debug (ipv4 only)
         int enable = 1;
         lwip_setsockopt(sock, IPPROTO_IP, IP_PKTINFO, &enable, sizeof(enable));
@@ -213,7 +207,7 @@ static void udp_server_task(void *pvParameters)
         timeout.tv_usec = UDP_COMMANDS_TIMEOUT;
         setsockopt (sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout); //socket option timeout
 
-#if PACKET_DEBUG_ACTIVATED
+#if CONFIG_PACKET_DEBUG
         int val;
         socklen_t len = sizeof(val);
         //reuse port if already used in TIME_WAIT (state TCP when connection closed)
@@ -282,7 +276,7 @@ static void udp_server_task(void *pvParameters)
         struct sockaddr_storage source_addr; // Large enough for both IPv4 or IPv6
         socklen_t socklen = sizeof(source_addr);
 
-#if PACKET_DEBUG_ACTIVATED
+#if CONFIG_PACKET_DEBUG
         //infos for debug message (ipv4 only)
         struct iovec iov;
         struct msghdr msg;
@@ -302,7 +296,7 @@ static void udp_server_task(void *pvParameters)
         while (1) {
             log_msg(TAG, "Waiting for data");
 
-#if PACKET_DEBUG_ACTIVATED
+#if CONFIG_PACKET_DEBUG
             //receive message for debug (ipv4 only)
             int len = recvmsg(sock, &msg, 0);
 
@@ -318,7 +312,7 @@ static void udp_server_task(void *pvParameters)
                 break;
             } else { // Data received
 
-#if PACKET_DEBUG_ACTIVATED
+#if CONFIG_PACKET_DEBUG
                 //for debug (ipv4 only)
                 for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
                     log_msg(TAG, "cmsg_level=%s, cmsg_type=%s, cmsg_len=%d",
@@ -362,9 +356,7 @@ static void udp_server_task(void *pvParameters)
                 for (int i = 0; i < msg.msg_controllen; i++) {
                     log_msg(TAG, "cmsg raw[%d]=0x%02X", i, cmsg_data[i]);
                 }
-#endif
 
-#if TIME_STATS
                 int64_t current_time = esp_timer_get_time(); // ms
                 if (last_packet_time != 0) {
                     int64_t delta = current_time - last_packet_time; // delta us
@@ -375,9 +367,6 @@ static void udp_server_task(void *pvParameters)
                     log_msg(TAG, "Interval: %lld us, Average: %lld us", delta, average_interval);
                 }
                 last_packet_time = current_time;
-#endif
-
-#if ADDRESS_DEBUG
 
                 //PF here
                 //PF = Protocol (old)
@@ -392,66 +381,12 @@ static void udp_server_task(void *pvParameters)
                 log_msg(TAG, "Family : %s", addr_family_to_str(source_addr_ip4->sin_family));
                 log_msg(TAG, "Port : %d", ntohs(source_addr_ip4->sin_port));
                 
-#endif
-                esp_err_t esp_err;
-                command_type_t type;
-                esp_err = get_cmd_type(temp_buffer, &type);
-                if (esp_err != ESP_OK) {
-                    log_msg(TAG, "Error (%s) getting command type", 
-                            esp_err_to_name(esp_err));
-                }
-#if INFO_LOGS
                 nb_packets_received++;
                 log_msg(TAG, "Received %d bytes: packet number : %d",
                     len, nb_packets_received);
 #endif
-                switch (type) {
-                    case CMD_GAMEPAD: //gamepad type control
 
-                        gamepad_t gamepad;
-                        esp_err = gamepad_from_buffer(temp_buffer, &gamepad);
-                        if (esp_err != ESP_OK) {
-                            log_msg(TAG, "Error (%s) getting gamepad from buffer", 
-                                    esp_err_to_name(esp_err));
-                            break;
-                        }
-#if INFO_LOGS
-                        dump_gamepad(&gamepad);
-#endif
-
-                        esp_err = apply_gamepad_commands(&gamepad);
-                        if (esp_err != ESP_OK) {
-                            log_msg(TAG, "Error (%s) applying gamepad commands", 
-                                    esp_err_to_name(esp_err));
-                            break;
-                        }
-                        break;
-                    
-                    case CMD_ANDROID: //android type control
-
-                        android_t android;
-                        esp_err = android_from_buffer(temp_buffer, &android);
-                        if (esp_err != ESP_OK) {
-                            log_msg(TAG, "Error (%s) getting android from buffer", 
-                                    esp_err_to_name(esp_err));
-                            break;
-                        }
-#if INFO_LOGS
-                        dump_android(&android);
-#endif
-                        
-                        esp_err = apply_android_commands(&android);
-                        if (esp_err != ESP_OK) {
-                            log_msg(TAG, "Error (%s) applying android commands", 
-                                    esp_err_to_name(esp_err));
-                            break;
-                        }
-                        
-                        break;
-                    
-                    default:
-                        break;
-                }
+                cmd_dispatch(temp_buffer);
             }
                 
             }

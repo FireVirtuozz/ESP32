@@ -38,7 +38,7 @@
 /*DHCP server option flag*/
 #define DHCPS_OFFER_DNS             0x02
 
-#if DEBUG_WIFI
+#if CONFIG_DEBUG_WIFI
 #define MAX_STR_LINES 20
 #define MAX_LINE_LEN 128
 
@@ -74,7 +74,7 @@ static const char *TAG = "wifi_library";
 //Buffer for IP address
 static char s_ip_str[16];
 
-#if DEBUG_WIFI
+#if CONFIG_DEBUG_WIFI
 /*
 =====================================================================
 FUNCTION CONVERT TO STR
@@ -938,7 +938,7 @@ USEFUL FUNCTIONS
 =====================================================================
 */
 
-#if WIFI_STA_MODE
+#if CONFIG_USE_STA_MODE
 static void first_scan() {
 
     esp_err_t err;
@@ -994,7 +994,7 @@ static void first_scan() {
     if (err != ESP_OK) {
         log_msg(TAG, "Error on getting scan parameters : %d", err);
     } else {
-#if DEBUG_WIFI
+#if CONFIG_DEBUG_WIFI
         info = get_scan_params_info(params);
         for (int i = 0; i < info->count; i++) {
             log_msg(TAG, "scan params [%d] : %s", i, info->lines[i]);
@@ -1021,7 +1021,7 @@ static void first_scan() {
     }
 
     //if fail : esp_wifi_clear_ap_list
-#if DEBUG_WIFI
+#if CONFIG_DEBUG_WIFI
     log_msg(TAG, "Max AP number ap_info can hold = %u", number);
 #endif
 
@@ -1038,7 +1038,7 @@ static void first_scan() {
         return;
     }
 
-#if DEBUG_WIFI
+#if CONFIG_DEBUG_WIFI
     log_msg(TAG, "Total APs scanned = %u, actual AP number ap_info holds = %u", ap_count, number);
 #endif
 
@@ -1072,7 +1072,7 @@ static void first_scan() {
     wifi_network_t *wifi_credentials = NULL;
     //go through each record and compare ssid
     for (int i = 0; i < number; i++) {
-#if DEBUG_WIFI
+#if CONFIG_DEBUG_WIFI
         print_record(ap_info[i]);
 #endif
         for (int j = 0; j < count; j++) {
@@ -1128,6 +1128,44 @@ static void first_scan() {
 }
 #endif
 
+static esp_err_t wifi_init_basic() {
+    esp_err_t err = ESP_OK;
+#if CONFIG_DEBUG_WIFI
+    sta_info_strings_t *info;
+#endif
+
+    //Initialize netif TCP/IP
+    err = esp_netif_init();
+    if (err != ESP_OK) {
+        log_msg(TAG, "Error (%s) init netif", esp_err_to_name(err));
+        return err;
+    }
+    
+    //Create system event loop
+    err = esp_event_loop_create_default();
+    if (err != ESP_OK) {
+        log_msg(TAG, "Error (%s) creating event loop", esp_err_to_name(err));
+        return err;
+    }
+
+    //Load default config and initialize driver
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+#if CONFIG_DEBUG_WIFI
+    info = get_init_config(cfg);
+    for (int i = 0; i < info->count; i++) {
+        log_msg(TAG, "Config [%d] : %s",
+            i, info->lines[i]);
+    }
+#endif
+    err = esp_wifi_init(&cfg);
+    if (err != ESP_OK) {
+        log_msg(TAG, "Error (%s) allocating wifi resources", esp_err_to_name(err));
+        return err;
+    }
+
+    return err;
+}
+
 /**
  * Event handler:
  * - Handle first connection
@@ -1143,7 +1181,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
 {
     esp_err_t err;
 
-#if DEBUG_WIFI
+#if CONFIG_DEBUG_WIFI
     if (event_base == WIFI_EVENT) {
         wifi_event_t event_wifi = (wifi_event_t)event_id;
         log_msg(TAG, "Wifi event id : %d", event_wifi);
@@ -1152,7 +1190,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
     
     //if wifi starting event
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
-#if WIFI_STA_MODE
+#if CONFIG_USE_STA_MODE
         first_scan();
 #endif
         err = esp_wifi_connect(); // Start wifi connection : send request to router
@@ -1197,7 +1235,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
     }
 }
 
-#if WIFI_AP_MODE
+#if CONFIG_USE_AP_MODE
 /* Initialize simpel soft AP config netif*/
 esp_netif_t *wifi_init_softap_netif(void)
 {
@@ -1268,7 +1306,7 @@ esp_netif_t *wifi_init_softap_netif(void)
 }
 #endif
 
-#if WIFI_AP_MODE && WIFI_STA_MODE
+#if CONFIG_USE_AP_MODE && CONFIG_USE_STA_MODE
 //Set DNS address of ESP AP to transmit the one from ESP STA to clients connected to ESP AP
 //DNS : Domain Name System; Converts domain name to IP; Without DNS, use only IP;
 //NAT : Network Address Translation; Allows private IPs to access Internet with only one public IP;
@@ -1328,7 +1366,7 @@ static void softap_set_dns_addr(esp_netif_t *esp_netif_ap, esp_netif_t *esp_neti
 }
 #endif
 
-#if !WIFI_AP_MODE && WIFI_STA_MODE
+#if !CONFIG_USE_AP_MODE && CONFIG_USE_STA_MODE
 /**
  * Initialize ESP WiFi in station mode
  * -Initialize NVS to store WIFI data --> done in nvs_init
@@ -1341,39 +1379,11 @@ static void softap_set_dns_addr(esp_netif_t *esp_netif_ap, esp_netif_t *esp_neti
 static void wifi_init_sta(void)
 {
     esp_err_t err;
-#if DEBUG_WIFI
-    sta_info_strings_t *info;
-#endif
-
     //Create global handler events for wifi
     s_wifi_event_group = xEventGroupCreate();
 
-    //Initialize netif TCP/IP
-    err = esp_netif_init();
+    err = wifi_init_basic();
     if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) init netif", esp_err_to_name(err));
-        return;
-    }
-    
-    //Create system event loop
-    err = esp_event_loop_create_default();
-    if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) creating event loop", esp_err_to_name(err));
-        return;
-    }
-
-    //Load default config and initialize driver
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-#if DEBUG_WIFI
-    info = get_init_config(cfg);
-    for (int i = 0; i < info->count; i++) {
-        log_msg(TAG, "Config [%d] : %s",
-            i, info->lines[i]);
-    }
-#endif
-    err = esp_wifi_init(&cfg);
-    if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) allocating wifi resources", esp_err_to_name(err));
         return;
     }
 
@@ -1411,7 +1421,7 @@ static void wifi_init_sta(void)
         return;
     }
 
-#if DEBUG_WIFI
+#if CONFIG_DEBUG_WIFI
     log_msg(TAG, "Connection to ...");
 #endif
 
@@ -1428,7 +1438,7 @@ static void wifi_init_sta(void)
 }
 #endif
 
-#if WIFI_AP_MODE && !WIFI_STA_MODE
+#if CONFIG_USE_AP_MODE && !CONFIG_USE_STA_MODE
 /**
  * Initialize ESP WiFi in station mode
  * -Initialize NVS to store WIFI data --> done in nvs_init
@@ -1441,36 +1451,9 @@ static void wifi_init_sta(void)
 static void wifi_init_ap(void)
 {
     esp_err_t err;
-#if DEBUG_WIFI
-    sta_info_strings_t *info;
-#endif
-
-    //Initialize netif TCP/IP
-    err = esp_netif_init();
+        
+    err = wifi_init_basic();
     if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) init netif", esp_err_to_name(err));
-        return;
-    }
-    
-    //Create system event loop
-    err = esp_event_loop_create_default();
-    if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) creating event loop", esp_err_to_name(err));
-        return;
-    }
-
-    //Load default config and initialize driver
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-#if DEBUG_WIFI
-    info = get_init_config(cfg);
-    for (int i = 0; i < info->count; i++) {
-        log_msg(TAG, "Config [%d] : %s",
-            i, info->lines[i]);
-    }
-#endif
-    err = esp_wifi_init(&cfg);
-    if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) allocating wifi resources", esp_err_to_name(err));
         return;
     }
 
@@ -1512,7 +1495,7 @@ static void wifi_init_ap(void)
 }
 #endif
 
-#if WIFI_AP_MODE && WIFI_STA_MODE
+#if CONFIG_USE_AP_MODE && CONFIG_USE_STA_MODE
 /**
  * Initialize ESP WiFi in station mode
  * -Initialize NVS to store WIFI data --> done in nvs_init
@@ -1524,39 +1507,12 @@ static void wifi_init_ap(void)
  */
 static void wifi_init_apsta()
 {
+    esp_err_t err;
+    
     s_wifi_event_group = xEventGroupCreate();
 
-    esp_err_t err;
-#if DEBUG_WIFI
-    sta_info_strings_t *info;
-#endif
-
-    //Initialize netif TCP/IP
-    err = esp_netif_init();
+    err = wifi_init_basic();
     if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) init netif", esp_err_to_name(err));
-        return;
-    }
-    
-    //Create system event loop
-    err = esp_event_loop_create_default();
-    if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) creating event loop", esp_err_to_name(err));
-        return;
-    }
-
-    //Load default config and initialize driver
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-#if DEBUG_WIFI
-    info = get_init_config(cfg);
-    for (int i = 0; i < info->count; i++) {
-        log_msg(TAG, "Config [%d] : %s",
-            i, info->lines[i]);
-    }
-#endif
-    err = esp_wifi_init(&cfg);
-    if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) allocating wifi resources", esp_err_to_name(err));
         return;
     }
 
@@ -1642,14 +1598,32 @@ static void wifi_init_apsta()
 #endif
 
 void wifi_init() {
-#if WIFI_AP_MODE && WIFI_STA_MODE
+#if CONFIG_USE_AP_MODE && CONFIG_USE_STA_MODE
     wifi_init_apsta();
-#elif WIFI_AP_MODE
+#elif CONFIG_USE_AP_MODE
     wifi_init_ap();
-#elif WIFI_STA_MODE
+#elif CONFIG_USE_STA_MODE
     wifi_init_sta();
 #else
     log_msg(TAG, "No wifi config selected");
+    #if CONFIG_USE_ESPNOW
+        esp_err_t err;
+        err = wifi_init_basic();
+        if (err != ESP_OK) {
+            return;
+        }
+        err = esp_wifi_set_mode(WIFI_MODE_AP);
+        if (err != ESP_OK) {
+            log_msg(TAG, "Error (%s) setting wifi mode", esp_err_to_name(err));
+            return;
+        }
+        err = esp_wifi_start();
+        if (err != ESP_OK) {
+            log_msg(TAG, "Error (%s) starting wifi", esp_err_to_name(err));
+            return;
+        }
+        log_msg(TAG, "ESP-NOW wifi initialized");
+    #endif
 #endif
 }
 
@@ -1665,7 +1639,7 @@ bool is_scanning() {
     return scanning;
 }
 
-#if DEBUG_WIFI
+#if CONFIG_DEBUG_WIFI
 void wifi_scan_task(void *pvParameter) {
  
     dump_t *d = NULL;
@@ -1744,7 +1718,7 @@ void wifi_scan_aps() {
 }
 #endif
 
-#if DEBUG_WIFI
+#if CONFIG_DEBUG_WIFI
 void get_ap_info() {
 
     wifi_ap_record_t ap_info;
@@ -1757,7 +1731,7 @@ void get_ap_info() {
 }
 #endif
 
-#if DEBUG_WIFI
+#if CONFIG_DEBUG_WIFI
 void wifi_scan_esp() {
 
     dump_t *d = NULL;

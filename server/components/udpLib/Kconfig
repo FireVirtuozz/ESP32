@@ -1,0 +1,7 @@
+menu "UDP"
+    depends on USE_WIFI && USE_UDPLIB
+
+    config PACKET_DEBUG
+        bool "DEBUG PACKETS"
+        default n
+endmenu

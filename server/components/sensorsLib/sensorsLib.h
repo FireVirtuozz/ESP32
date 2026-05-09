@@ -1,17 +1,10 @@
 #ifndef SENSORSLIB_H_
 #define SENSORSLIB_H_
 
-#define USE_HCSR04 0
-#define USE_INA226 0
-#define USE_KY003 1
-#define USE_MPU9250 0
-
-#define USE_UDP 1
-
 #include <inttypes.h>
 #include <esp_err.h>
 
-#if USE_HCSR04
+#if CONFIG_USE_HCSR04
 
 /**
  * Initialize HC-SR04 sensor gpios
@@ -27,7 +20,7 @@ int64_t trigger_echo();
 
 #endif
 
-#if USE_INA226
+#if CONFIG_USE_INA226
 
 typedef struct ina_info_st {
     int16_t shunt;
@@ -50,7 +43,7 @@ esp_err_t get_ina_info(ina_info_t *ina_info);
 
 #endif
 
-#if USE_KY003
+#if CONFIG_USE_KY003
 
 typedef struct ky_info_st {
     uint64_t signal_count;
@@ -70,7 +63,7 @@ ky_info_t* get_signal_info();
 
 #endif
 
-#if USE_MPU9250
+#if CONFIG_USE_MPU9250
 typedef struct mpu_info_st {
     int16_t accel_x;
     int16_t accel_y;

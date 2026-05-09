@@ -18,18 +18,18 @@
 #include "lcdLib.h"
 #endif
 
-#if DEBUG_GPIO || DEBUG_LEDC
+#if CONFIG_DEBUG_GPIO || CONFIG_DEBUG_LEDC
 #include "soc/soc_caps.h"
 #endif
 
-#if DEBUG_LEDC
+#if CONFIG_DEBUG_LEDC
 #include "hal/ledc_types.h"
 #include "soc/ledc_struct.h"
 #include "soc/clk_tree_defs.h"
 #include "esp_clk_tree.h"
 #endif
 
-#if DEBUG_GPIO
+#if CONFIG_DEBUG_GPIO
 #include "hal/gpio_types.h"
 #include "esp_private/esp_gpio_reserve.h"
 #endif
@@ -152,7 +152,7 @@ static ledc_channel_config_t ledc_channel[LEDC_NUM_TEST] = {
 //semaphore for fade events
 static SemaphoreHandle_t counting_sem = NULL;
 
-#if DEBUG_LEDC
+#if CONFIG_DEBUG_LEDC
 static char * mode_str(const ledc_mode_t mode) {
     switch (mode)
     {
@@ -281,7 +281,7 @@ static void print_callback_param(const ledc_cb_param_t cb) {
 }
 #endif
 
-#if DEBUG_GPIO
+#if CONFIG_DEBUG_GPIO
 static char * drive_cap_str(const gpio_drive_cap_t drive) {
     switch (drive)
     {
@@ -342,7 +342,7 @@ static IRAM_ATTR bool cb_ledc_fade_end_event(const ledc_cb_param_t *param, void 
 {
     BaseType_t taskAwoken = pdFALSE;
 
-#if DEBUG_LEDC
+#if CONFIG_DEBUG_LEDC
     print_callback_param(*param);
 #endif
 
@@ -402,7 +402,7 @@ static void apply_target_motor(void* args) {
         log_msg(TAG, "Motor : %d/%d, on pins; fwd : %d, bwd : %d",
             current_motor, target_motor, BTS_GPIO_FWD, BTS_GPIO_BWD);
 
-        #if WRITE_MOTOR_SCREEN
+        #if CONFIG_WRITE_MOTOR_SCREEN
 
 #if USE_LVGL_SCREEN
         set_bar_motor(current_motor);
@@ -706,7 +706,7 @@ void init_ledc() {
 
     log_msg(TAG, "LEDC initialized");
 
-#if DEBUG_LEDC || DEBUG_GPIO
+#if CONFIG_DEBUG_LEDC || CONFIG_DEBUG_GPIO
     print_esp_info_ledc();
 #endif
 }
@@ -801,7 +801,7 @@ void ledc_angle(int16_t angle) {
 
         log_msg(TAG, "Angle : %d, on pin %d", angle, MG_GPIO);
 
-#if WRITE_ANGLE_SCREEN
+#if CONFIG_WRITE_ANGLE_SCREEN
 
 #if USE_LVGL_SCREEN
         set_bar_steer((current_angle - 90) * 200 / 180);
@@ -836,12 +836,12 @@ void ledc_motor(int16_t motor_percent) {
     
 }
 
-#if DEBUG_LEDC || DEBUG_GPIO
+#if CONFIG_DEBUG_LEDC || CONFIG_DEBUG_GPIO
 void print_esp_info_ledc() {
 
     esp_err_t err;
 
-#if DEBUG_LEDC
+#if CONFIG_DEBUG_LEDC
     log_msg(TAG, "============= LEDC capabilities =============");
 
     log_msg(TAG, "LEDC timers        : %d", SOC_LEDC_TIMER_NUM);
@@ -918,7 +918,7 @@ void print_esp_info_ledc() {
     log_msg(TAG, "MG suitable duty resolution : %d", val);
 #endif
 
-#if DEBUG_GPIO
+#if CONFIG_DEBUG_GPIO
     log_msg(TAG, "============= GPIO capabilities =============");
     log_msg(TAG, "GPIO pin count        : %d", GPIO_PIN_COUNT);
 
@@ -950,7 +950,7 @@ void print_esp_info_ledc() {
 #endif
 
 void dump_gpio_stats() {
-#if DEBUG_GPIO
+#if CONFIG_DEBUG_GPIO
     gpio_dump_io_configuration(stdout, SOC_GPIO_VALID_GPIO_MASK);
 #endif
 }

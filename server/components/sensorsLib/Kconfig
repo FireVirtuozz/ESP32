@@ -1,0 +1,20 @@
+menu "Sensors"
+    depends on USE_SENSORS
+    
+    config USE_HCSR04
+        bool "HCSR04"
+        default n
+
+    config USE_INA226
+        bool "INA226"
+        default n
+    
+    config USE_KY003
+        bool "KY003"
+        default n
+
+    config USE_MPU9250
+        bool "MPU9250"
+        default n
+
+endmenu

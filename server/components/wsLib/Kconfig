@@ -1,0 +1,4 @@
+menu "WS"
+    depends on USE_WIFI && USE_WSLIB
+
+endmenu

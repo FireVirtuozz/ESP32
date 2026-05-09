@@ -13,8 +13,11 @@
 
 #include "esp_timer.h"
 
-#if LOG_UDP
+#if CONFIG_LOG_UDP
 #include "udpLib.h"
+#endif
+#if CONFIG_LOG_ESPNOW
+#include "espnowLib.h"
 #endif
 
 #define LOG_BUFFER_SIZE 256
@@ -23,17 +26,13 @@
 
 static const char* TAG = "log_library";
 
-#if LOG_UDP || LOG_MQTT
-static QueueHandle_t log_queue;
-#endif
-
 static void log_msg_va(const log_level_t level, const char* tag, const char* fmt, va_list args) {
     if (level > LOG_LEVEL) return;
 
     char buf[LOG_BUFFER_SIZE];
     vsnprintf(buf, sizeof(buf), fmt, args);
 
-    #if LOG_SERIAL
+    #if CONFIG_LOG_SERIAL
     switch (level) {
         case ESP_LOG_INFO:    ESP_LOGI(tag, "%s", buf); break;
         case ESP_LOG_WARN:    ESP_LOGW(tag, "%s", buf); break;
@@ -45,7 +44,7 @@ static void log_msg_va(const log_level_t level, const char* tag, const char* fmt
     }
     #endif
 
-#if LOG_UDP
+#if CONFIG_LOG_UDP
     udp_msg_t msg = {0};
     uint8_t msg_len = 0;
 
@@ -66,6 +65,30 @@ static void log_msg_va(const log_level_t level, const char* tag, const char* fmt
     msg.len = msg_len + strlen(buf);
 
     send_udp_msg(&msg);
+#else
+
+#if CONFIG_LOG_ESPNOW
+    espnow_msg_t msg = {0};
+    uint8_t msg_len = 0;
+
+    header_espnow_frame_t frame = {
+        .type = 1,
+        .flags = 0,
+        .timestamp = (uint32_t)(esp_timer_get_time() / 1000),
+    };
+
+    msg.data[0] = frame.type;
+    msg_len++;
+    msg.data[1] = frame.flags;
+    msg_len++;
+    memcpy(&msg.data[2], &frame.timestamp, sizeof(uint32_t));
+    msg_len += sizeof(uint32_t);
+
+    memcpy(msg.data + msg_len, buf, strlen(buf));
+    msg.len = msg_len + strlen(buf);
+
+    send_espnow_msg(&msg);
+#endif
 #endif
 }
 
@@ -93,7 +116,7 @@ esp_err_t log_init() {
     esp_log_level_set("mqtt_library", ESP_LOG_VERBOSE);
     esp_log_level_set("nvs_library", ESP_LOG_VERBOSE);
     esp_log_level_set("udp_library", ESP_LOG_VERBOSE);
-    esp_log_level_set("wifi_library", ESP_LOG_VERBOSE);
+    esp_log_level_set("wifi_library", ESP_LOG_INFO);
     esp_log_level_set("ota_library", ESP_LOG_VERBOSE);
     esp_log_level_set("led_library", ESP_LOG_VERBOSE);
     esp_log_level_set("cmd_library", ESP_LOG_VERBOSE);
@@ -103,6 +126,7 @@ esp_err_t log_init() {
     esp_log_level_set("screen_library", ESP_LOG_VERBOSE);
     esp_log_level_set("sensors_library", ESP_LOG_VERBOSE);
     esp_log_level_set("system_library", ESP_LOG_INFO);
+    esp_log_level_set("espnow_library", ESP_LOG_VERBOSE);
     esp_log_level_set("main", ESP_LOG_INFO);
 
     return ESP_OK;
@@ -166,21 +190,17 @@ esp_err_t dump_deploy(dump_t ** dump) {
     (*dump)->buffer[(*dump)->offset] = '\0';
 
   
-#if LOG_SERIAL
-/*
+#if CONFIG_LOG_SERIAL
     char *saveptr;
     char *line = strtok_r((*dump)->buffer, "\n", &saveptr);
     while (line != NULL) {
         log_msg("", "%s", line);
         line = strtok_r(NULL, "\n", &saveptr);
     }
-    */    
 #endif
 
 
-
-
-#if LOG_UDP
+#if CONFIG_LOG_UDP
     udp_msg_t msg = {0};
     uint8_t header_len = 0;
 
@@ -223,10 +243,55 @@ esp_err_t dump_deploy(dump_t ** dump) {
         sent_len += to_send;
     }
 
+#else
+
+#if CONFIG_LOG_ESPNOW
+    espnow_msg_t msg = {0};
+    uint8_t header_len = 0;
+
+    header_espnow_frame_t frame = {
+        .type = 2, 
+        .flags = 0,
+        .timestamp = (uint32_t)(esp_timer_get_time() / 1000),
+    };
+
+    msg.data[0] = frame.type;
+    msg.data[1] = frame.flags;
+    memcpy(&msg.data[2], &frame.timestamp, sizeof(uint32_t));
+    header_len = 2 + sizeof(uint32_t);
+
+    uint8_t max_data_per_packet = ESPNOW_MSG_SIZE - header_len - 1; 
+    size_t total_len = (*dump)->offset;
+    size_t sent_len = 0;
+    uint8_t nb_msg = total_len / max_data_per_packet + 1;
+    //log_msg(TAG, "DUMP START: total_len: %u, max_payload_per_packet: %u, nb msg: %u", 
+    //    total_len, max_data_per_packet, nb_msg);
+
+    for (uint8_t msg_id = nb_msg; msg_id > 0; msg_id--) {
+        size_t to_send = total_len - sent_len;
+        if (to_send > max_data_per_packet) {
+            to_send = max_data_per_packet;
+        }
+
+        msg.data[header_len] = msg_id - 1;
+        memcpy(&msg.data[header_len + 1], (*dump)->buffer + sent_len, to_send);
+        msg.len = header_len + 1 + to_send;
+        
+        char log_payload[to_send + 2]; 
+        memcpy(log_payload, &msg.data[header_len], to_send + 1);
+        log_payload[to_send + 1] = '\0'; 
+
+        //log_msg(TAG, "Sending msg_id: %u, packet_len: %u, payload: %s", msg_id - 1, msg.len, log_payload + 1);
+        
+
+        send_espnow_msg(&msg);
+        sent_len += to_send;
+    }
+#endif
 #endif
 
 
-#if LOG_MQTT
+#if CONFIG_LOG_MQTT
     //mqtt_publish(entry.buf);
     //maybe a special frame according to max bytes / message
 #endif

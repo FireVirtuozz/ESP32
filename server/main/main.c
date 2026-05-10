@@ -41,6 +41,8 @@
 #include "espnowLib.h"
 #endif
 
+#include "cameraLib.h"
+
 #include "systemLib.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -56,8 +58,8 @@ void app_main()
 #endif
     //init_queue_mqtt();
 
-    nvs_init(); //init memory first, wifi/led needs this..
-
+    //init memory first, wifi/led needs this..
+    nvs_init(); 
 #if CONFIG_USE_LVGL_SCREEN
     lcd_init();
 #endif
@@ -106,12 +108,17 @@ void app_main()
     espnow_init();
 #endif
 
-    vTaskDelay(pdMS_TO_TICKS(20000));
+    
+
+    //vTaskDelay(pdMS_TO_TICKS(20000));
     print_chip_info();
 
 #if CONFIG_DEBUG_WIFI
     wifi_scan_esp();
     wifi_scan_aps();
 #endif
+
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    camera_init();
     
 }

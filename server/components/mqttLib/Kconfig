@@ -1,4 +1,4 @@
-menu "MQTT"
+menu "RC-MQTT"
     depends on USE_WIFI && USE_MQTTLIB
 
 

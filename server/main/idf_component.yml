@@ -17,3 +17,4 @@ dependencies:
   espressif/mqtt: '*'
   espressif/cjson: '*'
   lvgl/lvgl: '*'
+  espressif/esp32-camera: '*'

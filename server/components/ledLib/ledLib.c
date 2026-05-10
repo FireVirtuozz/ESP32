@@ -38,7 +38,11 @@
 
 //for h-bridge bts7960
 #define BTS_TIMER           LEDC_TIMER_0
+#if CONFIG_IDF_TARGET_ESP32
 #define BTS_SPEED_MODE      LEDC_HIGH_SPEED_MODE
+#else
+#define BTS_SPEED_MODE      LEDC_LOW_SPEED_MODE
+#endif
 #define BTS_GPIO_FWD        32
 #define BTS_CHANNEL_FWD     LEDC_CHANNEL_0
 #define BTS_GPIO_BWD        33
@@ -48,28 +52,43 @@
 
 //for servo mg996r
 #define MG_TIMER            LEDC_TIMER_1
+#if CONFIG_IDF_TARGET_ESP32
 #define MG_SPEED_MODE       LEDC_HIGH_SPEED_MODE
+#else
+#define MG_SPEED_MODE       LEDC_LOW_SPEED_MODE
+#endif
 #define MG_GPIO             (4) //parentheses reliable to avoid bugs in calculus
 #define MG_CHANNEL          LEDC_CHANNEL_2
 #define MG_FREQ             50 //50 Hz for mg996r
+#if CONFIG_IDF_TARGET_ESP32
 #define MG_RESOLUTION       LEDC_TIMER_15_BIT
+#else
+#define MG_RESOLUTION       LEDC_TIMER_14_BIT
+#endif
+
 
 #define LEDC_TEST_FADE_TIME    (3000)
 
 #define LEDC_NUM_TEST 3
 
 //duty properties
+#define GET_MAX_DUTY(res) ((1 << (res)) - 1)
 
 //bts7960
 #define DEADZONE_MOTOR 5
 #define MIN_MOTOR_DUTY_FWD 0
-#define MAX_MOTOR_DUTY_FWD 2047 //max duty : 2^resolution - 1
+#define MAX_MOTOR_DUTY_FWD GET_MAX_DUTY(BTS_RESOLUTION) //max duty : 2^resolution - 1
 #define MIN_MOTOR_DUTY_BWD 0
-#define MAX_MOTOR_DUTY_BWD 2047
+#define MAX_MOTOR_DUTY_BWD GET_MAX_DUTY(BTS_RESOLUTION)
 
 //mg996r
+#if CONFIG_IDF_TARGET_ESP32
 #define MIN_SERVO_DUTY 1638
 #define MAX_SERVO_DUTY 3277
+#else
+#define MIN_SERVO_DUTY 819
+#define MAX_SERVO_DUTY 1639
+#endif
 
 //LED pin gpio connected on breadboard
 #define LED_PIN 2

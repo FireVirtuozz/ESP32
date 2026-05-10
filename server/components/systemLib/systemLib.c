@@ -21,6 +21,29 @@
 
 #include "esp_mmu_map.h"
 
+#if !CONFIG_IDF_TARGET_ESP32
+
+typedef struct {
+    int start;
+    int end;
+} range_addr_t;
+
+const range_addr_t range_read_addr_blocks_user[] = {
+    {EFUSE_RD_WR_DIS_REG,       EFUSE_RD_REPEAT_DATA4_REG},      // range address of EFUSE_BLK0  REPEAT
+    {EFUSE_RD_MAC_SPI_SYS_0_REG, EFUSE_RD_MAC_SPI_SYS_5_REG},      // range address of EFUSE_BLK1  MAC_SPI_8M
+    {EFUSE_RD_SYS_PART1_DATA0_REG,    EFUSE_RD_SYS_PART1_DATA7_REG},         // range address of EFUSE_BLK2  SYS_DATA
+    {EFUSE_RD_USR_DATA0_REG,    EFUSE_RD_USR_DATA7_REG},         // range address of EFUSE_BLK3  USR_DATA
+    {EFUSE_RD_KEY0_DATA0_REG,   EFUSE_RD_KEY0_DATA7_REG},        // range address of EFUSE_BLK4  KEY0
+    {EFUSE_RD_KEY1_DATA0_REG,   EFUSE_RD_KEY1_DATA7_REG},        // range address of EFUSE_BLK5  KEY1
+    {EFUSE_RD_KEY2_DATA0_REG,   EFUSE_RD_KEY2_DATA7_REG},        // range address of EFUSE_BLK6  KEY2
+    {EFUSE_RD_KEY3_DATA0_REG,   EFUSE_RD_KEY3_DATA7_REG},        // range address of EFUSE_BLK7  KEY3
+    {EFUSE_RD_KEY4_DATA0_REG,   EFUSE_RD_KEY4_DATA7_REG},        // range address of EFUSE_BLK8  KEY4
+    {EFUSE_RD_KEY5_DATA0_REG,   EFUSE_RD_KEY5_DATA7_REG},        // range address of EFUSE_BLK9  KEY5
+    {EFUSE_RD_SYS_PART2_DATA0_REG,   EFUSE_RD_SYS_PART2_DATA7_REG}         // range address of EFUSE_BLK10 KEY6
+};
+
+#endif
+
 
 static const char *TAG = "system_library";
 
@@ -168,6 +191,7 @@ static const char *get_flash_size_str(esp_image_flash_size_t size)
 
 static const char *get_efuse_block_str(esp_efuse_block_t block)
 {
+#if CONFIG_IDF_TARGET_ESP32
     switch (block) {
         case EFUSE_BLK0:  return "BLK0  (RESERVED)";
         case EFUSE_BLK1:  return "BLK1  (FLASH ENCRYPTION)";
@@ -175,8 +199,25 @@ static const char *get_efuse_block_str(esp_efuse_block_t block)
         case EFUSE_BLK3:  return "BLK3  (USER)";
         default:          return "Unknown block";
     }
+#else
+    switch (block) {
+        case EFUSE_BLK0:               return "BLK0 (REPEAT/SYSTEM)";
+        case EFUSE_BLK1:               return "BLK1 (MAC_SPI_8M_SYS)";
+        case EFUSE_BLK2:               return "BLK2 (SYS_DATA_PART1)";
+        case EFUSE_BLK3:               return "BLK3 (USER_DATA)";
+        case EFUSE_BLK4:               return "BLK4 (KEY0)";
+        case EFUSE_BLK5:               return "BLK5 (KEY1)";
+        case EFUSE_BLK6:               return "BLK6 (KEY2)";
+        case EFUSE_BLK7:               return "BLK7 (KEY3)";
+        case EFUSE_BLK8:               return "BLK8 (KEY4)";
+        case EFUSE_BLK9:               return "BLK9 (KEY5)";
+        case EFUSE_BLK10:              return "BLK10 (SYS_DATA_PART2)";
+        default:                       return "Unknown block";
+    }
+#endif
 }
 
+#if CONFIG_IDF_TARGET_ESP32
 static const char *get_coding_scheme_str(esp_efuse_coding_scheme_t scheme)
 {
     switch (scheme) {
@@ -186,9 +227,11 @@ static const char *get_coding_scheme_str(esp_efuse_coding_scheme_t scheme)
         default:                       return "Unknown coding scheme";
     }
 }
+#endif
 
 static const char *get_key_purpose_str(esp_efuse_purpose_t purpose)
 {
+#if CONFIG_IDF_TARGET_ESP32
     switch (purpose) {
         case ESP_EFUSE_KEY_PURPOSE_USER:                        return "USER";
         case ESP_EFUSE_KEY_PURPOSE_SYSTEM:                    return "SYSTEM";
@@ -197,7 +240,26 @@ static const char *get_key_purpose_str(esp_efuse_purpose_t purpose)
         case ESP_EFUSE_KEY_PURPOSE_MAX:                         return "MAX";
         default:                                                return "Unknown purpose";
     }
+#else
+    switch (purpose) {
+        case ESP_EFUSE_KEY_PURPOSE_USER:                          return "USER (Software only)";
+        case ESP_EFUSE_KEY_PURPOSE_RESERVED:                      return "RESERVED";
+        case ESP_EFUSE_KEY_PURPOSE_XTS_AES_256_KEY_1:             return "XTS_AES_256_KEY_1 (Flash/PSRAM)";
+        case ESP_EFUSE_KEY_PURPOSE_XTS_AES_256_KEY_2:             return "XTS_AES_256_KEY_2 (Flash/PSRAM)";
+        case ESP_EFUSE_KEY_PURPOSE_XTS_AES_128_KEY:               return "XTS_AES_128_KEY (Flash/PSRAM)";
+        case ESP_EFUSE_KEY_PURPOSE_HMAC_DOWN_ALL:                 return "HMAC Downstream All";
+        case ESP_EFUSE_KEY_PURPOSE_HMAC_DOWN_JTAG:                return "HMAC Downstream JTAG (Soft enable)";
+        case ESP_EFUSE_KEY_PURPOSE_HMAC_DOWN_DIGITAL_SIGNATURE:   return "HMAC Downstream Digital Signature";
+        case ESP_EFUSE_KEY_PURPOSE_HMAC_UP:                       return "HMAC Upstream";
+        case ESP_EFUSE_KEY_PURPOSE_SECURE_BOOT_DIGEST0:           return "SECURE_BOOT_DIGEST0";
+        case ESP_EFUSE_KEY_PURPOSE_SECURE_BOOT_DIGEST1:           return "SECURE_BOOT_DIGEST1";
+        case ESP_EFUSE_KEY_PURPOSE_SECURE_BOOT_DIGEST2:           return "SECURE_BOOT_DIGEST2";
+        case ESP_EFUSE_KEY_PURPOSE_MAX:                           return "MAX";
+        default:                                                  return "Unknown purpose";
+    }
+#endif
 }
+
 
 void print_chip_info() {
 
@@ -371,24 +433,27 @@ void print_chip_info() {
 
     // ========== EFUSE BLOCKS ==========
     for (esp_efuse_block_t block = EFUSE_BLK0; block < EFUSE_BLK_MAX; block++) {
-        esp_efuse_coding_scheme_t scheme = esp_efuse_get_coding_scheme(block);
-        bool empty = esp_efuse_block_is_empty(block);
 
         char block_tag[32];
         snprintf(block_tag, sizeof(block_tag), "EFUSE %s", get_efuse_block_str(block));
         d = dump_init(block_tag);
 
-        dump_add_line(d, "scheme: %-20s | empty: %s",
+        bool is_key_block = (block >= EFUSE_BLK_KEY0 && block < EFUSE_BLK_KEY_MAX);
+        bool rd_dis = false;
+        if (is_key_block) {
+            rd_dis = esp_efuse_get_key_dis_read(block);
+        }
+
+        if (rd_dis) {
+            dump_add_line(d, "Block protected (Read disabled)");
+        } else if (block == EFUSE_BLK0) {
+
+            #if CONFIG_IDF_TARGET_ESP32
+
+            esp_efuse_coding_scheme_t scheme = esp_efuse_get_coding_scheme(block);
+            bool empty = esp_efuse_block_is_empty(block);
+            dump_add_line(d, "scheme: %-20s | empty: %s",
                 get_coding_scheme_str(scheme), empty ? "yes" : "no");
-
-        if (block != EFUSE_BLK0) {
-            for (int reg = 0; reg < 8; reg++) {
-                uint32_t val = esp_efuse_read_reg(block, reg);
-                dump_add_line(d, "  [%d] 0x%08lX", reg, val);
-            }
-        } else {
-            // Split BLK0 en 3 sous-dumps car trop grand
-
             // -- EFUSE BLK0 : VERSIONS --
             uint8_t chip_rev1 = 0, chip_rev2 = 0, wafer_minor = 0;
             esp_efuse_read_field_blob(ESP_EFUSE_CHIP_VER_REV1,       &chip_rev1,   esp_efuse_get_field_size(ESP_EFUSE_CHIP_VER_REV1));
@@ -474,34 +539,41 @@ void print_chip_info() {
             dump_add_line(d, "SPI_PAD_HD           : %u (size: %d)", spi_hd,   esp_efuse_get_field_size(ESP_EFUSE_SPI_PAD_CONFIG_HD));
             dump_deploy(&d);
 
-            // on remet d à NULL pour que le dump_deploy(&d) du bloc parent ne double-free pas
+            // prevent double free
             d = NULL;
+#endif
+            
+        } else if (is_key_block) {
+            //key block
+            bool wr_dis      = esp_efuse_get_key_dis_write(block);
+            bool unused      = esp_efuse_key_block_unused(block);
+            bool purpose_dis = esp_efuse_get_keypurpose_dis_write(block);
+            esp_efuse_purpose_t purpose = esp_efuse_get_key_purpose(block);
+            esp_efuse_block_t found_block;
+            bool found = esp_efuse_find_purpose(purpose, &found_block);
+
+            dump_add_line(d, "purpose         : %s", get_key_purpose_str(purpose));
+            dump_add_line(d, "purpose find    : %s (BLK%d)", found ? "found" : "not found", found_block);
+            dump_add_line(d, "unused          : %s", unused      ? "yes" : "no");
+            dump_add_line(d, "read  protect   : %s", rd_dis      ? "YES" : "no");
+            dump_add_line(d, "write protect   : %s", wr_dis      ? "YES" : "no");
+            dump_add_line(d, "purpose wr dis  : %s", purpose_dis ? "YES" : "no");
+            
+        } else {
+            //std block data 
+
+            #if !CONFIG_IDF_TARGET_ESP32
+            uint32_t num_reg = (range_read_addr_blocks_user[block].end - range_read_addr_blocks_user[block].start) / sizeof(uint32_t) + 1;
+            #else
+            uint32_t num_reg = 8;
+            #endif
+            for (int reg = 0; reg < num_reg; reg++) {
+                uint32_t val = esp_efuse_read_reg(block, reg);
+                dump_add_line(d, "  [%d] 0x%08lX", reg, val);
+            }
         }
 
         if (d != NULL) dump_deploy(&d);
-    }
-
-    // ========== EFUSE KEY BLOCKS ==========
-    for (esp_efuse_block_t key = EFUSE_BLK_KEY0; key < EFUSE_BLK_KEY_MAX; key++) {
-        char key_tag[32];
-        snprintf(key_tag, sizeof(key_tag), "EFUSE KEY BLK%d", key);
-        d = dump_init(key_tag);
-
-        bool rd_dis      = esp_efuse_get_key_dis_read(key);
-        bool wr_dis      = esp_efuse_get_key_dis_write(key);
-        bool unused      = esp_efuse_key_block_unused(key);
-        bool purpose_dis = esp_efuse_get_keypurpose_dis_write(key);
-        esp_efuse_purpose_t purpose = esp_efuse_get_key_purpose(key);
-        esp_efuse_block_t found_block;
-        bool found = esp_efuse_find_purpose(purpose, &found_block);
-
-        dump_add_line(d, "purpose         : %s", get_key_purpose_str(purpose));
-        dump_add_line(d, "purpose find    : %s (BLK%d)", found ? "found" : "not found", found_block);
-        dump_add_line(d, "unused          : %s", unused      ? "yes" : "no");
-        dump_add_line(d, "read  protect   : %s", rd_dis      ? "YES" : "no");
-        dump_add_line(d, "write protect   : %s", wr_dis      ? "YES" : "no");
-        dump_add_line(d, "purpose wr dis  : %s", purpose_dis ? "YES" : "no");
-        dump_deploy(&d);
     }
 
     // ========== EVENT LOOP ==========

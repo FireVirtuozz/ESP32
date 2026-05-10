@@ -127,6 +127,7 @@ esp_err_t log_init() {
     esp_log_level_set("sensors_library", ESP_LOG_VERBOSE);
     esp_log_level_set("system_library", ESP_LOG_INFO);
     esp_log_level_set("espnow_library", ESP_LOG_VERBOSE);
+    esp_log_level_set("camera_library", ESP_LOG_INFO);
     esp_log_level_set("main", ESP_LOG_INFO);
 
     return ESP_OK;

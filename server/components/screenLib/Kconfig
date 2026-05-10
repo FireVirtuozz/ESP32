@@ -1,4 +1,4 @@
-menu "Screen"
+menu "RC-Screen"
     depends on USE_SCREENLIB && !USE_LVGL_SCREEN
 
 endmenu

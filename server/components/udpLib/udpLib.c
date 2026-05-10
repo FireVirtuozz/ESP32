@@ -473,7 +473,7 @@ void udp_client_init()
 {
     BaseType_t res = xTaskCreate(udp_client_task, "udp_client", 8192, (void*)AF_INET, 4, NULL);
     if (res != pdPASS) {
-        log_msg(TAG, "Error (%d) create client UDP task", res);
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%d) create client UDP task", res);
     }
     
 }

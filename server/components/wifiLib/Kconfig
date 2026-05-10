@@ -1,4 +1,4 @@
-menu "Wifi"
+menu "RC-Wifi"
     depends on USE_WIFI
 
     config USE_AP_MODE

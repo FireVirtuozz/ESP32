@@ -1,4 +1,4 @@
-menu "Sensors"
+menu "RC-Sensors"
     depends on USE_SENSORS
     
     config USE_HCSR04

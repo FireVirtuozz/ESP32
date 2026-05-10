@@ -1,4 +1,4 @@
-menu "Log"
+menu "RC-Log"
 
     config LOG_UDP
         bool "Log through UDP"

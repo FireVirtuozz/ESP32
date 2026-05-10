@@ -131,3 +131,9 @@ Deep sleep, light sleep. Can wake on timer or GPIO event. Very useful for batter
 
 Wi‑Fi Fine Timing Measurement (802.11mc). Can measure distance between two Wi‑Fi devices supporting FTM.
 
+## ESP S3
+
+Config: 
+
+Flash size 16Kb
+

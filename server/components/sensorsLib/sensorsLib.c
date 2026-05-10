@@ -969,9 +969,9 @@ esp_err_t err;
         log_msg(TAG, "Error (%d) creating KY monitoring task", res);
         return;
     }
-
-    
 #endif
+
+#if CONFIG_USE_WIFI
 
 #if CONFIG_USE_UDPLIB
     uint8_t frame_size = sizeof(header_udp_frame_t);
@@ -1163,6 +1163,7 @@ esp_err_t err;
 
         vTaskDelay(pdMS_TO_TICKS(MONITOR_PERIOD));
     }
+    #endif
     return;
 }
 

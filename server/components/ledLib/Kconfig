@@ -1,4 +1,4 @@
-menu "LED - LEDC"
+menu "RC-LED-LEDC"
     depends on USE_LEDLIB
 
     config DEBUG_LEDC

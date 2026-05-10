@@ -1,4 +1,4 @@
-menu "OTA"
+menu "RC-OTA"
     depends on USE_WIFI && USE_OTA
 
 endmenu

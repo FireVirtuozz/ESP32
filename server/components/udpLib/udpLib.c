@@ -465,6 +465,113 @@ static void udp_client_task(void *pvParameters)
     vTaskDelete(NULL);
 }
 
+void send_udp_msg(udp_msg_t *msg){
+    if (queue_send == NULL || msg == NULL) {
+        return;
+    }
+    xQueueSend(queue_send, msg, 0);
+}
+
+#define VIDEO_PORT 34255
+
+#define HEADER_UDP_VID_SIZE (sizeof(uint32_t) + sizeof(uint8_t) + sizeof(uint8_t) + sizeof(uint16_t))
+#define MAX_VID_PAYLOAD_SIZE (UDP_MAX_SIZE - HEADER_UDP_VID_SIZE)
+
+typedef struct header_udp_vid_st {
+    uint32_t frame_id;
+    uint8_t frag_total;
+    uint8_t frag_idx;
+    uint16_t payload_len;
+} header_udp_vid_t;
+
+static void header_serialize(const header_udp_vid_t *hdr, uint8_t *buf) {
+    buf[0] = (hdr->frame_id >> 24) & 0xFF;
+    buf[1] = (hdr->frame_id >> 16) & 0xFF;
+    buf[2] = (hdr->frame_id >> 8)  & 0xFF;
+    buf[3] =  hdr->frame_id        & 0xFF;
+    buf[4] = hdr->frag_total;
+    buf[5] = hdr->frag_idx;
+    buf[6] = (hdr->payload_len >> 8) & 0xFF;
+    buf[7] =  hdr->payload_len       & 0xFF;
+}
+
+static QueueHandle_t queue_send_video = NULL;
+
+static void udp_client_task_video(void *pvParameters)
+{
+    int addr_family = 0;
+    int ip_protocol = 0;
+
+    if (queue_send_video != NULL) {
+        log_msg_lvl(ESP_LOG_WARN, TAG, "UDP client aldready initialized");
+        return;
+    }
+
+    queue_send_video = xQueueCreate(32, sizeof(udp_msg_vid_t));
+    if (queue_send_video == NULL) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error creating UDP queue");
+        return;
+    }
+
+    //setup socket
+    struct sockaddr_in dest_addr;
+    dest_addr.sin_addr.s_addr = inet_addr(HOST_IP_ADDR);
+    dest_addr.sin_family = AF_INET;
+    dest_addr.sin_port = htons(VIDEO_PORT);
+    addr_family = AF_INET;
+    ip_protocol = IPPROTO_IP;
+
+    int sock = socket(addr_family, SOCK_DGRAM, ip_protocol);
+    if (sock < 0) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Unable to create socket: errno %d", strerror(errno));
+        return;
+    }
+
+    log_msg(TAG, "Socket created, sending to %s:%d", HOST_IP_ADDR, HOST_PORT);
+
+    udp_msg_vid_t msg_tmp;
+    uint32_t total_size_payload;
+    header_udp_vid_t hd = {0};
+    uint8_t buf[UDP_MAX_SIZE];
+    uint32_t offset;
+
+    while (xQueueReceive(queue_send_video, &msg_tmp, portMAX_DELAY) == pdTRUE) {
+        total_size_payload = msg_tmp.len;
+        //avoid perfect multiples
+        hd.frag_total = (total_size_payload + MAX_VID_PAYLOAD_SIZE - 1)/ MAX_VID_PAYLOAD_SIZE ;
+        hd.frag_idx = 0;
+
+        for (uint8_t i = 0; i < hd.frag_total; i++) {
+
+            offset = i * MAX_VID_PAYLOAD_SIZE;
+            hd.frag_idx = i;
+            hd.payload_len = (i == hd.frag_total - 1) ? (total_size_payload - offset) : MAX_VID_PAYLOAD_SIZE;
+
+            header_serialize(&hd, buf);
+            memcpy(&buf[HEADER_UDP_VID_SIZE], msg_tmp.data + offset, hd.payload_len);
+            sendto(sock, buf, hd.payload_len + HEADER_UDP_VID_SIZE, 0, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+        }
+        hd.frame_id++;
+        free(msg_tmp.data);
+    }
+    vTaskDelete(NULL);
+}
+
+void send_udp_jpeg(udp_msg_vid_t *msg) {
+    if (msg == NULL) {
+        return;
+    }
+    if (queue_send_video == NULL) {
+        log_msg_lvl(ESP_LOG_WARN, TAG, "Video queue unvalid, freeing data");
+        free(msg->data);
+        return;
+    }
+    if (xQueueSend(queue_send_video, msg, 0) != pdTRUE) {
+        log_msg_lvl(ESP_LOG_WARN, TAG, "Video queue full, freeing data");
+        free(msg->data);
+    }
+}
+
 /**
  * Function to init server : 
  * Create task udp server with 15 priority & on core 1
@@ -475,12 +582,10 @@ void udp_client_init()
     if (res != pdPASS) {
         log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%d) create client UDP task", res);
     }
-    
-}
 
-void send_udp_msg(udp_msg_t *msg){
-    if (queue_send == NULL || msg == NULL) {
-        return;
+    res = xTaskCreate(udp_client_task_video, "udp_client_video", 8192, (void*)AF_INET, 4, NULL);
+    if (res != pdPASS) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%d) create client video UDP task", res);
     }
-    xQueueSend(queue_send, msg, 0);
+    
 }

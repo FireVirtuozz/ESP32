@@ -53,8 +53,8 @@ static camera_config_t camera_config = {
     .ledc_timer = LEDC_TIMER_0,
     .ledc_channel = LEDC_CHANNEL_0,
 
-    .pixel_format = PIXFORMAT_RGB565,//YUV422,GRAYSCALE,RGB565,JPEG
-    .frame_size = FRAMESIZE_QVGA,//QQVGA-UXGA, For ESP32, do not use sizes above QVGA when not JPEG. The performance of the ESP32-S series has improved a lot, but JPEG mode always gives better frame rates.
+    .pixel_format = PIXFORMAT_RGB565, //YUV422,GRAYSCALE,RGB565,JPEG
+    .frame_size = FRAMESIZE_QVGA, //QQVGA-UXGA, For ESP32, do not use sizes above QVGA when not JPEG. The performance of the ESP32-S series has improved a lot, but JPEG mode always gives better frame rates.
 
     .jpeg_quality = 15, //0-63, for OV series camera sensors, lower number means higher quality
     .fb_count = 2, //When jpeg mode is used, if fb_count more than one, the driver will work in continuous mode.
@@ -86,8 +86,14 @@ static void jpg_stream_udp(void *param){
         esp_camera_fb_return(fb);
 
         if (converted) {
-            log_msg(TAG, "Image converted, len: %u", out_len);
-            free(out_buf);
+            udp_msg_vid_t msg;
+            msg.data = out_buf;
+            msg.len = out_len;
+
+            //log_msg(TAG, "Image converted, len: %u", out_len);
+            send_udp_jpeg(&msg);
+        } else {
+            if (out_buf != NULL) free(out_buf);
         }
         
         frame_count++;

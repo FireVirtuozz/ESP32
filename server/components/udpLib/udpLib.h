@@ -2,6 +2,7 @@
 #define UDPLIB_H_
 
 #define UDP_MSG_SIZE 250
+#define UDP_MAX_SIZE 1400
 
 #include <inttypes.h>
 #include <esp_err.h>
@@ -23,7 +24,15 @@ typedef struct header_udp_frame_st {
     uint32_t timestamp;
 } header_udp_frame_t;
 
+typedef struct udp_msg_vid_st {
+    uint8_t* data;
+    uint32_t len;
+} udp_msg_vid_t;
+
 // Send a UDP message
 void send_udp_msg(udp_msg_t *msg);
+
+// Send a JPEG UDP message
+void send_udp_jpeg(udp_msg_vid_t *msg);
 
 #endif

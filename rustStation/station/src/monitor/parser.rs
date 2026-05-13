@@ -116,7 +116,7 @@ impl FrameUdpHeader {
     }
 }
 
-pub const HEADER_VID_SIZE: usize = 4 + 1 + 1 + 2;
+pub const HEADER_VID_SIZE: usize = 4 + 1 + 1;
 pub struct HeaderUdpVid {
     pub frame_id: u32,
     pub frag_total: u8,

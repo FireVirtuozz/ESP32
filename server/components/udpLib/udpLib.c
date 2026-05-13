@@ -474,14 +474,13 @@ void send_udp_msg(udp_msg_t *msg){
 
 #define VIDEO_PORT 34255
 
-#define HEADER_UDP_VID_SIZE (sizeof(uint32_t) + sizeof(uint8_t) + sizeof(uint8_t) + sizeof(uint16_t))
+#define HEADER_UDP_VID_SIZE (sizeof(uint32_t) + sizeof(uint8_t) + sizeof(uint8_t))
 #define MAX_VID_PAYLOAD_SIZE (UDP_MAX_SIZE - HEADER_UDP_VID_SIZE)
 
 typedef struct header_udp_vid_st {
     uint32_t frame_id;
     uint8_t frag_total;
     uint8_t frag_idx;
-    uint16_t payload_len;
 } header_udp_vid_t;
 
 static void header_serialize(const header_udp_vid_t *hdr, uint8_t *buf) {
@@ -491,8 +490,6 @@ static void header_serialize(const header_udp_vid_t *hdr, uint8_t *buf) {
     buf[3] =  hdr->frame_id        & 0xFF;
     buf[4] = hdr->frag_total;
     buf[5] = hdr->frag_idx;
-    buf[6] = (hdr->payload_len >> 8) & 0xFF;
-    buf[7] =  hdr->payload_len       & 0xFF;
 }
 
 static QueueHandle_t queue_send_video = NULL;
@@ -534,6 +531,7 @@ static void udp_client_task_video(void *pvParameters)
     header_udp_vid_t hd = {0};
     uint8_t buf[UDP_MAX_SIZE];
     uint32_t offset;
+    uint16_t payload_size;
 
     while (xQueueReceive(queue_send_video, &msg_tmp, portMAX_DELAY) == pdTRUE) {
         total_size_payload = msg_tmp.len;
@@ -545,11 +543,11 @@ static void udp_client_task_video(void *pvParameters)
 
             offset = i * MAX_VID_PAYLOAD_SIZE;
             hd.frag_idx = i;
-            hd.payload_len = (i == hd.frag_total - 1) ? (total_size_payload - offset) : MAX_VID_PAYLOAD_SIZE;
+            payload_size = (i == hd.frag_total - 1) ? (total_size_payload - offset) : MAX_VID_PAYLOAD_SIZE;
 
             header_serialize(&hd, buf);
-            memcpy(&buf[HEADER_UDP_VID_SIZE], msg_tmp.data + offset, hd.payload_len);
-            sendto(sock, buf, hd.payload_len + HEADER_UDP_VID_SIZE, 0, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+            memcpy(&buf[HEADER_UDP_VID_SIZE], msg_tmp.data + offset, payload_size);
+            sendto(sock, buf, payload_size + HEADER_UDP_VID_SIZE, 0, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
         }
         hd.frame_id++;
         free(msg_tmp.data);

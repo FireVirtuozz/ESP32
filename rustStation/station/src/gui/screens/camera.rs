@@ -35,6 +35,8 @@ impl CameraScreen {
                 ));
 
                 ctx.request_repaint();
+            } else {
+                println!("failed to load image");
             }
         }
 
@@ -47,7 +49,6 @@ impl CameraScreen {
                 ui.add(img);
             } else {
                 ui.centered_and_justified(|ui| {
-                    ui.spinner();
                     ui.label("Camera not connected");
                 });
             }

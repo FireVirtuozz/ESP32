@@ -6,7 +6,9 @@ pub struct MainScreen;
 
 impl MainScreen {
     pub fn show(&mut self, ctx: &egui::Context, screen: &mut ScreensTypes,
-        sensors_connected: &Arc<AtomicBool>, logs_connected: &Arc<AtomicBool>) {
+        sensors_connected: &Arc<AtomicBool>, logs_connected: &Arc<AtomicBool>,
+        camera_connected: &Arc<AtomicBool>,
+    ) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.vertical_centered(|ui| {
                 ui.heading("Main menu");
@@ -17,6 +19,9 @@ impl MainScreen {
 
                 ui.add_enabled_ui(logs_connected.load(Ordering::Relaxed), |ui| {
                     if ui.button("Logs").clicked() { *screen = ScreensTypes::Logs; }
+                });
+                ui.add_enabled_ui(camera_connected.load(Ordering::Relaxed), |ui| {
+                    if ui.button("Camera").clicked() { *screen = ScreensTypes::Camera; }
                 });
                 if ui.button("Commands").clicked() { *screen = ScreensTypes::Commands; }
                 ui.add_space(10.0);

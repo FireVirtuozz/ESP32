@@ -115,3 +115,24 @@ impl FrameUdpHeader {
         })
     }
 }
+
+pub const HEADER_VID_SIZE: usize = 4 + 1 + 1 + 2;
+pub struct HeaderUdpVid {
+    pub frame_id: u32,
+    pub frag_total: u8,
+    pub frag_idx: u8,
+}
+
+impl HeaderUdpVid {
+    pub fn header_vid_parse(buf: &[u8]) -> Result<Self, AppError> {
+        if buf.len() < HEADER_SIZE {
+            return Err("Header not valid".into())
+        }
+
+        Ok(Self {
+            frame_id:    u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]),
+            frag_total:  buf[4],
+            frag_idx:    buf[5],
+        })
+    }
+}

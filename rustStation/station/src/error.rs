@@ -54,6 +54,12 @@ impl From<SendError<LogPacket>> for AppError {
     }
 }
 
+impl From<SendError<Vec<u8>>> for AppError {
+    fn from(e: SendError<Vec<u8>>) -> Self {
+        AppError::Send(e.to_string())
+    }
+}
+
 impl From<&str> for AppError {
     fn from(e: &str) -> Self {
         AppError::Other(e.to_string())

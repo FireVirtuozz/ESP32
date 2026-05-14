@@ -125,7 +125,7 @@ pub struct HeaderUdpVid {
 
 impl HeaderUdpVid {
     pub fn header_vid_parse(buf: &[u8]) -> Result<Self, AppError> {
-        if buf.len() < HEADER_SIZE {
+        if buf.len() < HEADER_VID_SIZE {
             return Err("Header not valid".into())
         }
 

@@ -180,10 +180,16 @@ fn udp_video_loop(
         // completion verification
         if frame_data.iter().all(|x| x.is_some()) {
             if let Some(completed_frame) = images.remove(&header_vid.frame_id) {
-                // fragments assembly
-                let mut full_image = Vec::with_capacity(completed_frame.len() * 1000);
-                for frag in completed_frame.into_iter().flatten() {
-                    full_image.extend(frag);
+                // On assemble les fragments dans l'ordre
+                let mut full_image = Vec::new();
+                for (i, frag) in completed_frame.iter().enumerate() {
+                    if let Some(data) = frag {
+                        full_image.extend_from_slice(data);
+                    } else {
+                        // Si tu arrives ici, c'est que ta logique "all(|x| x.is_some())" a menti
+                        // ou que tu as un fragment vide.
+                        println!("ALERTE : Fragment {} manquant dans la frame !", i);
+                    }
                 }
                 
                 if tx_img.send(full_image).is_ok() {

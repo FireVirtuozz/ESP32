@@ -539,7 +539,7 @@ static void udp_client_task_video(void *pvParameters)
         hd.frag_total = (total_size_payload + MAX_VID_PAYLOAD_SIZE - 1)/ MAX_VID_PAYLOAD_SIZE ;
         hd.frag_idx = 0;
 
-        for (uint8_t i = 0; i < hd.frag_total; i++) {
+        for (uint16_t i = 0; i < hd.frag_total; i++) {
 
             offset = i * MAX_VID_PAYLOAD_SIZE;
             hd.frag_idx = i;

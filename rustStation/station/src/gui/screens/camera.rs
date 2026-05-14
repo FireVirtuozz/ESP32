@@ -17,6 +17,15 @@ impl Default for CameraScreen {
 impl CameraScreen {
     pub fn show(&mut self, ctx: &egui::Context, frame: &mut Option<Vec<u8>>) {
         if let Some(binary_data) = frame.take() {
+
+            println!("image received ({}) header: {:02X}{:02X} footer: {:02X}{:02X}", 
+                binary_data.len(), 
+                binary_data[0], binary_data[1],
+                binary_data[binary_data.len()-2], binary_data[binary_data.len()-1]
+            );
+
+            let _ = std::fs::write("debug_camera.jpg", &binary_data);
+            
             if let Ok(img) = load_from_memory(&binary_data) {
                 let rgba = img.to_rgba8();
                 let pixels = rgba.as_flat_samples();
@@ -27,12 +36,15 @@ impl CameraScreen {
                     pixels.as_slice(),
                 );
 
-                // Update texture
-                self.texture = Some(ctx.load_texture(
-                    "camera_stream",
-                    color_image,
-                    Default::default()
-                ));
+                if let Some(tex) = &mut self.texture {
+                    tex.set(color_image, Default::default());  // update sans recréer
+                } else {
+                    self.texture = Some(ctx.load_texture(
+                        "camera_stream",
+                        color_image,
+                        Default::default()
+                    ));
+                }
 
                 ctx.request_repaint();
             } else {

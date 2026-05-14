@@ -81,7 +81,7 @@ static void jpg_stream_udp(void *param){
         uint8_t * out_buf = NULL;
         size_t out_len = 0;
 
-        bool converted = frame2jpg(fb, 10, &out_buf, &out_len);
+        bool converted = frame2jpg(fb, 50, &out_buf, &out_len);
 
         esp_camera_fb_return(fb);
 

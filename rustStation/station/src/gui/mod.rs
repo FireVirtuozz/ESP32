@@ -62,7 +62,13 @@ impl eframe::App for MyApp {
         }
 
         while let Ok(packet) = self.rx_frames.try_recv() {
-            println!("image received ({})", packet.len());
+            println!("image received ({}) header: {:02X} {:02X} {:02X} {:02X}", 
+                packet.len(),
+                packet.get(0).unwrap_or(&0),
+                packet.get(1).unwrap_or(&0),
+                packet.get(2).unwrap_or(&0),
+                packet.get(3).unwrap_or(&0),
+            );
             self.frame = Some(packet);
         }
 

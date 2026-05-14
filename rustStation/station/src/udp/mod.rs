@@ -152,43 +152,40 @@ fn udp_video_loop(
     loop {
         let (amt, _) = socket.recv_from(&mut buf)?;
         
-        // Parse du header
+        // Header parsing
         let header_vid = match HeaderUdpVid::header_vid_parse(&buf[..amt]) {
             Ok(h) => h,
-            Err(_) => continue, // On ignore les paquets mal formés
+            Err(_) => continue,
         };
 
-        // --- NETTOYAGE : Évite le ghosting ---
-        // Si on reçoit une frame plus ancienne que la dernière affichée, on ignore
+        //ignoring old frames
         if header_vid.frame_id < last_completed_id {
             continue;
         }
-        // Si on commence une image beaucoup plus récente, on vide les vieux fragments
+
+        // Empty old fragments from HashMap
         if images.len() > 5 { 
             images.retain(|&id, _| id >= header_vid.frame_id);
         }
 
-        // --- INSERTION ---
         let frame_data = images.entry(header_vid.frame_id).or_insert_with(|| {
             vec![None; header_vid.frag_total as usize]
         });
 
         if (header_vid.frag_idx as usize) < frame_data.len() {
-            // On ne prend QUE les octets après le header jusqu'à amt
             let payload = buf[HEADER_VID_SIZE..amt].to_vec();
             frame_data[header_vid.frag_idx as usize] = Some(payload);
         }
 
-        // --- VÉRIFICATION COMPLETION ---
+        // completion verification
         if frame_data.iter().all(|x| x.is_some()) {
             if let Some(completed_frame) = images.remove(&header_vid.frame_id) {
-                // On assemble les fragments dans l'ordre
+                // fragments assembly
                 let mut full_image = Vec::with_capacity(completed_frame.len() * 1000);
                 for frag in completed_frame.into_iter().flatten() {
                     full_image.extend(frag);
                 }
                 
-                // Envoi à la GUI
                 if tx_img.send(full_image).is_ok() {
                     last_completed_id = header_vid.frame_id;
                     camera_connected.store(true, Ordering::Relaxed);

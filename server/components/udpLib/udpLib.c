@@ -532,12 +532,20 @@ static void udp_client_task_video(void *pvParameters)
     uint8_t buf[UDP_MAX_SIZE];
     uint32_t offset;
     uint16_t payload_size;
+    uint8_t logged = 0;
 
     while (xQueueReceive(queue_send_video, &msg_tmp, portMAX_DELAY) == pdTRUE) {
         total_size_payload = msg_tmp.len;
         //avoid perfect multiples
         hd.frag_total = (total_size_payload + MAX_VID_PAYLOAD_SIZE - 1)/ MAX_VID_PAYLOAD_SIZE ;
         hd.frag_idx = 0;
+
+        if (!logged) {
+            for (int i = 0; i < msg_tmp.len; i += 16) {
+                ESP_LOG_BUFFER_HEX(TAG, msg_tmp.data + i, (msg_tmp.len - i) < 16 ? (msg_tmp.len - i) : 16);
+            }
+            logged = 1;
+        }
 
         for (uint16_t i = 0; i < hd.frag_total; i++) {
 

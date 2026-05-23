@@ -88,7 +88,7 @@ impl SensorsScreen {
                 };
 
                 if self.show_ultrasonic {
-                    make_plot("HC-SR04_DISTANCE", "Distance (cm)", Some((0.0, 2000.0)), |data| {
+                    make_plot("HC-SR04_DISTANCE", "Distance (cm)", Some((0.0, 600.0)), |data| {
                         data.iter()
                             .filter_map(|(p, t)| p.ultrasonic.as_ref().map(|u| [*t, u.get_distance_cm()]))
                             .collect()

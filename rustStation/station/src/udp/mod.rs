@@ -196,6 +196,14 @@ fn udp_video_loop(
                     }
                 }
                 println!("Frame {} complete: {} bytes", header_vid.frame_id, full_image.len());
+
+                if header_vid.frame_id == 10 {
+                    for chunk in full_image.chunks(16) {
+                        let hex = chunk.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
+                        println!("{}", hex);
+                    }
+                }
+                
                 
                 if tx_img.send(full_image).is_ok() {
                     last_completed_id = header_vid.frame_id;

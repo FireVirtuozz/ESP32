@@ -75,12 +75,13 @@ impl eframe::App for MyApp {
                 packet.get(2).unwrap_or(&0),
                 packet.get(3).unwrap_or(&0),
             );
+            /*
             SAVED.get_or_init(|| {
                 for chunk in packet.chunks(16) {
                     let hex = chunk.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
                     println!("{}", hex);
                 }
-            });
+            })*/
             self.frame = Some(packet);
         }
 

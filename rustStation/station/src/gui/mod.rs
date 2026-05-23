@@ -7,6 +7,8 @@ use crate::{controller::ControllerPacket, gui::screens::{camera::CameraScreen, c
 
 pub mod screens;
 
+use std::sync::OnceLock;
+
 #[derive(PartialEq)]
 pub enum ScreensTypes {
     Home,
@@ -42,6 +44,8 @@ pub struct MyApp {
     pub rx_frames: mpsc::Receiver<Vec<u8>>,
 }
 
+static SAVED: OnceLock<()> = OnceLock::new();
+
 impl eframe::App for MyApp {
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
@@ -61,6 +65,8 @@ impl eframe::App for MyApp {
             }
         }
 
+        
+
         while let Ok(packet) = self.rx_frames.try_recv() {
             println!("image received ({}) header: {:02X} {:02X} {:02X} {:02X}", 
                 packet.len(),
@@ -69,6 +75,12 @@ impl eframe::App for MyApp {
                 packet.get(2).unwrap_or(&0),
                 packet.get(3).unwrap_or(&0),
             );
+            SAVED.get_or_init(|| {
+                for chunk in packet.chunks(16) {
+                    let hex = chunk.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
+                    println!("{}", hex);
+                }
+            });
             self.frame = Some(packet);
         }
 

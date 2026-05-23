@@ -118,7 +118,7 @@ void app_main()
     wifi_scan_aps();
 #endif
 
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    vTaskDelay(pdMS_TO_TICKS(20000));
     camera_init();
     
 }

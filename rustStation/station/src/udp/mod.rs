@@ -158,6 +158,10 @@ fn udp_video_loop(
             Err(_) => continue,
         };
 
+        println!("Recv frag {}/{} for frame {} ({}B)", 
+            header_vid.frag_idx, header_vid.frag_total, 
+            header_vid.frame_id, amt - HEADER_VID_SIZE);
+
         //ignoring old frames
         if header_vid.frame_id < last_completed_id {
             continue;
@@ -191,11 +195,13 @@ fn udp_video_loop(
                         println!("ALERTE : Fragment {} manquant dans la frame !", i);
                     }
                 }
+                println!("Frame {} complete: {} bytes", header_vid.frame_id, full_image.len());
                 
                 if tx_img.send(full_image).is_ok() {
                     last_completed_id = header_vid.frame_id;
                     camera_connected.store(true, Ordering::Relaxed);
                 }
+                
             }
         }
     }

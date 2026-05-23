@@ -540,12 +540,13 @@ static void udp_client_task_video(void *pvParameters)
         hd.frag_total = (total_size_payload + MAX_VID_PAYLOAD_SIZE - 1)/ MAX_VID_PAYLOAD_SIZE ;
         hd.frag_idx = 0;
 
+        
         if (!logged) {
             for (int i = 0; i < msg_tmp.len; i += 16) {
                 ESP_LOG_BUFFER_HEX(TAG, msg_tmp.data + i, (msg_tmp.len - i) < 16 ? (msg_tmp.len - i) : 16);
             }
-            logged = 1;
         }
+            
 
         for (uint16_t i = 0; i < hd.frag_total; i++) {
 
@@ -556,7 +557,15 @@ static void udp_client_task_video(void *pvParameters)
             header_serialize(&hd, buf);
             memcpy(&buf[HEADER_UDP_VID_SIZE], msg_tmp.data + offset, payload_size);
             sendto(sock, buf, payload_size + HEADER_UDP_VID_SIZE, 0, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+            /*
+            if (!logged) {
+                ESP_LOGI(TAG, "--------------");
+                for (int i = 0; i < payload_size; i += 16) {
+                    ESP_LOG_BUFFER_HEX(TAG, &buf[HEADER_UDP_VID_SIZE] + i, (payload_size - i) < 16 ? (payload_size - i) : 16);
+                }   
+            }*/
         }
+        logged = 1;
         hd.frame_id++;
         free(msg_tmp.data);
     }

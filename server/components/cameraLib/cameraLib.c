@@ -52,13 +52,14 @@ static camera_config_t camera_config = {
     .xclk_freq_hz = 17500000,
     .ledc_timer = LEDC_TIMER_0,
     .ledc_channel = LEDC_CHANNEL_0,
+    .fb_location = CAMERA_FB_IN_PSRAM,
 
-    .pixel_format = PIXFORMAT_RGB565, //YUV422,GRAYSCALE,RGB565,JPEG
-    .frame_size = FRAMESIZE_QVGA, //QQVGA-UXGA, For ESP32, do not use sizes above QVGA when not JPEG. The performance of the ESP32-S series has improved a lot, but JPEG mode always gives better frame rates.
+    .pixel_format = PIXFORMAT_YUV422, //YUV422,GRAYSCALE,RGB565,JPEG
+    .frame_size = FRAMESIZE_QQVGA, //QQVGA-UXGA, For ESP32, do not use sizes above QVGA when not JPEG. The performance of the ESP32-S series has improved a lot, but JPEG mode always gives better frame rates.
 
     .jpeg_quality = 15, //0-63, for OV series camera sensors, lower number means higher quality
-    .fb_count = 2, //When jpeg mode is used, if fb_count more than one, the driver will work in continuous mode.
-    .grab_mode = CAMERA_GRAB_LATEST // Sets when buffers should be filled
+    .fb_count = 1, //When jpeg mode is used, if fb_count more than one, the driver will work in continuous mode.
+    .grab_mode = CAMERA_GRAB_WHEN_EMPTY // Sets when buffers should be filled
 };
 
 
@@ -78,10 +79,14 @@ static void jpg_stream_udp(void *param){
             continue;
         }
 
-        uint8_t * out_buf = NULL;
-        size_t out_len = 0;
+        uint8_t * out_buf = malloc(sizeof(uint8_t) * fb->len);
+        size_t out_len = fb->len;
 
-        bool converted = frame2jpg(fb, 50, &out_buf, &out_len);
+        
+        memcpy(out_buf, fb->buf, out_len);
+
+        bool converted = true;
+        //bool converted = frame2jpg(fb, 50, &out_buf, &out_len);
 
         esp_camera_fb_return(fb);
 
@@ -103,7 +108,7 @@ static void jpg_stream_udp(void *param){
             start = esp_timer_get_time();
             log_msg(TAG, "FPS: %.1f, free heap: %lu", fps, esp_get_free_heap_size());
         }
-        //vTaskDelay(pdMS_TO_TICKS(50));
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
     vTaskDelete(NULL);
 }

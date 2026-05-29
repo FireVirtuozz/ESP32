@@ -405,6 +405,7 @@ static void ina_task(void * params) {
 #include "esp_adc/adc_oneshot.h"
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
+#include "soc/soc_caps.h"
 
 // Variables globales pour le driver
 static adc_oneshot_unit_handle_t adc1_handle = NULL;
@@ -475,6 +476,14 @@ esp_err_t init_ky() {
         return err;
     }
 
+#if ADC_CALI_SCHEME_CURVE_FITTING_SUPPORTED
+    adc_cali_curve_fitting_config_t cali_config = {
+        .unit_id = ADC_UNIT_1,
+        .atten = ADC_ATTEN_DB_12,
+        .bitwidth = ADC_BITWIDTH_DEFAULT,
+    };
+    err = adc_cali_create_scheme_curve_fitting(&cali_config, &adc1_cali_handle);
+#else
     // 3. Calibration (line fitting, ESP32 classique)
     adc_cali_line_fitting_config_t cali_config = {
         .unit_id = ADC_UNIT_1,
@@ -482,6 +491,8 @@ esp_err_t init_ky() {
         .bitwidth = ADC_BITWIDTH_DEFAULT,
     };
     err = adc_cali_create_scheme_line_fitting(&cali_config, &adc1_cali_handle);
+#endif
+
     if (err != ESP_OK) {
         // Pas bloquant, on continue sans calibration
         log_msg_lvl(ESP_LOG_WARN, TAG, "Calibration non disponible: %s", esp_err_to_name(err));
@@ -1148,16 +1159,10 @@ esp_err_t err;
     #endif
 
     #if CONFIG_USE_UDPLIB
-        udp_msg_t msg;
-        memcpy(msg.data, frame_buf, frame_size);
-        msg.len = frame_size;
-        send_udp_msg(&msg);
+        send_udp_msg(frame_buf, frame_size);
     #else
     #if CONFIG_USE_ESPNOW
-        espnow_msg_t msg;
-        memcpy(msg.data, frame_buf, frame_size);
-        msg.len = frame_size;
-        send_espnow_msg(&msg);
+        send_espnow_msg(frame_buf, frame_size);
     #endif
     #endif
 

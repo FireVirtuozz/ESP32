@@ -235,3 +235,8 @@ esp_err_t cmd_dispatch(const int8_t *data) {
     }
     return err;
 }
+
+void reset_command() {
+    ledc_motor(0);
+    ledc_angle(90);
+}

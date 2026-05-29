@@ -190,7 +190,7 @@ static void udp_server_task(void *pvParameters)
         //ip protocol : auto
         int sock = socket(addr_family, SOCK_DGRAM, ip_protocol); //create socket    
         if (sock < 0) {
-            log_msg(TAG, "Unable to create socket: %d, %s", errno, strerror(errno));
+            log_msg_lvl(ESP_LOG_ERROR, TAG, "Unable to create socket: %d, %s", errno, strerror(errno));
             break;
         }
         log_msg(TAG, "Socket created");
@@ -240,7 +240,7 @@ static void udp_server_task(void *pvParameters)
         if (getsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &timeout, &lenTimeout) == 0) {
             log_msg(TAG, "Send timeout: %ld.%06ld sec\n", timeout.tv_sec, timeout.tv_usec);
         } else {
-            log_msg(TAG, "Error getting send timeout option socket info");
+            log_msg_lvl(ESP_LOG_ERROR, TAG, "Error getting send timeout option socket info");
         }
         //blocking timeout for receiving
         if (getsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, &lenTimeout) == 0) {
@@ -269,7 +269,7 @@ static void udp_server_task(void *pvParameters)
         //bind socket to port
         int err = bind(sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
         if (err < 0) {
-            log_msg(TAG, "Socket unable to bind: errno %d", errno);
+            log_msg_lvl(ESP_LOG_ERROR, TAG, "Socket unable to bind: errno %d", errno);
         }
         log_msg(TAG, "Socket bound, port %d", PORT);
 
@@ -308,7 +308,7 @@ static void udp_server_task(void *pvParameters)
 
             // Error occurred during receiving
             if (len < 0) {
-                log_msg(TAG, "recvfrom failed: errno %d", errno);
+                log_msg_lvl(ESP_LOG_ERROR, TAG, "recvfrom failed: errno %d", errno);
                 break;
             } else { // Data received
 
@@ -396,7 +396,7 @@ static void udp_server_task(void *pvParameters)
                 log_msg(TAG, "Shutting down socket and restarting...");
                 shutdown(sock, 0);
                 close(sock);
-                ledc_motor(0);
+                reset_command();
             }
         }
     vTaskDelete(NULL);
@@ -415,10 +415,43 @@ void udp_server_init()
     
 }
 
-#define HOST_IP_ADDR "192.168.4.2"
+//#define HOST_IP_ADDR "192.168.4.2" /*esp - lenovo*/
+//#define HOST_IP_ADDR "192.168.1.48" /*Bbox - lenovo*/
+#define HOST_IP_ADDR "192.168.1.163" /*Bbox - asus*/
+
 #define HOST_PORT 34254
+#define VIDEO_PORT 34255
+#define PORT_DUMP 34256
 
 static QueueHandle_t queue_send = NULL;
+
+typedef struct udp_msg_st {
+    uint8_t* data;
+    uint32_t len;
+} udp_msg_t;
+
+static void send_msg_to_queue(const uint8_t * data, uint32_t len, QueueHandle_t queue) {
+    if (data == NULL || queue == NULL) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Invalid args send udp");
+        return;
+    }
+
+    uint8_t *buf_cpy = malloc(len);
+    if (buf_cpy != NULL) {
+        memcpy(buf_cpy, data, len);
+
+        udp_msg_t msg = {0};
+        msg.data = buf_cpy;
+        msg.len = len;
+    
+        if (xQueueSend(queue, &msg, 0) != pdTRUE) {
+            log_msg_lvl(ESP_LOG_WARN, TAG, "Queue full, freeing data");
+            free(msg.data);
+        }
+    } else {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Failed allocating buf cpy");
+    }
+}
 
 static void udp_client_task(void *pvParameters)
 {
@@ -453,152 +486,176 @@ static void udp_client_task(void *pvParameters)
     log_msg(TAG, "Socket created, sending to %s:%d", HOST_IP_ADDR, HOST_PORT);
 
     udp_msg_t msg_temp;
+    uint16_t frame_size = 0;
+
     while (xQueueReceive(queue_send, &msg_temp, portMAX_DELAY) == pdTRUE) {
-        int err;
-        err = sendto(sock, msg_temp.data, msg_temp.len, 0, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
-        if (err < 0) {
-            //log_msg_lvl(ESP_LOG_ERROR, TAG, "Error occurred during sending: errno %d", errno);
+        if (msg_temp.len > UDP_MAX_SIZE) {
+            log_msg_lvl(ESP_LOG_WARN, TAG, "size overflow udp client");
+            frame_size = UDP_MAX_SIZE;
         } else {
-            log_msg(TAG, "Message sent");
+            frame_size = msg_temp.len;
         }
+        int err;
+        err = sendto(sock, msg_temp.data, frame_size, 0, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+        if (err < 0) {
+            log_msg_lvl(ESP_LOG_ERROR, TAG, "Error occurred during sending (%s)", strerror(errno));
+        }
+        free(msg_temp.data);
     }
+    close(sock);
     vTaskDelete(NULL);
 }
 
-void send_udp_msg(udp_msg_t *msg){
-    if (queue_send == NULL || msg == NULL) {
-        return;
+void send_udp_msg(const uint8_t * data, uint32_t len){
+    uint32_t size = len;
+    if (len > UDP_MAX_SIZE) {
+        //ensure size
+        log_msg_lvl(ESP_LOG_WARN, TAG, "Size overflow, truncating msg from %u to %u", len, UDP_MAX_SIZE);
+        size = UDP_MAX_SIZE;
     }
-    xQueueSend(queue_send, msg, 0);
+    send_msg_to_queue(data, size, queue_send);
 }
 
-#define VIDEO_PORT 34255
+#define HEADER_UDP_FRAG_SIZE (sizeof(uint32_t) + sizeof(uint8_t) + sizeof(uint8_t))
+#define MAX_FRAG_PAYLOAD_SIZE (UDP_MAX_SIZE - HEADER_UDP_FRAG_SIZE)
 
-#define HEADER_UDP_VID_SIZE (sizeof(uint32_t) + sizeof(uint8_t) + sizeof(uint8_t))
-#define MAX_VID_PAYLOAD_SIZE (UDP_MAX_SIZE - HEADER_UDP_VID_SIZE)
-
-typedef struct header_udp_vid_st {
-    uint32_t frame_id;
+typedef struct header_udp_frag_st {
+    uint32_t frag_id;
     uint8_t frag_total;
     uint8_t frag_idx;
-} header_udp_vid_t;
+} header_udp_frag_t;
 
-static void header_serialize(const header_udp_vid_t *hdr, uint8_t *buf) {
-    buf[0] = (hdr->frame_id >> 24) & 0xFF;
-    buf[1] = (hdr->frame_id >> 16) & 0xFF;
-    buf[2] = (hdr->frame_id >> 8)  & 0xFF;
-    buf[3] =  hdr->frame_id        & 0xFF;
+static void header_serialize(const header_udp_frag_t *hdr, uint8_t *buf) {
+    buf[0] = (hdr->frag_id >> 24) & 0xFF;
+    buf[1] = (hdr->frag_id >> 16) & 0xFF;
+    buf[2] = (hdr->frag_id >> 8)  & 0xFF;
+    buf[3] =  hdr->frag_id        & 0xFF;
     buf[4] = hdr->frag_total;
     buf[5] = hdr->frag_idx;
 }
 
-static QueueHandle_t queue_send_video = NULL;
+static void udp_send_fragmented(int sock, const struct sockaddr_in *dest_addr, udp_msg_t *msg, uint32_t *running_frag_id) {
+    uint32_t total_size_payload = msg->len;
+    header_udp_frag_t hd = {0};
+    uint8_t buf[UDP_MAX_SIZE];
+    
+    hd.frag_id = *running_frag_id;
+    hd.frag_total = (total_size_payload + MAX_FRAG_PAYLOAD_SIZE - 1) / MAX_FRAG_PAYLOAD_SIZE;
 
-static void udp_client_task_video(void *pvParameters)
+    for (uint16_t i = 0; i < hd.frag_total; i++) {
+        uint32_t offset = i * MAX_FRAG_PAYLOAD_SIZE;
+        hd.frag_idx = i;
+        uint16_t payload_size = (i == hd.frag_total - 1) ? (total_size_payload - offset) : MAX_FRAG_PAYLOAD_SIZE;
+
+        header_serialize(&hd, buf);
+        memcpy(&buf[HEADER_UDP_FRAG_SIZE], msg->data + offset, payload_size);
+        
+        sendto(sock, buf, payload_size + HEADER_UDP_FRAG_SIZE, 0, (struct sockaddr *)dest_addr, sizeof(*dest_addr));
+    }
+
+    (*running_frag_id)++;
+}
+
+typedef struct {
+    uint16_t port;
+    QueueHandle_t queue_handle;
+} udp_channel_config_t;
+
+static void udp_client_generic_task(void *pvParameters)
 {
-    int addr_family = 0;
-    int ip_protocol = 0;
+    udp_channel_config_t *config = (udp_channel_config_t *)pvParameters;
+    QueueHandle_t queue = config->queue_handle;
+    uint16_t port = config->port;
 
-    if (queue_send_video != NULL) {
-        log_msg_lvl(ESP_LOG_WARN, TAG, "UDP client aldready initialized");
-        return;
-    }
-
-    queue_send_video = xQueueCreate(32, sizeof(udp_msg_vid_t));
-    if (queue_send_video == NULL) {
-        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error creating UDP queue");
-        return;
-    }
-
-    //setup socket
     struct sockaddr_in dest_addr;
     dest_addr.sin_addr.s_addr = inet_addr(HOST_IP_ADDR);
     dest_addr.sin_family = AF_INET;
-    dest_addr.sin_port = htons(VIDEO_PORT);
-    addr_family = AF_INET;
-    ip_protocol = IPPROTO_IP;
+    dest_addr.sin_port = htons(port);
 
-    int sock = socket(addr_family, SOCK_DGRAM, ip_protocol);
+    int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
     if (sock < 0) {
-        log_msg_lvl(ESP_LOG_ERROR, TAG, "Unable to create socket: errno %d", strerror(errno));
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Unable to create socket for port %d: %s", port, strerror(errno));
+        free(config);
+        vTaskDelete(NULL);
         return;
     }
 
-    log_msg(TAG, "Socket created, sending to %s:%d", HOST_IP_ADDR, HOST_PORT);
+    log_msg(TAG, "Socket created, streaming to %s:%d", HOST_IP_ADDR, port);
+    free(config);
 
-    udp_msg_vid_t msg_tmp;
-    uint32_t total_size_payload;
-    header_udp_vid_t hd = {0};
-    uint8_t buf[UDP_MAX_SIZE];
-    uint32_t offset;
-    uint16_t payload_size;
+    udp_msg_t msg_tmp;
+    uint32_t local_frag_id = 0;
 
-    while (xQueueReceive(queue_send_video, &msg_tmp, portMAX_DELAY) == pdTRUE) {
-        total_size_payload = msg_tmp.len;
-        //avoid perfect multiples
-        hd.frag_total = (total_size_payload + MAX_VID_PAYLOAD_SIZE - 1)/ MAX_VID_PAYLOAD_SIZE ;
-        hd.frag_idx = 0;
-
+    while (xQueueReceive(queue, &msg_tmp, portMAX_DELAY) == pdTRUE) {
+        udp_send_fragmented(sock, &dest_addr, &msg_tmp, &local_frag_id);
         
-        if (hd.frame_id == 10) {
-            for (int i = 0; i < msg_tmp.len; i += 16) {
-                ESP_LOG_BUFFER_HEX(TAG, msg_tmp.data + i, (msg_tmp.len - i) < 16 ? (msg_tmp.len - i) : 16);
-            }
-        }
-            
-
-        for (uint16_t i = 0; i < hd.frag_total; i++) {
-
-            offset = i * MAX_VID_PAYLOAD_SIZE;
-            hd.frag_idx = i;
-            payload_size = (i == hd.frag_total - 1) ? (total_size_payload - offset) : MAX_VID_PAYLOAD_SIZE;
-
-            header_serialize(&hd, buf);
-            memcpy(&buf[HEADER_UDP_VID_SIZE], msg_tmp.data + offset, payload_size);
-            sendto(sock, buf, payload_size + HEADER_UDP_VID_SIZE, 0, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
-            /*
-            if (!logged) {
-                ESP_LOGI(TAG, "--------------");
-                for (int i = 0; i < payload_size; i += 16) {
-                    ESP_LOG_BUFFER_HEX(TAG, &buf[HEADER_UDP_VID_SIZE] + i, (payload_size - i) < 16 ? (payload_size - i) : 16);
-                }   
-            }*/
-        }
-        hd.frame_id++;
         free(msg_tmp.data);
     }
+    
+    close(sock);
     vTaskDelete(NULL);
 }
 
-void send_udp_jpeg(udp_msg_vid_t *msg) {
-    if (msg == NULL) {
-        return;
-    }
-    if (queue_send_video == NULL) {
-        log_msg_lvl(ESP_LOG_WARN, TAG, "Video queue unvalid, freeing data");
-        free(msg->data);
-        return;
-    }
-    if (xQueueSend(queue_send_video, msg, 0) != pdTRUE) {
-        log_msg_lvl(ESP_LOG_WARN, TAG, "Video queue full, freeing data");
-        free(msg->data);
-    }
+static QueueHandle_t queue_send_video = NULL;
+
+void send_udp_jpeg(const uint8_t *data, uint32_t len) {
+    send_msg_to_queue(data, len, queue_send_video);
+}
+
+static QueueHandle_t queue_send_dump = NULL;
+
+void send_udp_dump(const uint8_t *data, uint32_t len) {
+    send_msg_to_queue(data, len, queue_send_dump);
 }
 
 /**
- * Function to init server : 
- * Create task udp server with 15 priority & on core 1
+ * Function to init clients : 
+ * Create tasks udp client with 4 priority
  */
 void udp_client_init()
 {
-    BaseType_t res = xTaskCreate(udp_client_task, "udp_client", 8192, (void*)AF_INET, 4, NULL);
+    BaseType_t res;
+
+    res = xTaskCreate(udp_client_task, "udp_client", 8192, (void*)AF_INET, 4, NULL);
     if (res != pdPASS) {
         log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%d) create client UDP task", res);
     }
 
-    res = xTaskCreate(udp_client_task_video, "udp_client_video", 8192, (void*)AF_INET, 4, NULL);
+
+    /* VIDEO */
+    if (queue_send_video != NULL) {
+        log_msg_lvl(ESP_LOG_WARN, TAG, "UDP client aldready initialized");
+        return;
+    }
+    queue_send_video = xQueueCreate(32, sizeof(udp_msg_t));
+    if (queue_send_video == NULL) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error creating UDP queue");
+        return;
+    }
+    udp_channel_config_t *video_conf = malloc(sizeof(udp_channel_config_t));
+    video_conf->port = VIDEO_PORT;
+    video_conf->queue_handle = queue_send_video;
+    res = xTaskCreate(udp_client_generic_task, "udp_client_video", 8192, video_conf, 4, NULL);
     if (res != pdPASS) {
         log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%d) create client video UDP task", res);
+    }
+
+    /* DUMP */
+    if (queue_send_dump != NULL) {
+        log_msg_lvl(ESP_LOG_WARN, TAG, "UDP client aldready initialized");
+        return;
+    }
+    queue_send_dump = xQueueCreate(32, sizeof(udp_msg_t));
+    if (queue_send_dump == NULL) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error creating UDP queue");
+        return;
+    }
+    udp_channel_config_t *dump_conf = malloc(sizeof(udp_channel_config_t));
+    dump_conf->port = PORT_DUMP;
+    dump_conf->queue_handle = queue_send_dump;
+    res = xTaskCreate(udp_client_generic_task, "udp_client_dump", 8192, dump_conf, 4, NULL);
+    if (res != pdPASS) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%d) create client dump UDP task", res);
     }
     
 }

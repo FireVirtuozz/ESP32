@@ -78,6 +78,27 @@ static void espnow_send_cb(const esp_now_send_info_t *tx_info, esp_now_send_stat
     }
 }
 
+#define PKT_TYPE_DIRECT     0
+#define PKT_TYPE_FRAGMENT   1
+
+#define HEADER_ESPNOW_FRAG_SIZE (sizeof(uint32_t) + sizeof(uint8_t) + sizeof(uint8_t))
+#define MAX_FRAG_PAYLOAD_SIZE (ESPNOW_MSG_SIZE - HEADER_ESPNOW_FRAG_SIZE - 1) //-1 for type pkt type
+
+typedef struct header_frag_st {
+    uint32_t frag_id;
+    uint8_t frag_total;
+    uint8_t frag_idx;
+} header_frag_t;
+
+static void header_serialize(const header_frag_t *hdr, uint8_t *buf) {
+    buf[0] = (hdr->frag_id >> 24) & 0xFF;
+    buf[1] = (hdr->frag_id >> 16) & 0xFF;
+    buf[2] = (hdr->frag_id >> 8)  & 0xFF;
+    buf[3] =  hdr->frag_id        & 0xFF;
+    buf[4] = hdr->frag_total;
+    buf[5] = hdr->frag_idx;
+}
+
 static void espnow_recv_cb(const esp_now_recv_info_t *recv_info, const uint8_t *data, int len)
 {
     espnow_rx_event_t evt = {0};
@@ -103,27 +124,88 @@ static void espnow_recv_cb(const esp_now_recv_info_t *recv_info, const uint8_t *
     }
 }
 
+#define DEFRAG_BUFFER_MAX_SIZE 2048
+
+typedef struct {
+    uint8_t buffer[DEFRAG_BUFFER_MAX_SIZE];
+    uint32_t current_frag_id;
+    uint32_t bytes_received;
+    uint8_t frags_received_count;
+} defrag_ctx_t;
+
 static void espnow_task_rx(void *pvParameter)
 {
     esp_err_t err;
     espnow_rx_event_t evt;
+    defrag_ctx_t defrag_ctx = {0};
 
     while (xQueueReceive(espnow_queue_rx, &evt, portMAX_DELAY) == pdTRUE) {
         log_msg(TAG, "Receive unicast data from: "MACSTR", len: %d", MAC2STR(evt.mac_addr), evt.data_len);
 
-        //dispatch msg through UDP when received
-        //example: sensor data received from ESP1, redirected to station using UDP
-        //if not using UDP, this means that it is ESP1 (sensor)
-        //so we apply the commands received
+        uint8_t packet_type = evt.data[0];
+        switch (packet_type)
+        {
+        case PKT_TYPE_DIRECT:
+
+            //dispatch msg through UDP when received
+            //example: sensor data received from ESP1, redirected to station using UDP
+            //if not using UDP, this means that it is ESP1 (sensor)
+            //so we apply the commands received
+    #if CONFIG_USE_UDPLIB
+            send_udp_msg(&evt.data[1], evt.data_len - 1);
+    #else
+            //cmd_dispatch((int8_t*)&evt.data[1]);
+    #endif
+       
+            break;
+
+        case PKT_TYPE_FRAGMENT:
+            
+            header_frag_t hd;
+            hd.frag_id    = (evt.data[1] << 24) | (evt.data[2] << 16) | (evt.data[3] << 8) | evt.data[4];
+            hd.frag_total = evt.data[5];
+            hd.frag_idx   = evt.data[6];
+
+            const uint8_t *payload = evt.data + 1 + HEADER_ESPNOW_FRAG_SIZE;
+            int payload_len = evt.data_len - 1 - HEADER_ESPNOW_FRAG_SIZE;
+
+            if (hd.frag_idx == 0) {
+                defrag_ctx.current_frag_id = hd.frag_id;
+                defrag_ctx.bytes_received = 0;
+                defrag_ctx.frags_received_count = 0;
+            }
+
+            if (defrag_ctx.current_frag_id != hd.frag_id) {
+                log_msg_lvl(ESP_LOG_WARN, TAG, "Orphaned or out-of-sync fragment dropped (ID: %u)", hd.frag_id);
+                break;
+            }
+
+            uint32_t write_offset = hd.frag_idx * MAX_FRAG_PAYLOAD_SIZE;
+            if ((write_offset + payload_len) > DEFRAG_BUFFER_MAX_SIZE) {
+                log_msg_lvl(ESP_LOG_ERROR, TAG, "Defrag buffer overflow prevented! Packet too large.");
+                defrag_ctx.current_frag_id = 0;
+                break;
+            }
+            memcpy(&defrag_ctx.buffer[write_offset], payload, payload_len);
+
+            defrag_ctx.bytes_received += payload_len;
+            defrag_ctx.frags_received_count++;
+
+            if (defrag_ctx.frags_received_count == hd.frag_total) {
 #if CONFIG_USE_UDPLIB
-        udp_msg_t msg;
-        memcpy(msg.data, evt.data, evt.data_len);
-        msg.len = evt.data_len;
-        send_udp_msg(&msg);
-#else
-        //cmd_dispatch((int8_t*)evt.data);
+                send_udp_msg(defrag_ctx.buffer, defrag_ctx.bytes_received);
 #endif
+                defrag_ctx.current_frag_id = 0;
+            }
+
+            break;
+        
+        default:
+            log_msg_lvl(ESP_LOG_WARN, TAG, "Unknown packet type (%u)", packet_type);
+            break;
+        }
         free(evt.data);
+
     }
 }
 
@@ -137,19 +219,62 @@ static void espnow_task_tx(void *pvParameter)
     }
 }
 
+static void espnow_send_fragmented(espnow_msg_t *msg, uint32_t *running_frag_id) {
+    uint32_t total_size_payload = msg->len;
+    header_frag_t hd = {0};
+    uint8_t buf[ESPNOW_MSG_SIZE];
+    
+    hd.frag_id = *running_frag_id;
+    hd.frag_total = (total_size_payload + MAX_FRAG_PAYLOAD_SIZE - 1) / MAX_FRAG_PAYLOAD_SIZE;
+
+    for (uint16_t i = 0; i < hd.frag_total; i++) {
+        uint32_t offset = i * MAX_FRAG_PAYLOAD_SIZE;
+        hd.frag_idx = i;
+        uint16_t payload_size = (i == hd.frag_total - 1) ? (total_size_payload - offset) : MAX_FRAG_PAYLOAD_SIZE;
+
+        buf[0] = PKT_TYPE_FRAGMENT;
+        header_serialize(&hd, &buf[1]);
+        memcpy(&buf[HEADER_ESPNOW_FRAG_SIZE + 1], msg->data + offset, payload_size);
+        
+        int err = esp_now_send(mac_esp_peer, buf, payload_size + HEADER_ESPNOW_FRAG_SIZE + 1);
+        if (err != ESP_OK) {
+            //using serial because otherwise infinite loop of same message
+            ESP_LOGW(TAG, "Error (%s) sending espnow message", esp_err_to_name(err));
+        } else {
+            ESP_LOGD(TAG, "Sending message (len: %u)", payload_size);
+        }
+    }
+
+    (*running_frag_id)++;
+}
+
 static void espnow_task_send(void *pvParameter)
 {
     esp_err_t err;
     espnow_msg_t msg;
+    uint32_t local_frag_id = 0;
 
     while (xQueueReceive(espnow_queue_send, &msg, portMAX_DELAY) == pdTRUE) {
-        xSemaphoreTake(espnow_tx_sem, pdMS_TO_TICKS(100));
-        err = esp_now_send(mac_esp_peer, msg.data, msg.len);
-        if (err != ESP_OK) {
-            log_msg_lvl(ESP_LOG_WARN, TAG, "Error (%s) sending espnow message", esp_err_to_name(err));
+        //check if message needs fragmentation
+        if (msg.len > ESPNOW_MSG_SIZE) {
+
+            //not take into account first byte, overriden in fragment
+            espnow_msg_t clean_msg = {
+                .data = msg.data + 1,
+                .len = msg.len - 1
+            };
+            espnow_send_fragmented(&clean_msg, &local_frag_id);
         } else {
-            log_msg(TAG, "Sending message (len: %u)", msg.len);
+            xSemaphoreTake(espnow_tx_sem, pdMS_TO_TICKS(100));
+            err = esp_now_send(mac_esp_peer, msg.data, msg.len);
+            if (err != ESP_OK) {
+                //using serial because otherwise infinite loop of same message
+                ESP_LOGW(TAG, "Error (%s) sending espnow message", esp_err_to_name(err));
+            } else {
+                ESP_LOGD(TAG, "Sending message (len: %u)", msg.len);
+            }
         }
+        free(msg.data);
     }
 }
 
@@ -261,15 +386,34 @@ void espnow_init(void)
 
 static void espnow_deinit()
 {
+    //todo : free all data in queues
     if (espnow_queue_rx) { vQueueDelete(espnow_queue_rx); espnow_queue_rx = NULL; }
     if (espnow_queue_tx) { vQueueDelete(espnow_queue_tx); espnow_queue_tx = NULL; }
     if (espnow_queue_send) { vQueueDelete(espnow_queue_send); espnow_queue_send = NULL; }
     esp_now_deinit();
 }
 
-void send_espnow_msg(espnow_msg_t *msg){
-    if (espnow_queue_send == NULL || msg == NULL) {
+void send_espnow_msg(const uint8_t * data, uint32_t len){
+
+    if (data == NULL || espnow_queue_send == NULL) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Invalid args send espnow");
         return;
     }
-    xQueueSend(espnow_queue_send, msg, 0);
+
+    uint8_t *buf_cpy = malloc(len + 1);
+    if (buf_cpy != NULL) {
+        buf_cpy[0] = len + 1 > ESPNOW_MSG_SIZE ? PKT_TYPE_FRAGMENT : PKT_TYPE_DIRECT;
+        memcpy(buf_cpy + 1, data, len);
+
+        espnow_msg_t msg = {0};
+        msg.data = buf_cpy;
+        msg.len = len + 1;
+    
+        if (xQueueSend(espnow_queue_send, &msg, 0) != pdTRUE) {
+            log_msg_lvl(ESP_LOG_WARN, TAG, "Queue full, freeing data");
+            free(msg.data);
+        }
+    } else {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Failed allocating buf cpy");
+    }
 }

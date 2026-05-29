@@ -41,7 +41,9 @@
 #include "espnowLib.h"
 #endif
 
+#if CONFIG_USE_CAMERA
 #include "cameraLib.h"
+#endif
 
 #include "systemLib.h"
 #include "freertos/FreeRTOS.h"
@@ -118,7 +120,9 @@ void app_main()
     wifi_scan_aps();
 #endif
 
-    vTaskDelay(pdMS_TO_TICKS(20000));
+#if CONFIG_USE_CAMERA
+    vTaskDelay(pdMS_TO_TICKS(10000));
     camera_init();
+#endif
     
 }

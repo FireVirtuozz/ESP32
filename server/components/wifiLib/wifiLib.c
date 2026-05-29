@@ -949,12 +949,12 @@ static void first_scan() {
     /*
     To save your NVS wifi credentials, uncomment this and put your credentials
     in "networks_put" and it will be store in encrypted nvs.
-
+    */
     wifi_network_t networks_put[] = {
         {
-            "Example_SSID", 
-            "Example_PASSWORD", 
-            8 //priority (higher means less priority)
+            "Bbox-B5236F0B", 
+            "sb3nLzT4xRb3J5PC9P", 
+            0 //priority (higher means less priority)
         },
     };
 
@@ -963,7 +963,7 @@ static void first_scan() {
         snprintf(key_put, sizeof(key_put), "SSID_%u", i);
         err = save_nvs_str(key_put, networks_put[i].ssid);
         if (err != ESP_OK) {
-            log_msg(TAG, "Error (%s) on saving %s to NVS",
+            log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) on saving %s to NVS",
                 esp_err_to_name(err), key_put);
         } else {
             log_msg(TAG, "SSID %s saved to NVS to %s",
@@ -973,26 +973,26 @@ static void first_scan() {
         snprintf(key_put, sizeof(key_put), "PASS_%u", i);
         err = save_nvs_str(key_put, networks_put[i].password);
         if (err != ESP_OK) {
-            log_msg(TAG, "Error (%s) on saving %s to NVS",
+            log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) on saving %s to NVS",
                 esp_err_to_name(err), key_put);
         }
 
         snprintf(key_put, sizeof(key_put), "PRIORITY_%u", i);
         err = save_nvs_int(key_put, networks_put[i].priority);
         if (err != ESP_OK) {
-            log_msg(TAG, "Error (%s) on saving %s to NVS",
+            log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) on saving %s to NVS",
                 esp_err_to_name(err), key_put);
         }
     }
     log_msg(TAG, "Networks saved to NVS");
-    */
+    
 
     log_msg(TAG, "=============== First scan APs ===============");
 
     wifi_scan_default_params_t params;
     err = esp_wifi_get_scan_parameters(&params);
     if (err != ESP_OK) {
-        log_msg(TAG, "Error on getting scan parameters : %d", err);
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error on getting scan parameters : %d", err);
     } else {
 #if CONFIG_DEBUG_WIFI
         info = get_scan_params_info(params);
@@ -1007,7 +1007,7 @@ static void first_scan() {
     uint16_t ap_count = 0;
     wifi_ap_record_t* ap_info = malloc(sizeof(wifi_ap_record_t) * DEFAULT_SCAN_LIST_SIZE);
     if (!ap_info) {
-        log_msg(TAG, "Failed to allocate memory for AP scan");
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Failed to allocate memory for AP scan");
         return;
     }
     memset(ap_info, 0, sizeof(wifi_ap_record_t) * DEFAULT_SCAN_LIST_SIZE);
@@ -1016,7 +1016,7 @@ static void first_scan() {
     wifi_scan_config_t cfg = WIFI_SCAN_PARAMS_DEFAULT_CONFIG();
     err = esp_wifi_scan_start(&cfg, true); //blocking
     if (err != ESP_OK) {
-        log_msg(TAG, "Scan failed: %s", esp_err_to_name(err));
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Scan failed: %s", esp_err_to_name(err));
         return;
     }
 
@@ -1028,13 +1028,13 @@ static void first_scan() {
     //get num & records of scan
     err = esp_wifi_scan_get_ap_num(&ap_count);
     if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) getting AP number", esp_err_to_name(err));
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) getting AP number", esp_err_to_name(err));
         return;
     }
     
     err = esp_wifi_scan_get_ap_records(&number, ap_info);
     if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) getting AP records", esp_err_to_name(err));
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) getting AP records", esp_err_to_name(err));
         return;
     }
 
@@ -1088,7 +1088,7 @@ static void first_scan() {
     free(ap_info);
 
     if (wifi_credentials == NULL) {
-        log_msg(TAG, "No network found");
+        log_msg_lvl(ESP_LOG_WARN, TAG, "No network found");
         free(known_networks);
         return;
     }
@@ -1117,7 +1117,7 @@ static void first_scan() {
     //Apply station config to ESP
     err = esp_wifi_set_config(WIFI_IF_STA, &wifi_sta_config);
     if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) setting wifi config", esp_err_to_name(err));
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) setting wifi config", esp_err_to_name(err));
         free(known_networks);
         return;
     }
@@ -1137,14 +1137,14 @@ static esp_err_t wifi_init_basic() {
     //Initialize netif TCP/IP
     err = esp_netif_init();
     if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) init netif", esp_err_to_name(err));
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) init netif", esp_err_to_name(err));
         return err;
     }
     
     //Create system event loop
     err = esp_event_loop_create_default();
     if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) creating event loop", esp_err_to_name(err));
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) creating event loop", esp_err_to_name(err));
         return err;
     }
 
@@ -1159,7 +1159,7 @@ static esp_err_t wifi_init_basic() {
 #endif
     err = esp_wifi_init(&cfg);
     if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) allocating wifi resources", esp_err_to_name(err));
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) allocating wifi resources", esp_err_to_name(err));
         return err;
     }
 
@@ -1195,14 +1195,14 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
 #endif
         err = esp_wifi_connect(); // Start wifi connection : send request to router
         if (err != ESP_OK) {
-            log_msg(TAG, "Error (%s) connecting wifi", esp_err_to_name(err));
+            log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) connecting wifi", esp_err_to_name(err));
         }
     //if wifi disconnect event, trying to reconnect
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         log_msg(TAG, "Disconnected, trying to reconnect..");
         err = esp_wifi_connect();
         if (err != ESP_OK) {
-            log_msg(TAG, "Error (%s) connecting wifi", esp_err_to_name(err));
+            log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) connecting wifi", esp_err_to_name(err));
         }
         //maximum retry?
     //if router assigned an IP address to ESP (triggered by DHCP netif when connection ok by router)
@@ -1250,7 +1250,7 @@ esp_netif_t *wifi_init_softap_netif(void)
     const char * ap_pass = "espdegigachad";
     err = save_nvs_str("AP_SSID", ap_ssid);
     if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) on saving AP_SSID to NVS",
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) on saving AP_SSID to NVS",
             esp_err_to_name(err));
     } else {
         log_msg(TAG, "%s saved to NVS to AP_SSID",
@@ -1258,7 +1258,7 @@ esp_netif_t *wifi_init_softap_netif(void)
     }
     err = save_nvs_str("AP_PASS", ap_pass);
     if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) on saving AP_PASS to NVS",
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) on saving AP_PASS to NVS",
             esp_err_to_name(err));
     } else {
         log_msg(TAG, "%s saved to NVS to AP_PASS",
@@ -1269,14 +1269,14 @@ esp_netif_t *wifi_init_softap_netif(void)
     char broker_password[32];
     err = load_nvs_str("AP_SSID", broker_ssid);
     if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) on loading AP_SSID to NVS",
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) on loading AP_SSID to NVS",
             esp_err_to_name(err));
     } else {
         log_msg(TAG, "AP_SSID loaded");
     }
     err = load_nvs_str("AP_PASS", broker_password);
     if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) on loading AP_PASS to NVS",
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) on loading AP_PASS to NVS",
             esp_err_to_name(err));
     }
 
@@ -1320,7 +1320,7 @@ static void softap_set_dns_addr(esp_netif_t *esp_netif_ap, esp_netif_t *esp_neti
     //getting dns info of ESP STA mode (MAIN DNS)
     esp_err_t err = esp_netif_get_dns_info(esp_netif_sta, ESP_NETIF_DNS_MAIN, &dns);
     if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) getting DNS info", esp_err_to_name(err));
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) getting DNS info", esp_err_to_name(err));
         return;
     }
 
@@ -1330,7 +1330,7 @@ static void softap_set_dns_addr(esp_netif_t *esp_netif_ap, esp_netif_t *esp_neti
     //Stops DHCP server to apply a new config
     err = esp_netif_dhcps_stop(esp_netif_ap);
     if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) stopping DHCP", esp_err_to_name(err));
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) stopping DHCP", esp_err_to_name(err));
         return;
     }
 
@@ -1339,10 +1339,10 @@ static void softap_set_dns_addr(esp_netif_t *esp_netif_ap, esp_netif_t *esp_neti
     err = esp_netif_dhcps_option(esp_netif_ap, ESP_NETIF_OP_SET, ESP_NETIF_DOMAIN_NAME_SERVER,
         &dhcps_offer_option, sizeof(dhcps_offer_option));
     if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) getting DHCP option", esp_err_to_name(err));
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) getting DHCP option", esp_err_to_name(err));
         err = esp_netif_dhcps_start(esp_netif_ap);
         if (err != ESP_OK) {
-            log_msg(TAG, "Error (%s) starting DHCP", esp_err_to_name(err));
+            log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) starting DHCP", esp_err_to_name(err));
         }
         return;
     }
@@ -1350,10 +1350,10 @@ static void softap_set_dns_addr(esp_netif_t *esp_netif_ap, esp_netif_t *esp_neti
     //Set DNS got from STA to AP
     err = esp_netif_set_dns_info(esp_netif_ap, ESP_NETIF_DNS_MAIN, &dns);
     if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) setting DNS info", esp_err_to_name(err));
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) setting DNS info", esp_err_to_name(err));
         err = esp_netif_dhcps_start(esp_netif_ap);
         if (err != ESP_OK) {
-            log_msg(TAG, "Error (%s) starting DHCP", esp_err_to_name(err));
+            log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) starting DHCP", esp_err_to_name(err));
         }
         return;
     }
@@ -1361,7 +1361,7 @@ static void softap_set_dns_addr(esp_netif_t *esp_netif_ap, esp_netif_t *esp_neti
     //Restart DHCP server with new config
     err = esp_netif_dhcps_start(esp_netif_ap);
     if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) starting DHCP", esp_err_to_name(err));
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) starting DHCP", esp_err_to_name(err));
     }
 }
 #endif
@@ -1394,20 +1394,20 @@ static void wifi_init_sta(void)
     err = esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
                                         &wifi_event_handler, NULL, &instance_any_id);
     if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) register any handler", esp_err_to_name(err));
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) register any handler", esp_err_to_name(err));
         return;
     }
     err = esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
                                         &wifi_event_handler, NULL, &instance_got_ip);
     if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) register IP handler", esp_err_to_name(err));
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) register IP handler", esp_err_to_name(err));
         return;
     }
 
     //Configure esp in station mode
     err = esp_wifi_set_mode(WIFI_MODE_STA);
     if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) setting wifi mode", esp_err_to_name(err));
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) setting wifi mode", esp_err_to_name(err));
         return;
     }
     
@@ -1417,7 +1417,7 @@ static void wifi_init_sta(void)
     //start wifi : triggers WIFI_EVENT_STA_START handler
     err = esp_wifi_start();
     if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) starting wifi", esp_err_to_name(err));
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) starting wifi", esp_err_to_name(err));
         return;
     }
 
@@ -1462,14 +1462,14 @@ static void wifi_init_ap(void)
     err = esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
                                         &wifi_event_handler, NULL, &instance_any_id);
     if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) register any handler", esp_err_to_name(err));
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) register any handler", esp_err_to_name(err));
         return;
     }
 
     //Configure esp in AP mode
     err = esp_wifi_set_mode(WIFI_MODE_AP);
     if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) setting wifi mode", esp_err_to_name(err));
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) setting wifi mode", esp_err_to_name(err));
         return;
     }
 
@@ -1479,7 +1479,7 @@ static void wifi_init_ap(void)
     //start wifi : triggers WIFI_EVENT_STA_START handler
     err = esp_wifi_start();
     if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) starting wifi", esp_err_to_name(err));
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) starting wifi", esp_err_to_name(err));
         return;
     }
 
@@ -1523,7 +1523,7 @@ static void wifi_init_apsta()
                     NULL,
                     NULL);
     if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) register any handler", esp_err_to_name(err));
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) register any handler", esp_err_to_name(err));
         return;
     }
     err = esp_event_handler_instance_register(IP_EVENT,
@@ -1532,7 +1532,7 @@ static void wifi_init_apsta()
                     NULL,
                     NULL);
     if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) register got IP handler", esp_err_to_name(err));
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) register got IP handler", esp_err_to_name(err));
         return;
     }
     err = esp_event_handler_instance_register(IP_EVENT,
@@ -1541,14 +1541,14 @@ static void wifi_init_apsta()
                     NULL,
                     NULL);
     if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) register IP assigned handler", esp_err_to_name(err));
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) register IP assigned handler", esp_err_to_name(err));
         return;
     }
 
     //Configure esp in APSTA mode
     err = esp_wifi_set_mode(WIFI_MODE_APSTA);
     if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) setting wifi mode", esp_err_to_name(err));
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) setting wifi mode", esp_err_to_name(err));
         return;
     }
 
@@ -1561,7 +1561,7 @@ static void wifi_init_apsta()
     //start wifi : triggers WIFI_EVENT_STA_START handler
     err = esp_wifi_start();
     if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) starting wifi", esp_err_to_name(err));
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) starting wifi", esp_err_to_name(err));
         return;
     }
 
@@ -1585,14 +1585,14 @@ static void wifi_init_apsta()
     //every Internet request will go through ESP STA mode (not AP)
     err = esp_netif_set_default_netif(esp_netif_sta);
     if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) setting default netif", esp_err_to_name(err));
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) setting default netif", esp_err_to_name(err));
         return;
     }
 
     /* Enable napt on the AP netif */
     //transform private IPs of clients from ESP AP to public IP of ESP STA (NAT)
     if (esp_netif_napt_enable(esp_netif_ap) != ESP_OK) {
-        log_msg(TAG, "NAPT not enabled on the netif: %p", esp_netif_ap);
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "NAPT not enabled on the netif: %p", esp_netif_ap);
     }
 }
 #endif
@@ -1614,12 +1614,12 @@ void wifi_init() {
         }
         err = esp_wifi_set_mode(WIFI_MODE_AP);
         if (err != ESP_OK) {
-            log_msg(TAG, "Error (%s) setting wifi mode", esp_err_to_name(err));
+            log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) setting wifi mode", esp_err_to_name(err));
             return;
         }
         err = esp_wifi_start();
         if (err != ESP_OK) {
-            log_msg(TAG, "Error (%s) starting wifi", esp_err_to_name(err));
+            log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) starting wifi", esp_err_to_name(err));
             return;
         }
         log_msg(TAG, "ESP-NOW wifi initialized");
@@ -1667,7 +1667,7 @@ void wifi_scan_task(void *pvParameter) {
  
     err = esp_wifi_scan_start(NULL, true); // blocking
     if (err != ESP_OK) {
-        log_msg(TAG, "Scan failed: %s", esp_err_to_name(err));
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Scan failed: %s", esp_err_to_name(err));
         scanning = false;
         vTaskDelete(NULL);
         return;
@@ -1675,7 +1675,7 @@ void wifi_scan_task(void *pvParameter) {
  
     err = esp_wifi_scan_get_ap_num(&ap_count);
     if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) getting AP number", esp_err_to_name(err));
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) getting AP number", esp_err_to_name(err));
         scanning = false;
         vTaskDelete(NULL);
         return;
@@ -1724,7 +1724,7 @@ void get_ap_info() {
     wifi_ap_record_t ap_info;
     esp_err_t err = esp_wifi_sta_get_ap_info(&ap_info);
     if (err != ESP_OK) {
-        log_msg(TAG, "Error on getting current AP info : %d", err);
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error on getting current AP info : %d", err);
     } else {
         print_record(ap_info);
     }

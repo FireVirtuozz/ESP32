@@ -17,10 +17,10 @@ typedef struct dump_st {
     uint16_t offset;
 } dump_t;
 
-//log message with level, number of characters < 256, if more use dump
+//log message with level, number of characters < 1400, if more use dump
 void log_msg_lvl(const log_level_t level, const char* tag, const char* fmt, ...);
 
-//log message, number of characters < 256, if more use dump
+//log message, number of characters < 1400, if more use dump
 void log_msg(const char* tag, const char* fmt, ...);
 
 esp_err_t log_init();

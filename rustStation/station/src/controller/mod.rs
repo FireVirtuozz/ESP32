@@ -1,6 +1,7 @@
 use std::{net::UdpSocket, sync::{Arc, atomic::{AtomicBool, Ordering}, mpsc::Sender}, thread};
 
 use gilrs::{Gilrs, Event, Button, Axis};
+use log::error;
 
 use crate::error::AppError;
 
@@ -50,7 +51,7 @@ impl ControllerPacket {
 pub fn init_controller(tx: Sender<ControllerPacket>, controller_connected: Arc<AtomicBool>) -> thread::JoinHandle<()> {
     let handle = thread::spawn(move || {
         if let Err(e) = controller_loop(tx, controller_connected) {
-            eprintln!("UDP error: {:?}", e);
+            error!("UDP error ctrl: {:?}", e);
         }
     });
     handle

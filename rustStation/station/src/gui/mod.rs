@@ -2,8 +2,9 @@ use std::{collections::VecDeque, sync::{Arc, atomic::AtomicBool, mpsc}, time::In
 
 use egui::Vec2b;
 use egui_plot::{Line, Plot, PlotBounds, PlotPoints};
+use log::debug;
 
-use crate::{controller::ControllerPacket, gui::screens::{camera::CameraScreen, commands::CommandsScreen, home::HomeScreen, logs::LogsScreen, main::MainScreen, sensors::SensorsScreen}, monitor::{LogPacket, TelemetryPacket}};
+use crate::{config::AppConfig, controller::ControllerPacket, gui::screens::{camera::CameraScreen, commands::CommandsScreen, home::HomeScreen, logs::LogsScreen, main::MainScreen, sensors::SensorsScreen}, monitor::{LogPacket, TelemetryPacket}};
 
 pub mod screens;
 
@@ -42,9 +43,9 @@ pub struct MyApp {
     pub rx_ctrl: mpsc::Receiver<ControllerPacket>,
     pub rx_logs: mpsc::Receiver<LogPacket>,
     pub rx_frames: mpsc::Receiver<Vec<u8>>,
-}
 
-static SAVED: OnceLock<()> = OnceLock::new();
+    pub config_egui: AppConfig,
+}
 
 impl eframe::App for MyApp {
 
@@ -68,20 +69,13 @@ impl eframe::App for MyApp {
         
 
         while let Ok(packet) = self.rx_frames.try_recv() {
-            println!("image received ({}) header: {:02X} {:02X} {:02X} {:02X}", 
+            debug!("image received ({}) header: {:02X} {:02X} {:02X} {:02X}", 
                 packet.len(),
                 packet.get(0).unwrap_or(&0),
                 packet.get(1).unwrap_or(&0),
                 packet.get(2).unwrap_or(&0),
                 packet.get(3).unwrap_or(&0),
             );
-            /*
-            SAVED.get_or_init(|| {
-                for chunk in packet.chunks(16) {
-                    let hex = chunk.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
-                    println!("{}", hex);
-                }
-            })*/
             self.frame = Some(packet);
         }
 
@@ -92,7 +86,7 @@ impl eframe::App for MyApp {
             ScreensTypes::Logs => self.logs_screen.show(ctx, &self.logs),
             ScreensTypes::Main => self.main_screen.show(ctx,
                 &mut self.screen, &self.sensors_connected, &self.logs_connected, &self.camera_connected),
-            ScreensTypes::Camera => self.camera_screen.show(ctx, &mut self.frame),
+            ScreensTypes::Camera => self.camera_screen.show(ctx, &mut self.frame, &self.config_egui),
         }
 
         ctx.request_repaint();

@@ -1,6 +1,6 @@
 use std::{any::Any, collections::VecDeque, error::Error, sync::{Arc, atomic::AtomicBool, mpsc}, time::Instant};
 
-use crate::{error::AppError, gui::{MyApp, ScreensTypes, screens::{camera::CameraScreen, main::MainScreen}}};
+use crate::{config::AppConfig, error::AppError, gui::{MyApp, ScreensTypes, screens::{camera::CameraScreen, main::MainScreen}}};
 
 use gui::screens::{
     commands::CommandsScreen,
@@ -14,8 +14,13 @@ mod monitor;
 mod udp;
 mod error;
 mod controller;
+mod config;
 
 fn main() -> Result<(), AppError> {
+
+    env_logger::init();
+
+    let config = AppConfig::load();
 
     let (tx, rx) = mpsc::channel();
     let (tx_logs, rx_logs) = mpsc::channel();
@@ -30,18 +35,23 @@ fn main() -> Result<(), AppError> {
     let handle_ctrl = controller::init_controller(tx_ctrl, 
         Arc::clone(&controller_connected));
 
+    let config_udp_recv = config.clone();
     let handle_udp = udp::udp_server_init(
         tx,
         tx_logs,
         Arc::clone(&sensors_connected),
         Arc::clone(&logs_connected),
+        config_udp_recv,
     );
 
+    let config_udp_vid = config.clone();
     let handle_udp_vid = udp::udp_server_video_init(
         tx_img,
         Arc::clone(&camera_connected),
+        config_udp_vid,
     );
 
+    let config_egui = config.clone();
     let frame = eframe::run_native(
         "Station",
         eframe::NativeOptions::default(),
@@ -69,6 +79,8 @@ fn main() -> Result<(), AppError> {
             rx_ctrl,
             rx_logs,
             rx_frames: rx_img,
+
+            config_egui,
             })),
     );
 

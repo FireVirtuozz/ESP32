@@ -1,3 +1,37 @@
 menu "RC-Camera"
 
+    depends on USE_CAMERA
+
+    choice CAM_RESOLUTION
+        prompt "Camera resolution"
+        default CAM_RES_QQVGA
+
+        config CAM_RES_QQVGA
+            bool "QQVGA (160x120)"
+            
+        config CAM_RES_QVGA
+            bool "QVGA (320x240)"
+            
+        config CAM_RES_VGA
+            bool "VGA (640x480)"
+    endchoice
+
+    choice CAM_FORMAT
+        prompt "Camera format"
+        default CAM_FORMAT_JPEG
+
+        config CAM_FORMAT_JPEG
+            bool "JPEG"
+            
+        config CAM_FORMAT_YUV
+            bool "YUV"
+            
+        config CAM_FORMAT_RGB
+            bool "RGB"
+    endchoice
+
+    config FPS_COUNT
+        bool "FPS COUNT"
+        default n
+
 endmenu

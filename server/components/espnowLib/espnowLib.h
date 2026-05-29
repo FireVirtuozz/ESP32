@@ -6,7 +6,7 @@
 #include <inttypes.h>
 
 typedef struct espnow_msg_st {
-    uint8_t data[ESPNOW_MSG_SIZE];
+    uint8_t *data;
     uint8_t len;
 } espnow_msg_t;
 
@@ -18,6 +18,6 @@ typedef struct header_espnow_frame_st {
 
 void espnow_init(void);
 
-void send_espnow_msg(espnow_msg_t *msg);
+void send_espnow_msg(const uint8_t * data, uint32_t len);
 
 #endif

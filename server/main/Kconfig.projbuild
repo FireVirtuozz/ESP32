@@ -19,6 +19,10 @@ menu "ESP RC Car"
         bool "Sensors"
         default n
 
+    config USE_CAMERA
+        bool "Camera"
+        default n
+
     menu "Wifi"
     config USE_WIFI
         bool "WiFi"

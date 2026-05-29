@@ -54,8 +54,22 @@ static camera_config_t camera_config = {
     .ledc_channel = LEDC_CHANNEL_0,
     .fb_location = CAMERA_FB_IN_PSRAM,
 
-    .pixel_format = PIXFORMAT_YUV422, //YUV422,GRAYSCALE,RGB565,JPEG
+    #ifdef CONFIG_CAM_FORMAT_JPEG
+    .pixel_format = PIXFORMAT_JPEG, //YUV422,GRAYSCALE,RGB565,JPEG
+    #elif defined(CONFIG_CAM_FORMAT_YUV)
+    .pixel_format = PIXFORMAT_YUV422,
+    #elif defined(CONFIG_CAM_FORMAT_RGB)
+    .pixel_format = PIXFORMAT_RGB565,
+    #endif
+
+    #ifdef CONFIG_CAM_RES_QQVGA
     .frame_size = FRAMESIZE_QQVGA, //QQVGA-UXGA, For ESP32, do not use sizes above QVGA when not JPEG. The performance of the ESP32-S series has improved a lot, but JPEG mode always gives better frame rates.
+    #elif defined(CONFIG_CAM_RES_QVGA)
+    .frame_size = FRAMESIZE_QVGA,
+    #elif defined(CONFIG_CAM_RES_VGA)
+    .frame_size = FRAMESIZE_VGA,
+    #endif
+
 
     .jpeg_quality = 15, //0-63, for OV series camera sensors, lower number means higher quality
     .fb_count = 1, //When jpeg mode is used, if fb_count more than one, the driver will work in continuous mode.
@@ -79,28 +93,29 @@ static void jpg_stream_udp(void *param){
             continue;
         }
 
+#ifdef CONFIG_CAM_FORMAT_JPEG
+        uint8_t * out_buf = NULL;
+        size_t out_len = 0;
+        bool converted = frame2jpg(fb, 50, &out_buf, &out_len);
+#elif defined(CONFIG_CAM_FORMAT_YUV) || defined(CONFIG_CAM_FORMAT_RGB)
         uint8_t * out_buf = malloc(sizeof(uint8_t) * fb->len);
         size_t out_len = fb->len;
 
-        
         memcpy(out_buf, fb->buf, out_len);
 
         bool converted = true;
-        //bool converted = frame2jpg(fb, 50, &out_buf, &out_len);
+#endif
 
         esp_camera_fb_return(fb);
 
         if (converted) {
-            udp_msg_vid_t msg;
-            msg.data = out_buf;
-            msg.len = out_len;
-
             //log_msg(TAG, "Image converted, len: %u", out_len);
-            send_udp_jpeg(&msg);
+            send_udp_jpeg(out_buf, out_len);
         } else {
             if (out_buf != NULL) free(out_buf);
         }
         
+        #if CONFIG_FPS_COUNT
         frame_count++;
         if (frame_count == 1) start = esp_timer_get_time();
         if (frame_count % 30 == 0) {
@@ -108,7 +123,8 @@ static void jpg_stream_udp(void *param){
             start = esp_timer_get_time();
             log_msg(TAG, "FPS: %.1f, free heap: %lu", fps, esp_get_free_heap_size());
         }
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        #endif
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
     vTaskDelete(NULL);
 }

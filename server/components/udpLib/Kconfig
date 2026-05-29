@@ -4,4 +4,8 @@ menu "RC-UDP"
     config PACKET_DEBUG
         bool "DEBUG PACKETS"
         default n
+
+    config VID_DEBUG
+        bool "DEBUG VIDEO"
+        default n
 endmenu

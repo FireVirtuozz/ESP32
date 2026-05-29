@@ -45,7 +45,7 @@ static void log_msg_va(const log_level_t level, const char* tag, const char* fmt
     #endif
 
 #if CONFIG_LOG_UDP
-    udp_msg_t msg = {0};
+    uint8_t msg[UDP_MAX_SIZE];
     uint8_t msg_len = 0;
 
     header_udp_frame_t frame = {
@@ -54,17 +54,17 @@ static void log_msg_va(const log_level_t level, const char* tag, const char* fmt
         .timestamp = (uint32_t)(esp_timer_get_time() / 1000),
     };
 
-    msg.data[0] = frame.type;
+    msg[0] = frame.type;
     msg_len++;
-    msg.data[1] = frame.flags;
+    msg[1] = frame.flags;
     msg_len++;
-    memcpy(&msg.data[2], &frame.timestamp, sizeof(uint32_t));
+    memcpy(&msg[2], &frame.timestamp, sizeof(uint32_t));
     msg_len += sizeof(uint32_t);
 
-    memcpy(msg.data + msg_len, buf, strlen(buf));
-    msg.len = msg_len + strlen(buf);
+    memcpy(&msg[msg_len], buf, strlen(buf));
+    msg_len += strlen(buf);
 
-    send_udp_msg(&msg);
+    send_udp_msg(msg, msg_len);
 #else
 
 #if CONFIG_LOG_ESPNOW
@@ -195,55 +195,13 @@ esp_err_t dump_deploy(dump_t ** dump) {
     char *saveptr;
     char *line = strtok_r((*dump)->buffer, "\n", &saveptr);
     while (line != NULL) {
-        log_msg("", "%s", line);
+        ESP_LOGI("", "%s", line);
         line = strtok_r(NULL, "\n", &saveptr);
     }
 #endif
 
-
 #if CONFIG_LOG_UDP
-    udp_msg_t msg = {0};
-    uint8_t header_len = 0;
-
-    header_udp_frame_t frame = {
-        .type = 2, 
-        .flags = 0,
-        .timestamp = (uint32_t)(esp_timer_get_time() / 1000),
-    };
-
-    msg.data[0] = frame.type;
-    msg.data[1] = frame.flags;
-    memcpy(&msg.data[2], &frame.timestamp, sizeof(uint32_t));
-    header_len = 2 + sizeof(uint32_t);
-
-    uint8_t max_data_per_packet = UDP_MSG_SIZE - header_len - 1; 
-    size_t total_len = (*dump)->offset;
-    size_t sent_len = 0;
-    uint8_t nb_msg = total_len / max_data_per_packet + 1;
-    //log_msg(TAG, "DUMP START: total_len: %u, max_payload_per_packet: %u, nb msg: %u", 
-    //    total_len, max_data_per_packet, nb_msg);
-
-    for (uint8_t msg_id = nb_msg; msg_id > 0; msg_id--) {
-        size_t to_send = total_len - sent_len;
-        if (to_send > max_data_per_packet) {
-            to_send = max_data_per_packet;
-        }
-
-        msg.data[header_len] = msg_id - 1;
-        memcpy(&msg.data[header_len + 1], (*dump)->buffer + sent_len, to_send);
-        msg.len = header_len + 1 + to_send;
-        
-        char log_payload[to_send + 2]; 
-        memcpy(log_payload, &msg.data[header_len], to_send + 1);
-        log_payload[to_send + 1] = '\0'; 
-
-        //log_msg(TAG, "Sending msg_id: %u, packet_len: %u, payload: %s", msg_id - 1, msg.len, log_payload + 1);
-        
-
-        send_udp_msg(&msg);
-        sent_len += to_send;
-    }
-
+    send_udp_dump((uint8_t*)(*dump)->buffer, (*dump)->offset);
 #else
 
 #if CONFIG_LOG_ESPNOW

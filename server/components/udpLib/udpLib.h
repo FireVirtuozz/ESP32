@@ -13,26 +13,19 @@ void udp_server_init();
 // Initialize UDP client connection to Host
 void udp_client_init();
 
-typedef struct udp_msg_st {
-    uint8_t data[UDP_MSG_SIZE];
-    uint8_t len;
-} udp_msg_t;
-
 typedef struct header_udp_frame_st {
     uint8_t type;
     uint8_t flags;
     uint32_t timestamp;
 } header_udp_frame_t;
 
-typedef struct udp_msg_vid_st {
-    uint8_t* data;
-    uint32_t len;
-} udp_msg_vid_t;
-
 // Send a UDP message
-void send_udp_msg(udp_msg_t *msg);
+void send_udp_msg(const uint8_t * data, uint32_t len);
 
 // Send a JPEG UDP message
-void send_udp_jpeg(udp_msg_vid_t *msg);
+void send_udp_jpeg(const uint8_t * data, uint32_t len);
+
+// Send a dump UDP message
+void send_udp_dump(const uint8_t * data, uint32_t len);
 
 #endif

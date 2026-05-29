@@ -69,4 +69,6 @@ void dump_android(const android_t *android);
 
 esp_err_t cmd_dispatch(const int8_t *data);
 
+void reset_command();
+
 #endif

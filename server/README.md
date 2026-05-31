@@ -137,3 +137,23 @@ Config:
 
 Flash size 16Kb
 
+# Frames
+This presents frames that are sent through network.
+Some are fragmented with:
+
+[id u32][frag_total u8][frag_idx u8][esp_id u8]
+
+## Sensors
+[type u8][esp_id u8][timestamp u32] [packet_payload]
+
+## Logs
+[esp_id u8][timestamp u32][level LogLevel=u8][tag_length u8][tag_str][msg_str]
+
+## Dumps
+[esp_id u8][timestamp u32][lib_length u8][lib_str][name_length u8][name_str][msg_str]
+
+## Video
+[payload]
+
+## Commands
+[command_type u8][payload_length u8][payload]

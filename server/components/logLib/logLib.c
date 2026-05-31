@@ -26,6 +26,31 @@
 
 static const char* TAG = "log_library";
 
+typedef struct header_log_st {
+    uint8_t esp_id;
+    uint32_t timestamp;
+    log_level_t level;
+    const char* tag;
+    const char* msg;
+} header_log_t;
+
+static uint16_t serialize_log(header_log_t *hd, uint8_t* buf) {
+    uint16_t len = 0;
+    buf[len] = hd->esp_id;
+    len++;
+    memcpy(&buf[len], &hd->timestamp, sizeof(uint32_t));
+    len += sizeof(uint32_t);
+    buf[len] = (uint8_t)hd->level;
+    len++;
+    uint8_t tag_length = (uint8_t)strlen(hd->tag);
+    buf[len] = tag_length;
+    len++;
+    memcpy(&buf[len], hd->tag, tag_length * sizeof(char));
+    len += tag_length * sizeof(char);
+    memcpy(&buf[len], hd->msg, strlen(hd->msg) * sizeof(char));
+    return len;
+}
+
 static void log_msg_va(const log_level_t level, const char* tag, const char* fmt, va_list args) {
     if (level > LOG_LEVEL) return;
 
@@ -46,25 +71,17 @@ static void log_msg_va(const log_level_t level, const char* tag, const char* fmt
 
 #if CONFIG_LOG_UDP
     uint8_t msg[UDP_MAX_SIZE];
-    uint8_t msg_len = 0;
+    uint16_t msg_len = 0;
 
-    header_udp_frame_t frame = {
-        .type = 1,
-        .flags = 0,
-        .timestamp = (uint32_t)(esp_timer_get_time() / 1000),
-    };
+    header_log_t header = {0};
+    header.esp_id = (uint8_t)CONFIG_ESP_ID;
+    header.level = level;
+    header.timestamp = (uint32_t)(esp_timer_get_time() / 1000);
+    header.tag = tag;
+    header.msg = buf;
+    msg_len = serialize_log(&header, msg);
 
-    msg[0] = frame.type;
-    msg_len++;
-    msg[1] = frame.flags;
-    msg_len++;
-    memcpy(&msg[2], &frame.timestamp, sizeof(uint32_t));
-    msg_len += sizeof(uint32_t);
-
-    memcpy(&msg[msg_len], buf, strlen(buf));
-    msg_len += strlen(buf);
-
-    send_udp_msg(msg, msg_len);
+    send_udp_log(msg, msg_len);
 #else
 
 #if CONFIG_LOG_ESPNOW

@@ -78,11 +78,23 @@ static void espnow_send_cb(const esp_now_send_info_t *tx_info, esp_now_send_stat
     }
 }
 
+static void espnow_header_serialize(header_espnow_frame_t *hd, uint8_t *data) {
+    data[0] = hd->flags;
+    data[1] = hd->packet_type;
+    data[2] = hd->needs_frag;
+}
+
+static void espnow_header_deserialize(header_espnow_frame_t *hd, uint8_t *data) {
+    hd->flags = data[0];
+    hd->packet_type = data[1];
+    hd->needs_frag = data[2];
+}
+
 #define PKT_TYPE_DIRECT     0
 #define PKT_TYPE_FRAGMENT   1
 
 #define HEADER_ESPNOW_FRAG_SIZE (sizeof(uint32_t) + sizeof(uint8_t) + sizeof(uint8_t))
-#define MAX_FRAG_PAYLOAD_SIZE (ESPNOW_MSG_SIZE - HEADER_ESPNOW_FRAG_SIZE - 1) //-1 for type pkt type
+#define MAX_FRAG_PAYLOAD_SIZE (ESPNOW_MSG_SIZE - HEADER_ESPNOW_FRAG_SIZE - HEADER_ESPNOW_SIZE) //-1 for type pkt type
 
 typedef struct header_frag_st {
     uint32_t frag_id;
@@ -90,13 +102,19 @@ typedef struct header_frag_st {
     uint8_t frag_idx;
 } header_frag_t;
 
-static void header_serialize(const header_frag_t *hdr, uint8_t *buf) {
+static void header_fragment_serialize(const header_frag_t *hdr, uint8_t *buf) {
     buf[0] = (hdr->frag_id >> 24) & 0xFF;
     buf[1] = (hdr->frag_id >> 16) & 0xFF;
     buf[2] = (hdr->frag_id >> 8)  & 0xFF;
     buf[3] =  hdr->frag_id        & 0xFF;
     buf[4] = hdr->frag_total;
     buf[5] = hdr->frag_idx;
+}
+
+static void header_fragment_deserialize(header_frag_t *hdr, const uint8_t *buf) {
+    hdr->frag_id    = (buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3];
+    hdr->frag_total = buf[4];
+    hdr->frag_idx = buf[5];
 }
 
 static void espnow_recv_cb(const esp_now_recv_info_t *recv_info, const uint8_t *data, int len)
@@ -142,45 +160,68 @@ static void espnow_task_rx(void *pvParameter)
     while (xQueueReceive(espnow_queue_rx, &evt, portMAX_DELAY) == pdTRUE) {
         log_msg(TAG, "Receive unicast data from: "MACSTR", len: %d", MAC2STR(evt.mac_addr), evt.data_len);
 
-        uint8_t packet_type = evt.data[0];
-        switch (packet_type)
+        header_espnow_frame_t hd = {0};
+        espnow_header_deserialize(&hd, evt.data);
+        if (!hd.needs_frag)
         {
-        case PKT_TYPE_DIRECT:
 
-            //dispatch msg through UDP when received
-            //example: sensor data received from ESP1, redirected to station using UDP
-            //if not using UDP, this means that it is ESP1 (sensor)
-            //so we apply the commands received
     #if CONFIG_USE_UDPLIB
-            send_udp_msg(&evt.data[1], evt.data_len - 1);
-    #else
-            //cmd_dispatch((int8_t*)&evt.data[1]);
+            //udp dispatch
+            if (hd.flags & 0b00000001) {
+                switch (hd.packet_type) {
+                    case DUMP: 
+                        send_udp_dump(&evt.data[HEADER_ESPNOW_SIZE], evt.data_len - HEADER_ESPNOW_SIZE);
+                        break;
+                    case LOGS: 
+                        send_udp_log(&evt.data[HEADER_ESPNOW_SIZE], evt.data_len - HEADER_ESPNOW_SIZE);
+                        break;
+                    case SENSORS: 
+                        send_udp_sensor(&evt.data[HEADER_ESPNOW_SIZE], evt.data_len - HEADER_ESPNOW_SIZE);
+                        break;
+                    case VIDEO: 
+                        send_udp_jpeg(&evt.data[HEADER_ESPNOW_SIZE], evt.data_len - HEADER_ESPNOW_SIZE);
+                        break;
+                    default:
+                        break;
+                }
+            }
     #endif
-       
-            break;
+            switch (hd.packet_type) {
+                case DUMP: 
+                    break;
+                case LOGS: 
+                    break;
+                case SENSORS: 
+                    break;
+                case VIDEO: 
+                    break;
+                case CMD:
+                    //cmd_dispatch(&evt.data[HEADER_ESPNOW_SIZE]);
+                    break;
+                default:
+                    break;
+            }
 
-        case PKT_TYPE_FRAGMENT:
+        } else {
             
-            header_frag_t hd;
-            hd.frag_id    = (evt.data[1] << 24) | (evt.data[2] << 16) | (evt.data[3] << 8) | evt.data[4];
-            hd.frag_total = evt.data[5];
-            hd.frag_idx   = evt.data[6];
+            header_frag_t hd_frag = {0};
+            header_fragment_deserialize(&hd_frag, &evt.data[HEADER_ESPNOW_SIZE]);
 
-            const uint8_t *payload = evt.data + 1 + HEADER_ESPNOW_FRAG_SIZE;
-            int payload_len = evt.data_len - 1 - HEADER_ESPNOW_FRAG_SIZE;
+            const uint8_t *payload = &evt.data[HEADER_ESPNOW_FRAG_SIZE + HEADER_ESPNOW_SIZE];
+            int payload_len = evt.data_len - HEADER_ESPNOW_SIZE - HEADER_ESPNOW_FRAG_SIZE;
 
-            if (hd.frag_idx == 0) {
-                defrag_ctx.current_frag_id = hd.frag_id;
+            if (hd_frag.frag_idx == 0) {
+                defrag_ctx.current_frag_id = hd_frag.frag_id;
                 defrag_ctx.bytes_received = 0;
                 defrag_ctx.frags_received_count = 0;
             }
 
-            if (defrag_ctx.current_frag_id != hd.frag_id) {
-                log_msg_lvl(ESP_LOG_WARN, TAG, "Orphaned or out-of-sync fragment dropped (ID: %u)", hd.frag_id);
+            if (defrag_ctx.current_frag_id != hd_frag.frag_id) {
+                log_msg_lvl(ESP_LOG_WARN, TAG, "Orphaned or out-of-sync fragment dropped (ID: %u)", hd_frag.frag_id);
                 break;
             }
 
-            uint32_t write_offset = hd.frag_idx * MAX_FRAG_PAYLOAD_SIZE;
+            uint32_t write_offset = hd_frag.frag_idx * MAX_FRAG_PAYLOAD_SIZE;
             if ((write_offset + payload_len) > DEFRAG_BUFFER_MAX_SIZE) {
                 log_msg_lvl(ESP_LOG_ERROR, TAG, "Defrag buffer overflow prevented! Packet too large.");
                 defrag_ctx.current_frag_id = 0;
@@ -191,17 +232,31 @@ static void espnow_task_rx(void *pvParameter)
             defrag_ctx.bytes_received += payload_len;
             defrag_ctx.frags_received_count++;
 
-            if (defrag_ctx.frags_received_count == hd.frag_total) {
-#if CONFIG_USE_UDPLIB
-                send_udp_msg(defrag_ctx.buffer, defrag_ctx.bytes_received);
-#endif
+            if (defrag_ctx.frags_received_count == hd_frag.frag_total) {
+    #if CONFIG_USE_UDPLIB
+            //udp dispatch
+            if (hd.flags & 0b00000001) {
+                switch (hd.packet_type) {
+                    case DUMP: 
+                        send_udp_dump(defrag_ctx.buffer, defrag_ctx.bytes_received);
+                        break;
+                    case LOGS: 
+                        send_udp_log(defrag_ctx.buffer, defrag_ctx.bytes_received);
+                        break;
+                    case SENSORS: 
+                        send_udp_sensor(defrag_ctx.buffer, defrag_ctx.bytes_received);
+                        break;
+                    case VIDEO: 
+                        send_udp_jpeg(defrag_ctx.buffer, defrag_ctx.bytes_received);
+                        break;
+                    default:
+                        break;
+                }
+            }
+    #endif
                 defrag_ctx.current_frag_id = 0;
             }
 
-            break;
-        
-        default:
-            log_msg_lvl(ESP_LOG_WARN, TAG, "Unknown packet type (%u)", packet_type);
             break;
         }
         free(evt.data);
@@ -232,11 +287,10 @@ static void espnow_send_fragmented(espnow_msg_t *msg, uint32_t *running_frag_id)
         hd.frag_idx = i;
         uint16_t payload_size = (i == hd.frag_total - 1) ? (total_size_payload - offset) : MAX_FRAG_PAYLOAD_SIZE;
 
-        buf[0] = PKT_TYPE_FRAGMENT;
-        header_serialize(&hd, &buf[1]);
-        memcpy(&buf[HEADER_ESPNOW_FRAG_SIZE + 1], msg->data + offset, payload_size);
+        header_fragment_serialize(&hd, &buf[HEADER_ESPNOW_SIZE]);
+        memcpy(&buf[HEADER_ESPNOW_SIZE + HEADER_ESPNOW_FRAG_SIZE], msg->data + offset, payload_size);
         
-        int err = esp_now_send(mac_esp_peer, buf, payload_size + HEADER_ESPNOW_FRAG_SIZE + 1);
+        int err = esp_now_send(mac_esp_peer, buf, payload_size + HEADER_ESPNOW_FRAG_SIZE);
         if (err != ESP_OK) {
             //using serial because otherwise infinite loop of same message
             ESP_LOGW(TAG, "Error (%s) sending espnow message", esp_err_to_name(err));
@@ -257,13 +311,7 @@ static void espnow_task_send(void *pvParameter)
     while (xQueueReceive(espnow_queue_send, &msg, portMAX_DELAY) == pdTRUE) {
         //check if message needs fragmentation
         if (msg.len > ESPNOW_MSG_SIZE) {
-
-            //not take into account first byte, overriden in fragment
-            espnow_msg_t clean_msg = {
-                .data = msg.data + 1,
-                .len = msg.len - 1
-            };
-            espnow_send_fragmented(&clean_msg, &local_frag_id);
+            espnow_send_fragmented(&msg, &local_frag_id);
         } else {
             xSemaphoreTake(espnow_tx_sem, pdMS_TO_TICKS(100));
             err = esp_now_send(mac_esp_peer, msg.data, msg.len);
@@ -393,21 +441,23 @@ static void espnow_deinit()
     esp_now_deinit();
 }
 
-void send_espnow_msg(const uint8_t * data, uint32_t len){
+void send_espnow_msg(header_espnow_frame_t *hd, const uint8_t * data, uint32_t len){
 
     if (data == NULL || espnow_queue_send == NULL) {
         log_msg_lvl(ESP_LOG_ERROR, TAG, "Invalid args send espnow");
         return;
     }
+    hd->needs_frag = (len + HEADER_ESPNOW_SIZE) > ESPNOW_MSG_SIZE;
 
-    uint8_t *buf_cpy = malloc(len + 1);
+    uint8_t *buf_cpy = malloc(len + HEADER_ESPNOW_SIZE);
     if (buf_cpy != NULL) {
-        buf_cpy[0] = len + 1 > ESPNOW_MSG_SIZE ? PKT_TYPE_FRAGMENT : PKT_TYPE_DIRECT;
-        memcpy(buf_cpy + 1, data, len);
+
+        espnow_header_serialize(hd, buf_cpy);
+        memcpy(buf_cpy + HEADER_ESPNOW_SIZE, data, len);
 
         espnow_msg_t msg = {0};
         msg.data = buf_cpy;
-        msg.len = len + 1;
+        msg.len = len + HEADER_ESPNOW_SIZE;
     
         if (xQueueSend(espnow_queue_send, &msg, 0) != pdTRUE) {
             log_msg_lvl(ESP_LOG_WARN, TAG, "Queue full, freeing data");

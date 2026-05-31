@@ -1,5 +1,10 @@
 menu "ESP RC Car"
 
+    config ESP_ID
+        int "Unique ESP ID"
+        range 0 255
+        default 0
+
     config USE_LEDLIB
         bool "LED library"
         default y

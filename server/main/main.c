@@ -99,7 +99,7 @@ void app_main()
 #endif
 
 #if CONFIG_USE_SENSORS
-    start_monitoring_task();
+    init_sensors();
 #endif
 
 #if CONFIG_USE_UDPLIB

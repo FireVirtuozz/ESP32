@@ -143,8 +143,12 @@ Some are fragmented with:
 
 [id u32][frag_total u8][frag_idx u8][esp_id u8]
 
+Big-endian.
+
 ## Sensors
 [type u8][esp_id u8][timestamp u32] [packet_payload]
+
+Little-endian.
 
 ## Logs
 [esp_id u8][timestamp u32][level LogLevel=u8][tag_length u8][tag_str][msg_str]

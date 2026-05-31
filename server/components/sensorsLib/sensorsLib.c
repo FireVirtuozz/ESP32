@@ -19,11 +19,44 @@
 #include "espnowLib.h"
 #endif
 
-#define MONITOR_PERIOD 500
-
 static const char * TAG = "sensors_library";
 
 static volatile bool monitoring = false;
+
+#if CONFIG_USE_INA226 || CONFIG_USE_MPU9250
+
+#define SCL_GPIO 33
+#define SDA_GPIO 32
+
+//data transferred in MSB
+
+i2c_master_bus_config_t master_cfg = {
+    .clk_source = I2C_CLK_SRC_DEFAULT,
+    .i2c_port = I2C_NUM_0,
+    .scl_io_num = SCL_GPIO,
+    .sda_io_num = SDA_GPIO,
+    .glitch_ignore_cnt = 7,
+    .flags.enable_internal_pullup = true,
+};
+i2c_master_bus_handle_t master_handle = NULL;
+#endif
+
+#define HEADER_SENSOR_SIZE (sizeof(uint8_t) + sizeof(uint8_t) + sizeof(uint32_t))
+
+typedef struct header_sensor_st {
+    uint8_t type;
+    uint8_t esp_id;
+    uint32_t timestamp;
+} header_sensor_t;
+
+static void serialize_header(header_sensor_t *hd, uint8_t *buf) {
+    if (hd == NULL || buf == NULL) {
+        return;
+    }
+    buf[0] = hd->type;
+    buf[1] = hd->esp_id;
+    memcpy(&buf[2], &hd->timestamp, sizeof(uint32_t)); //little-endian
+}
 
 #if CONFIG_USE_HCSR04
 
@@ -35,8 +68,6 @@ static volatile bool monitoring = false;
 
 static SemaphoreHandle_t sem_hcsr = NULL;
 static volatile int64_t echo_duration;
-
-static QueueHandle_t hc_queue = NULL;
 
 static void IRAM_ATTR echo_isr_handler(void* arg)
 {
@@ -71,12 +102,6 @@ esp_err_t init_hcsr() {
     sem_hcsr = xSemaphoreCreateBinary();
     if (sem_hcsr == NULL) {
         log_msg(TAG, "Error creating semaphore");
-        return ESP_ERR_NOT_ALLOWED;
-    }
-
-    hc_queue = xQueueCreate((MONITOR_PERIOD / HC_PERIOD) + 2, sizeof(int64_t));
-    if (hc_queue == NULL) {
-        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error creating HC queue");
         return ESP_ERR_NOT_ALLOWED;
     }
 
@@ -126,7 +151,7 @@ esp_err_t init_hcsr() {
 int64_t trigger_echo() {
     esp_err_t err;
 
-    if (sem_hcsr == NULL || hc_queue == NULL) {
+    if (sem_hcsr == NULL) {
         return -1;
     }
 
@@ -153,6 +178,8 @@ int64_t trigger_echo() {
     }
 }
 
+#define HC_PAYLOAD_SIZE sizeof(int64_t)
+
 /**
  * 50 ms monitoring HC task
  */
@@ -170,40 +197,33 @@ static void hc_task(void * params) {
         val_hc = trigger_echo(); //blocking
 
         if (val_hc >= 0 && val_hc < 30000) {
-            xQueueSend(hc_queue, &val_hc, 0);
+    
+            header_sensor_t header = {0};
+            header.esp_id = (uint8_t)CONFIG_ESP_ID;
+            header.timestamp = (uint32_t)(esp_timer_get_time() / 1000);
+            header.type = 1;
+            uint8_t buf[HEADER_SENSOR_SIZE + HC_PAYLOAD_SIZE];
+            serialize_header(&header, buf);
+            memcpy(&buf[HEADER_SENSOR_SIZE], &val_hc, sizeof(int64_t));
+            
+        #if CONFIG_USE_UDPLIB
+            send_udp_sensor(buf, sizeof(buf));
+        #endif
+        #if CONFIG_USE_ESPNOW
+        #endif
         }
 
         vTaskDelay(pdMS_TO_TICKS(HC_PERIOD));
     }
-    return;
+    vTaskDelete(NULL);
 }
 
-#endif
-
-#if CONFIG_USE_INA226 || CONFIG_USE_MPU9250
-
-#define SCL_GPIO 33
-#define SDA_GPIO 32
-
-//data transferred in MSB
-
-i2c_master_bus_config_t master_cfg = {
-    .clk_source = I2C_CLK_SRC_DEFAULT,
-    .i2c_port = I2C_NUM_0,
-    .scl_io_num = SCL_GPIO,
-    .sda_io_num = SDA_GPIO,
-    .glitch_ignore_cnt = 7,
-    .flags.enable_internal_pullup = true,
-};
-i2c_master_bus_handle_t master_handle = NULL;
 #endif
 
 #if CONFIG_USE_INA226
 
 #define INA_ADDR 0x40
 #define INA_PERIOD 70
-
-static QueueHandle_t ina_queue = NULL;
 
 //pointer towards i2c device
 i2c_master_dev_handle_t ina_handle;
@@ -225,16 +245,6 @@ static void print_ina(ina_info_t *ina) {
 esp_err_t init_ina() {
 
     esp_err_t err;
-
-    if (ina_queue != NULL) {
-        log_msg_lvl(ESP_LOG_ERROR, TAG, "INA already initialized");
-        return ESP_ERR_INVALID_STATE;
-    }
-    ina_queue = xQueueCreate((MONITOR_PERIOD / INA_PERIOD) + 2, sizeof(ina_info_t));
-    if (ina_queue == NULL) {
-        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error creating INA queue");
-        return ESP_ERR_NOT_ALLOWED;
-    }
 
     //config of i2c registers, gpio, start
     if (master_handle == NULL) {
@@ -311,9 +321,6 @@ esp_err_t get_ina_info(ina_info_t *ina_info) {
     if (ina_info == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
-    if (ina_queue == NULL) {
-        return ESP_ERR_INVALID_STATE;
-    }
 
     esp_err_t err;
 
@@ -370,6 +377,19 @@ esp_err_t get_ina_info(ina_info_t *ina_info) {
     return ESP_OK;
 }
 
+#define INA_PAYLOAD_SIZE (2 * sizeof(int16_t) + 2 * sizeof(uint16_t))
+
+static void serialize_ina(ina_info_t *ina, uint8_t *buf) {
+    uint16_t len = HEADER_SENSOR_SIZE;
+    memcpy(&buf[len], &ina->bus, sizeof(int16_t));
+    len += sizeof(int16_t);
+    memcpy(&buf[len], &ina->current, sizeof(uint16_t));
+    len += sizeof(uint16_t);
+    memcpy(&buf[len], &ina->power, sizeof(uint16_t));
+    len += sizeof(uint16_t);
+    memcpy(&buf[len], &ina->shunt, sizeof(int16_t));
+}
+
 /**
  * Periodic INA monitoring task
  */
@@ -387,12 +407,25 @@ static void ina_task(void * params) {
         err = get_ina_info(&ina_info);
 
         if (err == ESP_OK) {
-            xQueueSend(ina_queue, &ina_info, 0);
+            
+            header_sensor_t header = {0};
+            header.esp_id = (uint8_t)CONFIG_ESP_ID;
+            header.timestamp = (uint32_t)(esp_timer_get_time() / 1000);
+            header.type = 3;
+            uint8_t buf[HEADER_SENSOR_SIZE + INA_PAYLOAD_SIZE];
+            serialize_header(&header, buf);
+            serialize_ina(&ina_info, buf);
+            
+        #if CONFIG_USE_UDPLIB
+            send_udp_sensor(buf, sizeof(buf));
+        #endif
+        #if CONFIG_USE_ESPNOW
+        #endif
         }
 
         vTaskDelay(pdMS_TO_TICKS(INA_PERIOD));
     }
-    return;
+    vTaskDelete(NULL);
 }
 
 #endif
@@ -414,8 +447,16 @@ static adc_cali_handle_t adc1_cali_handle = NULL;
 // Choisis ton canal (ADC1_CHANNEL_6 est sur le GPIO 34)
 #define HALL_ADC_CHANNEL ADC1_CHANNEL_6
 
+#define KY_PAYLOAD_SIZE (sizeof(uint64_t) + sizeof(int64_t))
+
 static volatile ky_info_t ky_info = {0};
-static QueueHandle_t ky_queue = NULL;
+
+static void serialize_ky(ky_info_t *ky, uint8_t *buf) {
+    uint16_t len = HEADER_SENSOR_SIZE;
+    memcpy(&buf[len], &ky->signal_count, sizeof(uint64_t));
+    len += sizeof(uint64_t);
+    memcpy(&buf[len], &ky->signal_duration, sizeof(int64_t));
+}
 
 static void print_ky(ky_info_t *ky) {
     if (ky->signal_duration == 0) {
@@ -440,16 +481,6 @@ static void print_ky(ky_info_t *ky) {
 esp_err_t init_ky() {
 
     esp_err_t err;
-
-    if (ky_queue != NULL) {
-        log_msg_lvl(ESP_LOG_ERROR, TAG, "KY already initialized");
-        return ESP_ERR_INVALID_STATE;
-    }
-    ky_queue = xQueueCreate((MONITOR_PERIOD / KY_PERIOD) + 2, sizeof(ky_info_t));
-    if (ky_queue == NULL) {
-        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error creating KY queue");
-        return ESP_ERR_NOT_ALLOWED;
-    }
 
     ky_info.signal_count = 0;
     ky_info.signal_duration = 0;
@@ -510,9 +541,6 @@ esp_err_t init_ky() {
  * @returns KY info structure, or NULL if error
  */
 ky_info_t* get_signal_info() {
-    if (ky_queue == NULL) {
-        return NULL;
-    }
 
     static int64_t last_timestamp = 0;
     static uint8_t last_lvl = 1;
@@ -565,7 +593,21 @@ static void ky_task(void * params) {
                     .signal_duration = now - last_timestamp,
                 };
                 ky_info.signal_duration = snapshot.signal_duration;
-                xQueueSend(ky_queue, &snapshot, 0);
+                
+                header_sensor_t header = {0};
+                header.esp_id = (uint8_t)CONFIG_ESP_ID;
+                header.timestamp = (uint32_t)(esp_timer_get_time() / 1000);
+                header.type = 0;
+                uint8_t buf[HEADER_SENSOR_SIZE + KY_PAYLOAD_SIZE];
+                serialize_header(&header, buf);
+                serialize_ky(&snapshot, buf);
+                
+            #if CONFIG_USE_UDPLIB
+                send_udp_sensor(buf, sizeof(buf));
+            #endif
+            #if CONFIG_USE_ESPNOW
+            #endif
+
             }
             last_timestamp = now;
         }
@@ -573,7 +615,6 @@ static void ky_task(void * params) {
         last_state = current_state;
         vTaskDelay(poll_delay);
     }
-
     vTaskDelete(NULL);
 }
 
@@ -644,8 +685,6 @@ static bmp_dig_t_t cal_dig_t;
 //calibration value to determine pressure using temperature
 static int32_t t_fine;
 
-static QueueHandle_t mpu_queue = NULL;
-
 static void print_mpu(mpu_info_t *mpu) {
     log_msg(TAG, "Accel_X received: %d", mpu->accel_x);
     log_msg(TAG, "Accel_Y received: %d", mpu->accel_y);
@@ -665,16 +704,6 @@ static void print_mpu(mpu_info_t *mpu) {
  */
 esp_err_t init_mpu() {
     esp_err_t err;
-
-    if (mpu_queue != NULL) {
-        log_msg_lvl(ESP_LOG_ERROR, TAG, "MPU already initialized");
-        return ESP_ERR_INVALID_STATE;
-    }
-    mpu_queue = xQueueCreate((MONITOR_PERIOD / MPU_PERIOD) + 2, sizeof(mpu_info_t));
-    if (mpu_queue == NULL) {
-        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error creating MPU queue");
-        return ESP_ERR_NOT_ALLOWED;
-    }
 
     //config of i2c registers, gpio, start
     if (master_handle == NULL) {
@@ -864,9 +893,6 @@ esp_err_t get_mpu_info(mpu_info_t *mpu_info) {
     if (mpu_info == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
-    if (mpu_queue == NULL) {
-        return ESP_ERR_INVALID_STATE;
-    }
 
     esp_err_t err;
 
@@ -909,6 +935,29 @@ esp_err_t get_mpu_info(mpu_info_t *mpu_info) {
     return ESP_OK;
 }
 
+#define MPU_PAYLOAD_SIZE (7 * sizeof(int16_t) + 2 * sizeof(int32_t))
+
+static void serialize_mpu(mpu_info_t *mpu, uint8_t *buf) {
+    uint16_t len = HEADER_SENSOR_SIZE;
+    memcpy(&buf[len] ,&mpu->accel_x, sizeof(int16_t));
+    len += sizeof(int16_t);
+    memcpy(&buf[len] ,&mpu->accel_y, sizeof(int16_t));
+    len += sizeof(int16_t);
+    memcpy(&buf[len] ,&mpu->accel_z, sizeof(int16_t));
+    len += sizeof(int16_t);
+    memcpy(&buf[len] ,&mpu->gyro_x, sizeof(int16_t));
+    len += sizeof(int16_t);
+    memcpy(&buf[len] ,&mpu->gyro_y, sizeof(int16_t));
+    len += sizeof(int16_t);
+    memcpy(&buf[len] ,&mpu->gyro_z, sizeof(int16_t));
+    len += sizeof(int16_t);
+    memcpy(&buf[len] ,&mpu->temp_mpu, sizeof(int16_t));
+    len += sizeof(int16_t);
+    memcpy(&buf[len] ,&mpu->pressure, sizeof(int32_t));
+    len += sizeof(int32_t);
+    memcpy(&buf[len] ,&mpu->temp_bmp, sizeof(int32_t));
+}
+
 /**
  * 50 ms monitoring MPU task
  */
@@ -926,27 +975,43 @@ static void mpu_task(void * params) {
         err = get_mpu_info(&mpu_info);
 
         if (err == ESP_OK) {
-            xQueueSend(mpu_queue, &mpu_info, 0);
+            header_sensor_t header = {0};
+            header.esp_id = (uint8_t)CONFIG_ESP_ID;
+            header.timestamp = (uint32_t)(esp_timer_get_time() / 1000);
+            header.type = 2;
+            uint8_t buf[HEADER_SENSOR_SIZE + MPU_PAYLOAD_SIZE];
+            serialize_header(&header, buf);
+            serialize_mpu(&mpu_info, buf);
+            
+        #if CONFIG_USE_UDPLIB
+            send_udp_sensor(buf, sizeof(buf));
+        #endif
+        #if CONFIG_USE_ESPNOW
+        #endif
         }
 
         vTaskDelay(pdMS_TO_TICKS(MPU_PERIOD));
     }
-    return;
+    vTaskDelete(NULL);
 }
-
 #endif
 
-static void monitoring_task(void* params) {
+esp_err_t init_sensors() {
 
-    uint16_t count = 0;
+    esp_err_t err;
     BaseType_t res;
+
+    if (monitoring) {
+        log_msg_lvl(ESP_LOG_WARN, TAG, "Sensors already initialized");
+        return ESP_FAIL;
+    }
 
 #if CONFIG_USE_HCSR04
     int64_t echo_temp = 0, echo_res = 0;
     res = xTaskCreate(hc_task, "hc_monitoring", 2048, NULL, 5, NULL);
     if (res != pdPASS) {
-        log_msg(TAG, "Error (%d) creating HC monitoring task", res);
-        return;
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%d) creating HC monitoring task", res);
+        return ESP_FAIL;
     }
 #endif
 
@@ -954,8 +1019,8 @@ static void monitoring_task(void* params) {
     ina_info_t ina = {0}, ina_temp;
     res = xTaskCreate(ina_task, "ina_monitoring", 2048, NULL, 5, NULL);
     if (res != pdPASS) {
-        log_msg(TAG, "Error (%d) creating INA monitoring task", res);
-        return;
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%d) creating INA monitoring task", res);
+        return ESP_FAIL;
     }
 #endif
 
@@ -963,228 +1028,24 @@ static void monitoring_task(void* params) {
     mpu_info_t mpu = {0}, mpu_temp;
     res = xTaskCreate(mpu_task, "mpu_monitoring", 2048, NULL, 5, NULL);
     if (res != pdPASS) {
-        log_msg(TAG, "Error (%d) creating mpu monitoring task", res);
-        return;
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%d) creating mpu monitoring task", res);
+        return ESP_FAIL;
     }
 #endif
 
 #if CONFIG_USE_KY003
-esp_err_t err;
-   err = init_ky();
+    err = init_ky();
     if (err != ESP_OK){
-        return;
+        return ESP_FAIL;
     }
     ky_info_t ky = {0}, ky_temp;
     res = xTaskCreate(ky_task, "ky_monitoring", 2048, NULL, 5, NULL);
     if (res != pdPASS) {
-        log_msg(TAG, "Error (%d) creating KY monitoring task", res);
-        return;
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%d) creating KY monitoring task", res);
+        return ESP_FAIL;
     }
 #endif
 
-#if CONFIG_USE_WIFI
-
-#if CONFIG_USE_UDPLIB
-    uint8_t frame_size = sizeof(header_udp_frame_t);
-    header_udp_frame_t frame = {0};
-#else
-#if CONFIG_USE_ESPNOW
-    uint8_t frame_size = sizeof(header_espnow_frame_t);
-    header_espnow_frame_t frame = {0};
-#endif
-#endif
-
-#if CONFIG_USE_KY003
-    frame_size += sizeof(ky_info_t);
-#endif
-#if CONFIG_USE_HCSR04
-    frame_size += sizeof(int64_t);
-#endif
-#if CONFIG_USE_MPU9250
-    frame_size += sizeof(mpu_info_t);
-#endif
-#if CONFIG_USE_INA226
-    frame_size += sizeof(ina_info_t);
-#endif
-    uint8_t frame_buf[frame_size];
-
-#if CONFIG_USE_KY003
-    frame.flags |= 1 << 0;
-#endif
-#if CONFIG_USE_HCSR04
-    frame.flags |= 1 << 1;
-#endif
-#if CONFIG_USE_MPU9250
-    frame.flags |= 1 << 2;
-#endif
-#if CONFIG_USE_INA226
-    frame.flags |= 1 << 3;
-#endif
-
-    frame.type = 0; //monitor frame type
-    frame.timestamp = (uint32_t)(esp_timer_get_time() / 1000);
-
-    while (monitoring)
-    {
-        uint8_t offset_frame = 0;
-        frame_buf[offset_frame] = frame.type;
-        offset_frame++;
-        frame_buf[offset_frame] = frame.flags;
-        offset_frame++;
-        memcpy(&frame_buf[offset_frame], &frame.timestamp, sizeof(uint32_t));
-        offset_frame += sizeof(uint32_t);
-        
-    #if CONFIG_USE_KY003
-        int signals_in_this_window = 0;
-        if (ky_queue != NULL) {
-            int64_t total_duration = 0;
-
-            while (xQueueReceive(ky_queue, &ky_temp, 0) == pdTRUE) {
-                signals_in_this_window++;
-                total_duration += ky_temp.signal_duration;
-            }
-
-            if (signals_in_this_window > 0) {
-                // VRAIE MOYENNE : Somme des temps / nombre d'impulsions
-                ky.signal_duration = total_duration / signals_in_this_window;
-                ky.signal_count += signals_in_this_window; // Cumul total
-            } else {
-                // Optionnel : si on n'a rien reçu, la vitesse est peut-être 0
-                ky.signal_duration = 0; 
-            }
-            //log_msg(TAG, "count window: %d", signals_in_this_window);
-        }
-        print_ky(&ky);
-        memcpy(&frame_buf[offset_frame], &ky.signal_count, sizeof(ky.signal_count));
-        offset_frame += sizeof(ky.signal_count);
-        memcpy(&frame_buf[offset_frame], &ky.signal_duration, sizeof(ky.signal_duration));
-        offset_frame += sizeof(ky.signal_duration);
-    #endif
-
-    #if CONFIG_USE_HCSR04
-        if (hc_queue != NULL && uxQueueMessagesWaiting(hc_queue) > 0) {
-            echo_res = 0;
-            count = 0;
-            while (xQueueReceive(hc_queue, &echo_temp, 0) == pdTRUE) {
-                echo_res += echo_temp;
-                count++;
-            }
-            if (count > 0) {
-                echo_res /= count;
-            }
-        }
-        print_hc(echo_res);
-        memcpy(&frame_buf[offset_frame], &echo_res, sizeof(int64_t));
-        offset_frame += sizeof(int64_t);
-
-    #endif
-    
-    #if CONFIG_USE_MPU9250
-        if (mpu_queue != NULL && uxQueueMessagesWaiting(mpu_queue) > 0) {
-            int32_t ax=0,ay=0,az=0,gx=0,gy=0,gz=0,tm=0,tb=0,p=0;
-            count = 0;
-            while (xQueueReceive(mpu_queue, &mpu_temp, 0) == pdTRUE) {
-                ax += mpu_temp.accel_x;
-                ay += mpu_temp.accel_y;
-                az += mpu_temp.accel_z;
-                gx += mpu_temp.gyro_x;
-                gy += mpu_temp.gyro_y;
-                gz += mpu_temp.gyro_z;
-                tm += mpu_temp.temp_mpu;
-                tb += mpu_temp.temp_bmp;
-                p  += mpu_temp.pressure;
-                count++;
-            }
-            if (count > 0) {
-                mpu.accel_x  = ax / count;
-                mpu.accel_y  = ay / count;
-                mpu.accel_z  = az / count;
-                mpu.gyro_x   = gx / count;
-                mpu.gyro_y   = gy / count;
-                mpu.gyro_z   = gz / count;
-                mpu.temp_mpu = tm / count;
-                mpu.temp_bmp = tb / count;
-                mpu.pressure = p  / count;
-            }
-        }
-        print_mpu(&mpu);
-        memcpy(&frame_buf[offset_frame], &mpu.accel_x, sizeof(mpu.accel_x));
-        offset_frame += sizeof(mpu.accel_x);
-        memcpy(&frame_buf[offset_frame], &mpu.accel_y, sizeof(mpu.accel_y));
-        offset_frame += sizeof(mpu.accel_y);
-        memcpy(&frame_buf[offset_frame], &mpu.accel_z, sizeof(mpu.accel_z));
-        offset_frame += sizeof(mpu.accel_z);
-        memcpy(&frame_buf[offset_frame], &mpu.gyro_x, sizeof(mpu.gyro_x));
-        offset_frame += sizeof(mpu.gyro_x);
-        memcpy(&frame_buf[offset_frame], &mpu.gyro_y, sizeof(mpu.gyro_y));
-        offset_frame += sizeof(mpu.gyro_y);
-        memcpy(&frame_buf[offset_frame], &mpu.gyro_z, sizeof(mpu.gyro_z));
-        offset_frame += sizeof(mpu.gyro_z);
-        memcpy(&frame_buf[offset_frame], &mpu.temp_mpu, sizeof(mpu.temp_mpu));
-        offset_frame += sizeof(mpu.temp_mpu);
-        memcpy(&frame_buf[offset_frame], &mpu.pressure, sizeof(mpu.pressure));
-        offset_frame += sizeof(mpu.pressure);
-        memcpy(&frame_buf[offset_frame], &mpu.temp_bmp, sizeof(mpu.temp_bmp));
-        offset_frame += sizeof(mpu.temp_bmp);
-
-    #endif
-
-    #if CONFIG_USE_INA226
-        if (ina_queue != NULL && uxQueueMessagesWaiting(ina_queue) > 0) {
-            int32_t sh=0, bu=0, cu=0, po=0;
-            count = 0;
-            while (xQueueReceive(ina_queue, &ina_temp, 0) == pdTRUE) {
-                sh += ina_temp.shunt;
-                bu += ina_temp.bus;
-                cu += ina_temp.current;
-                po += ina_temp.power;
-                count++;
-            }
-            if (count > 0) {
-                ina.shunt   = sh / count;
-                ina.bus     = bu / count;
-                ina.current = cu / count;
-                ina.power   = po / count;
-            }
-        }
-        print_ina(&ina);
-        memcpy(&frame_buf[offset_frame], &ina.bus, sizeof(ina.bus));
-        offset_frame += sizeof(ina.bus);
-        memcpy(&frame_buf[offset_frame], &ina.current, sizeof(ina.current));
-        offset_frame += sizeof(ina.current);
-        memcpy(&frame_buf[offset_frame], &ina.power, sizeof(ina.power));
-        offset_frame += sizeof(ina.power);
-        memcpy(&frame_buf[offset_frame], &ina.shunt, sizeof(ina.shunt));
-        offset_frame += sizeof(ina.shunt);
-    #endif
-
-    #if CONFIG_USE_UDPLIB
-        send_udp_msg(frame_buf, frame_size);
-    #else
-    #if CONFIG_USE_ESPNOW
-        send_espnow_msg(frame_buf, frame_size);
-    #endif
-    #endif
-
-        vTaskDelay(pdMS_TO_TICKS(MONITOR_PERIOD));
-    }
-    #endif
-    return;
-}
-
-//maybe timerTask is better?
-
-esp_err_t start_monitoring_task() {
-
-    if (monitoring) {
-        return ESP_ERR_INVALID_STATE;
-    }
     monitoring = true;
-    BaseType_t res = xTaskCreate(monitoring_task, "sensors_monitoring", 8196, NULL, 5, NULL);
-    if (res != pdPASS) {
-        log_msg(TAG, "Error (%d) create monitoring task", res);
-        return ESP_ERR_NOT_ALLOWED;
-    }
-    log_msg(TAG, "Monitoring task created");
     return ESP_OK;
 }

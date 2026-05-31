@@ -89,6 +89,6 @@ esp_err_t get_mpu_info(mpu_info_t *mpu_info);
 
 #endif
 
-esp_err_t start_monitoring_task();
+esp_err_t init_sensors();
 
 #endif

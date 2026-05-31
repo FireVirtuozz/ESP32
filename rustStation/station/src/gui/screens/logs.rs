@@ -4,11 +4,11 @@ use egui::{Color32, FontId, RichText, ScrollArea, TextEdit, Ui};
 use crate::error::AppError;
 
 pub enum LogLevel {
-    VERBOSE = 0,
-    DEBUG = 1,
-    INFO = 2,
-    WARN = 3,
-    ERROR = 4,
+    VERBOSE = 5,
+    DEBUG = 4,
+    INFO = 3,
+    WARN = 2,
+    ERROR = 1,
 }
 
 impl LogLevel {
@@ -24,11 +24,11 @@ impl LogLevel {
 
     fn level_from_value(val: u8) -> Result<Self, AppError> {
         match val {
-            0 => Ok(Self::VERBOSE),
-            1 => Ok(Self::DEBUG),
-            2 => Ok(Self::INFO),
-            3 => Ok(Self::WARN),
-            4 => Ok(Self::ERROR),
+            5 => Ok(Self::VERBOSE),
+            4 => Ok(Self::DEBUG),
+            3 => Ok(Self::INFO),
+            2 => Ok(Self::WARN),
+            1 => Ok(Self::ERROR),
             _ => Err("Invalid value for LogLevel".into()),
         }
     }
@@ -53,7 +53,6 @@ impl LogPacket {
             msg: from_utf8(&buf[buf[6] as usize .. buf.len()])?.to_owned(),
         })
     }
-
 }
 
 pub struct LogsScreen {

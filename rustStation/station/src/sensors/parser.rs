@@ -69,7 +69,7 @@ pub struct SensorsUdpHeader {
 }
 
 //size from a manual constant, to avoid padding from struct in memory when using "sizeof"
-pub const SENSORS_HEADER_SIZE: usize = 6;
+pub const SENSORS_HEADER_SIZE: usize = 4 + 1 + 1;
 
 impl SensorsUdpHeader {
     pub fn header_from_buffer(buf: &[u8]) -> Result<Self, AppError> {

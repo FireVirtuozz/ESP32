@@ -2,7 +2,7 @@ use std::{collections::VecDeque, net::UdpSocket, sync::{Arc, atomic::{AtomicBool
 
 use log::{debug, error};
 
-use crate::{config::AppConfig, error::AppError, gui::screens::logs::LogPacket, sensors::{TelemetryEnum, TelemetryPacket, parser::{SENSORS_HEADER_SIZE, SensorsUdpHeader, parse_buffer_hall, parse_buffer_ina, parse_buffer_mpu, parse_buffer_ultrasonic}}, udp::udp_video::HeaderUdpVid};
+use crate::{config::AppConfig, error::AppError, gui::screens::logs::LogPacket, sensors::{TelemetryEnum, TelemetryPacket, parser::{SENSORS_HEADER_SIZE, SensorsUdpHeader, parse_buffer_hall, parse_buffer_ina, parse_buffer_mpu, parse_buffer_ultrasonic}}};
 
 const MAX_SIZE_TELEMETRY_BUF: usize = 256;
 

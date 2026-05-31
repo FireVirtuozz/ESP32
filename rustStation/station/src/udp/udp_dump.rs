@@ -1,8 +1,9 @@
 use std::{collections::HashMap, net::UdpSocket, sync::{Arc, atomic::{AtomicBool, Ordering}, mpsc::Sender}, thread};
 
+use egui::collapsing_header::HeaderResponse;
 use log::{debug, error};
 
-use crate::{config::AppConfig, error::AppError, gui::screens::dump::DumpEntry, udp::{BUFFER_MAX_UDP_SIZE, FragmentReassembler, ReassemblyMode}};
+use crate::{config::AppConfig, error::AppError, gui::screens::dump::DumpEntry, udp::{BUFFER_MAX_UDP_SIZE, FragmentReassembler, HEADER_FRAGMENT_SIZE, HeaderUdpFragment, ReassemblyMode}};
 
 pub fn udp_server_dump_init(
     tx_dump: Sender<DumpEntry>,
@@ -10,8 +11,8 @@ pub fn udp_server_dump_init(
 ) -> thread::JoinHandle<()> {
 
     let handle = thread::spawn(move || {
-        if let Err(e) = udp_video_dump(tx_dump, config_udp_dump) {
-            error!("UDP error vid: {:?}", e);
+        if let Err(e) = udp_server_dump(tx_dump, config_udp_dump) {
+            error!("UDP error dump: {:?}", e);
         }
     });
     handle
@@ -19,7 +20,7 @@ pub fn udp_server_dump_init(
 
 
 
-fn udp_video_dump(
+fn udp_server_dump(
     tx_dump: Sender<DumpEntry>,
     config_udp_dump: AppConfig,
 ) -> Result<(), AppError> {
@@ -33,22 +34,17 @@ fn udp_video_dump(
 
     loop {
         let (amt, _) = socket.recv_from(&mut buf)?;
-        if amt < 6 { continue; }
 
-        // Extraction du mini-header de fragment pour le dump
-        let dump_id = u16::from_le_bytes([buf[0], buf[1]]) as u32;
-        let frag_idx = u16::from_le_bytes([buf[2], buf[3]]) as usize;
-        let frag_total = u16::from_le_bytes([buf[4], buf[5]]) as usize;
+    // Extraction du header de la vidéo
+        let header = match HeaderUdpFragment::header_fragment_parse(&buf[..amt]) {
+            Ok(h) => h,
+            Err(_) => continue,
+        };
 
-        let payload = buf[6..amt].to_vec();
+        let payload = buf[HEADER_FRAGMENT_SIZE..amt].to_vec();
 
         // On pousse dans la machine générique
-        if let Some(full_dump_bytes) = reassembler.push_fragment(
-            dump_id,
-            frag_idx,
-            frag_total,
-            payload,
-        ) {
+        if let Some(full_dump_bytes) = reassembler.push_fragment(header, payload) {
             // Le puzzle est complet ! On a TOUS les octets du dump.
             // On les passe au parseur pour fabriquer notre belle struct pleine de Strings
             if let Some(dump_entry) = DumpEntry::parse_from_buf(&full_dump_bytes) {

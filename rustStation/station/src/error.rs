@@ -1,9 +1,9 @@
 //! Error module
 //! This is a module to handle several types of errors
 
-use std::{any::Any, array::TryFromSliceError, sync::mpsc::SendError};
+use std::{any::Any, array::TryFromSliceError, str::Utf8Error, sync::mpsc::SendError};
 
-use crate::{controller::ControllerPacket, monitor::{LogPacket, TelemetryPacket}};
+use crate::{controller::ControllerPacket, gui::screens::logs::LogPacket, sensors::TelemetryPacket};
 
 #[derive(Debug)]
 pub enum AppError {
@@ -57,6 +57,13 @@ impl From<SendError<LogPacket>> for AppError {
 impl From<SendError<Vec<u8>>> for AppError {
     fn from(e: SendError<Vec<u8>>) -> Self {
         AppError::Send(e.to_string())
+    }
+}
+
+
+impl From<Utf8Error> for AppError {
+    fn from(e: Utf8Error) -> Self {
+        AppError::Other(e.to_string())
     }
 }
 

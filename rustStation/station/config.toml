@@ -6,5 +6,7 @@ debug_frag_udp_cam = false
 ip_addr_esp = "192.168.4.1"
 
 udp_port_ctrl = 3333
-udp_port_recv = 34254
+udp_port_sensors = 34254
 udp_port_vid = 34255
+udp_port_dump = 34256
+udp_port_logs = 34257

@@ -1,6 +1,6 @@
 use std::{any::Any, collections::VecDeque, error::Error, sync::{Arc, atomic::AtomicBool, mpsc}, time::Instant};
 
-use crate::{config::AppConfig, error::AppError, gui::{MyApp, ScreensTypes, screens::{camera::CameraScreen, main::MainScreen}}};
+use crate::{config::AppConfig, error::AppError, gui::{MyApp, Screens, ScreensTypes, screens::{camera::CameraScreen, main::MainScreen}}, udp::{udp_dump::udp_server_dump_init, udp_logs::udp_logs_server_init, udp_sensors::udp_sensors_server_init, udp_video::udp_server_video_init}};
 
 use gui::screens::{
     commands::CommandsScreen,
@@ -10,7 +10,7 @@ use gui::screens::{
 };
 
 mod gui;
-mod monitor;
+mod sensors;
 mod udp;
 mod error;
 mod controller;
@@ -22,10 +22,11 @@ fn main() -> Result<(), AppError> {
 
     let config = AppConfig::load();
 
-    let (tx, rx) = mpsc::channel();
+    let (tx_sensors, rx_sensors) = mpsc::channel();
     let (tx_logs, rx_logs) = mpsc::channel();
     let (tx_ctrl, rx_ctrl) = mpsc::channel();
     let (tx_img, rx_img) = mpsc::channel();
+    let (tx_dump, rx_dump) = mpsc::channel();
 
     let sensors_connected = Arc::new(AtomicBool::new(false));
     let logs_connected = Arc::new(AtomicBool::new(false));
@@ -35,17 +36,28 @@ fn main() -> Result<(), AppError> {
     let handle_ctrl = controller::init_controller(tx_ctrl, 
         Arc::clone(&controller_connected));
 
-    let config_udp_recv = config.clone();
-    let handle_udp = udp::udp_server_init(
-        tx,
-        tx_logs,
+    let config_udp_sensors = config.clone();
+    let handle_udp_sensors = udp_sensors_server_init(
+        tx_sensors,
         Arc::clone(&sensors_connected),
+        config_udp_sensors,
+    );
+
+    let config_udp_logs = config.clone();
+    let handle_udp_logs = udp_logs_server_init(
+        tx_logs,
         Arc::clone(&logs_connected),
-        config_udp_recv,
+        config_udp_logs,
+    );
+
+    let config_udp_dump = config.clone();
+    let handle_udp_dump = udp_server_dump_init(
+        tx_dump,
+        config_udp_dump,
     );
 
     let config_udp_vid = config.clone();
-    let handle_udp_vid = udp::udp_server_video_init(
+    let handle_udp_vid = udp_server_video_init(
         tx_img,
         Arc::clone(&camera_connected),
         config_udp_vid,
@@ -62,29 +74,29 @@ fn main() -> Result<(), AppError> {
             logs: VecDeque::new(),
             start: Instant::now(),
             screen: ScreensTypes::Home,
+            dumps: Vec::new(),
 
-            sensors_screen: SensorsScreen::default(),
-            commands_screen: CommandsScreen::default(),
-            home_screen: HomeScreen,
-            logs_screen: LogsScreen::default(),
-            main_screen: MainScreen,
-            camera_screen: CameraScreen::default(),
+            screens : Screens::default(),
 
             logs_connected,
             sensors_connected,
             controller_connected,
             camera_connected,
             
-            rx,
+            rx_sensors,
             rx_ctrl,
             rx_logs,
             rx_frames: rx_img,
+            rx_dump,
 
             config_egui,
+
             })),
     );
 
-    handle_udp.join()?;
+    handle_udp_dump.join()?;
+    handle_udp_sensors.join()?;
+    handle_udp_logs.join()?;
     handle_udp_vid.join()?;
     handle_ctrl.join()?;
     Ok(())

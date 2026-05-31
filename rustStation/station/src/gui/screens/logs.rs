@@ -1,6 +1,60 @@
-use std::collections::VecDeque;
+use std::{collections::VecDeque, str::from_utf8};
 use egui::{Color32, FontId, RichText, ScrollArea, TextEdit, Ui};
-use crate::monitor::LogPacket;
+
+use crate::error::AppError;
+
+pub enum LogLevel {
+    VERBOSE = 0,
+    DEBUG = 1,
+    INFO = 2,
+    WARN = 3,
+    ERROR = 4,
+}
+
+impl LogLevel {
+    fn to_color(&self) -> Color32 {
+        match self {
+            LogLevel::VERBOSE => Color32::from_gray(180),
+            LogLevel::DEBUG => Color32::from_rgb(160, 120, 255),
+            LogLevel::INFO => Color32::from_rgb(100, 180, 255),
+            LogLevel::WARN => Color32::from_rgb(255, 200, 60),
+            LogLevel::ERROR => Color32::from_rgb(255, 80, 80),
+        }
+    }
+
+    fn level_from_value(val: u8) -> Result<Self, AppError> {
+        match val {
+            0 => Ok(Self::VERBOSE),
+            1 => Ok(Self::DEBUG),
+            2 => Ok(Self::INFO),
+            3 => Ok(Self::WARN),
+            4 => Ok(Self::ERROR),
+            _ => Err("Invalid value for LogLevel".into()),
+        }
+    }
+}
+
+pub struct LogPacket {
+    pub timestamp : u32,
+    pub tag: String,
+    pub esp_id: u8,
+    pub level: LogLevel,
+    pub msg: String,
+}
+
+impl LogPacket {
+
+    pub fn log_from_buffer(buf: &[u8]) -> Result<Self, AppError> {
+        Ok(Self {
+            esp_id: buf[0],
+            timestamp: u32::from_le_bytes([buf[1], buf[2], buf[3], buf[4]]),
+            level: LogLevel::level_from_value(buf[5])?,
+            tag: from_utf8(&buf[7 .. buf[6] as usize])?.to_owned(),
+            msg: from_utf8(&buf[buf[6] as usize .. buf.len()])?.to_owned(),
+        })
+    }
+
+}
 
 pub struct LogsScreen {
     pub search: String,
@@ -13,21 +67,6 @@ impl Default for LogsScreen {
             search: String::new(),
             auto_scroll: true,
         }
-    }
-}
-
-fn parse_level(msg: &str) -> (Color32, &str) {
-    let msg = msg.trim();
-    if let Some(rest) = msg.strip_prefix("[ERROR]") {
-        (Color32::from_rgb(255, 80, 80), rest.trim())
-    } else if let Some(rest) = msg.strip_prefix("[WARN]") {
-        (Color32::from_rgb(255, 200, 60), rest.trim())
-    } else if let Some(rest) = msg.strip_prefix("[DEBUG]") {
-        (Color32::from_rgb(160, 120, 255), rest.trim())
-    } else if let Some(rest) = msg.strip_prefix("[INFO]") {
-        (Color32::from_rgb(100, 180, 255), rest.trim())
-    } else {
-        (Color32::from_gray(180), msg)
     }
 }
 
@@ -94,10 +133,7 @@ impl LogsScreen {
                 ui.set_min_width(ui.available_width());
 
                 for (i, packet) in logs.iter().enumerate() {
-                    let msg = match &packet.msg {
-                        Some(m) => m.as_str(),
-                        None => continue,
-                    };
+                    let msg = &packet.msg;
 
                     if !self.search.is_empty()
                         && !msg.to_lowercase().contains(&self.search.to_lowercase())
@@ -105,7 +141,7 @@ impl LogsScreen {
                         continue;
                     }
 
-                    let (color, content) = parse_level(msg);
+                    let (color, content) = (packet.level.to_color(), msg);
 
                     let bg = if i % 2 == 0 {
                         Color32::from_rgb(14, 16, 22)

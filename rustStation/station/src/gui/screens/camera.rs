@@ -5,6 +5,7 @@ use log::{debug, error, warn};
 
 use crate::config::{AppConfig, CamFormat};
 
+
 pub struct CameraScreen {
     texture: Option<egui::TextureHandle>,
 }

@@ -2,6 +2,7 @@ use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 
 use crate::gui::ScreensTypes;
 
+#[derive(Default)]
 pub struct MainScreen;
 
 impl MainScreen {
@@ -24,6 +25,7 @@ impl MainScreen {
                     if ui.button("Camera").clicked() { *screen = ScreensTypes::Camera; }
                 });
                 if ui.button("Commands").clicked() { *screen = ScreensTypes::Commands; }
+                if ui.button("Dumps").clicked() { *screen = ScreensTypes::Dump; }
                 ui.add_space(10.0);
                 if ui.button("Quit").clicked() { 
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close);

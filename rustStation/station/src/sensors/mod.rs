@@ -1,5 +1,7 @@
 use std::{error::Error, f64::consts::PI, io};
 
+use crate::sensors::parser::SensorsUdpHeader;
+
 pub mod parser;
 
 const TIRE_DIAMETER : u8 = 65; //mm
@@ -10,8 +12,8 @@ const INA_MAX_CURRENT: f64 = (81.92 * 1.0e-3) / INA_SHUNT_RESISTANCE; //~800mA
 const INA_REGISTER_SIZE: f64 = 32768.0; //2^15, 1 register on 16 bits (1 sign bit)
 const INA_CURRENT_LSB: f64 = INA_MAX_CURRENT / INA_REGISTER_SIZE;
 const INA_LSB_POWER: u8 = 25;
-const INA_LSB_SHUNT_VOLTAGE: f64 = (2.5 * 1.0e-6); //2.5uV
-const INA_LSB_BUS_VOLTAGE: f64 = (1.25 * 1.0e-3); //1.25mV
+const INA_LSB_SHUNT_VOLTAGE: f64 = 2.5 * 1.0e-6; //2.5uV
+const INA_LSB_BUS_VOLTAGE: f64 = 1.25 * 1.0e-3; //1.25mV
 
 pub const KY_SIZE: usize = 16;
 
@@ -93,15 +95,6 @@ impl PacketIna {
         println!("PacketIna [current: {:.2}mA, power: {:.2}mW, bus_voltage: {:.2}V, shunt_voltage: {:.2}mV]",
             self.get_current_ma(), self.get_power_mw(), self.get_bus_voltage_v(), self.get_shunt_voltage_mv())
     }
-}
-
-//ov2640
-#[derive(Debug)]
-struct PacketCamera {
-    frame_id: u32,
-    timestamp_ms: u32,
-    width: u16,
-    height: u16,
 }
 
 pub const MPU_SIZE: usize = 22;
@@ -200,16 +193,19 @@ impl PacketUltrasonic {
     }
 }
 
-//Buffer from ESP
-pub struct TelemetryPacket {
-    pub hall: Option<PacketHall>,
-    pub ina: Option<PacketIna>,
-    pub imu: Option<PacketImu>,
-    pub ultrasonic: Option<PacketUltrasonic>,
+pub enum TelemetryEnum {
+    HCSR04(PacketUltrasonic),
+    ESP(PacketEsp),
+    MPU(PacketImu),
+    KY003(PacketHall),
+    INA226(PacketIna),
+    TEMPERATURE(PacketTemperature),
 }
 
-pub struct LogPacket {
-    pub msg: Option<String>,
+//Buffer from ESP
+pub struct TelemetryPacket {
+    pub hd_info: SensorsUdpHeader,
+    pub packet: TelemetryEnum,
 }
 
 

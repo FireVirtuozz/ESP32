@@ -9,6 +9,12 @@ pub enum CamResolution {
     Vga,   // 640x480
 }
 
+impl Default for CamResolution {
+    fn default() -> Self {
+        CamResolution::Qqvga
+    }
+}
+
 impl CamResolution {
     pub fn dimensions(&self) -> (usize, usize) {
         match self {
@@ -27,14 +33,22 @@ pub enum CamFormat {
     RGB,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+impl Default for CamFormat {
+    fn default() -> Self {
+        CamFormat::JPEG
+    }
+}
+
+#[derive(Deserialize, Clone, Debug, Default)]
 pub struct AppConfig {
     pub cam_format: CamFormat,
     pub cam_res: CamResolution,
     pub udp_port_vid: u16,
     pub debug_frag_udp_cam: bool,
     pub udp_port_ctrl: u16,
-    pub udp_port_recv: u16,
+    pub udp_port_sensors: u16,
+    pub udp_port_dump: u16,
+    pub udp_port_logs: u16,
     pub ip_addr_esp: String,
 }
 

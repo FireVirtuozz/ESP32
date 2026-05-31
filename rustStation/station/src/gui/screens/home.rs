@@ -1,5 +1,6 @@
 use crate::gui::ScreensTypes;
 
+#[derive(Default)]
 pub struct HomeScreen;
 
 impl HomeScreen {

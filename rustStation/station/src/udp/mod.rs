@@ -1,223 +1,106 @@
-use std::collections::{HashMap, VecDeque};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::Sender;
-use std::{error::Error, net::UdpSocket};
-use std::thread;
-use log::{debug, error};
+use std::collections::HashMap;
 
-use crate::config::AppConfig;
-use crate::error::AppError;
-use crate::monitor::parser::{HEADER_VID_SIZE, HeaderUdpVid};
-use crate::monitor::{LogPacket, PacketImu, TelemetryPacket};
-use crate::monitor::{HC_SIZE, INA_SIZE, KY_SIZE, MPU_SIZE, parser::{self, FrameUdpHeader, HEADER_SIZE, parse_buffer_hall, parse_buffer_ina, parse_buffer_mpu, parse_buffer_ultrasonic}};
+pub mod udp_logs;
+pub mod udp_dump;
+pub mod udp_sensors;
+pub mod udp_video;
 
-//return Result, allows us to use ? error propagation in fn 
-pub fn udp_server_init(
-    tx: Sender<TelemetryPacket>,
-    tx_log: Sender<LogPacket>,
-    sensors_connected: Arc<AtomicBool>,
-    logs_connected: Arc<AtomicBool>,
-    config_udp_recv: AppConfig,
-) -> thread::JoinHandle<()> {
+const BUFFER_MAX_UDP_SIZE: usize = 1400;
 
-    let handle = thread::spawn(move || {
-        if let Err(e) = udp_loop(tx, tx_log, sensors_connected, logs_connected, config_udp_recv) {
-            error!("UDP error recv: {:?}", e);
-        }
-    });
-    handle
+// network/utils.rs
+
+pub struct Puzzle {
+    slots: Vec<Option<Vec<u8>>>,
+    filled_count: usize,
 }
 
-fn udp_loop(
-    tx: Sender<TelemetryPacket>,
-    tx_log: Sender<LogPacket>,
-    sensors_connected: Arc<AtomicBool>,
-    logs_connected: Arc<AtomicBool>,
-    config_udp_recv: AppConfig,
-) -> Result<(), AppError> {
-    let socket = UdpSocket::bind(format!("192.168.4.2:{}", config_udp_recv.udp_port_recv))?;
-    // Receives a single datagram message on the socket. If `buf` is too small to hold
-    // the message, it will be cut off.
-    let mut buf = [0; 256];
-    let mut dump_log = VecDeque::<LogPacket>::new();
-    loop {
-        
-        let (amt, src) = socket.recv_from(&mut buf)?;
-
-        let buf = &buf[..amt]; //reference only to received data
-
-        debug!("buf raw received : {:?}, size: {}, from: {:?}", buf, amt, src);
-        debug!("{}", String::from_utf8_lossy(buf));
-
-        let frame_udp = FrameUdpHeader::header_from_buffer(buf)?;
-
-        match frame_udp.ftype {
-            0 => {
-                let mut packet_telem = TelemetryPacket {
-                    hall: None,
-                    ina: None,
-                    imu: None,
-                    ultrasonic: None,
-                };
-
-                sensors_connected.store(true, Ordering::Relaxed);
-                let mut offset_size = HEADER_SIZE;
-                debug!("Frame type of monitor");
-                if frame_udp.flags & 0b00000001 == 0b00000001 {
-                    //ky
-                    let frame_ky = parse_buffer_hall(&buf[offset_size..offset_size + KY_SIZE])?;
-                    offset_size += KY_SIZE;
-                    debug!("frame KY: {:?}", frame_ky);
-                    packet_telem.hall = Some(frame_ky);
-                }
-                if frame_udp.flags & 0b00000010 == 0b00000010 {
-                    //hc
-                    let frame_hc = parse_buffer_ultrasonic(&buf[offset_size..offset_size + HC_SIZE])?;
-                    offset_size += HC_SIZE;
-                    debug!("frame HC: {:?}", frame_hc);
-                    //frame_hc.print_hc();
-                    packet_telem.ultrasonic = Some(frame_hc);
-                }
-                if frame_udp.flags & 0b00000100 == 0b00000100 {
-                    //mpu
-                    let frame_mpu = parse_buffer_mpu(&buf[offset_size..offset_size + MPU_SIZE])?;
-                    offset_size += MPU_SIZE;
-                    debug!("frame MPU: {:?}", frame_mpu);
-                    //frame_mpu.print_imu();
-                    packet_telem.imu = Some(frame_mpu);
-                }
-                if frame_udp.flags & 0b00001000 == 0b00001000 {
-                    //ina
-                    let frame_ina = parse_buffer_ina(&buf[offset_size..offset_size + INA_SIZE])?;
-                    offset_size += INA_SIZE;
-                    debug!("frame INA: {:?}", frame_ina);
-                    //frame_ina.print_ina();
-                    packet_telem.ina = Some(frame_ina);
-                }
-                if frame_udp.flags & 0b00010000 == 0b00010000 {
-                    //esp
-                }
-                tx.send(packet_telem)?;
-            },
-            1 => {
-                logs_connected.store(true, Ordering::Relaxed);
-                let msg_bytes = &buf[HEADER_SIZE..amt];
-                let log_pck = LogPacket {
-                    msg: Some(String::from_utf8_lossy(msg_bytes).to_string()),
-                };
-                debug!("msg: {:?}", log_pck.msg.as_ref().unwrap());
-                tx_log.send(log_pck)?;
-            },
-            2 => {
-                logs_connected.store(true, Ordering::Relaxed);
-                let msg_id = &buf[HEADER_SIZE];
-                let msg_bytes = &buf[HEADER_SIZE + 1..amt];
-                let log_pck = LogPacket {
-                    msg: Some(String::from_utf8_lossy(msg_bytes).to_string()),
-                };
-                println!("msg[{msg_id}]: {:?}", log_pck.msg.as_ref().unwrap());
-                dump_log.push_back(log_pck);
-                if *msg_id == 0 {
-                    while let Some(log_pck) = dump_log.pop_front() {
-                        tx_log.send(log_pck)?;
-                    }
-                }
-            }
-            _ => return Err("Invalid frame type".into()),
+impl Puzzle {
+    pub fn new(total_fragments: usize) -> Self {
+        Self {
+            slots: vec![None; total_fragments],
+            filled_count: 0,
         }
+    }
+
+    /// Tente d'insérer un fragment. Renvoie true s'il venait d'être ajouté.
+    pub fn insert(&mut self, idx: usize, payload: Vec<u8>) -> bool {
+        if idx >= self.slots.len() { return false; }
+        
+        if self.slots[idx].is_none() {
+            self.slots[idx] = Some(payload);
+            self.filled_count += 1;
+            true
+        } else {
+            false // Fragment déjà reçu (doublon UDP)
+        }
+    }
+
+    pub fn is_complete(&self) -> bool {
+        self.filled_count == self.slots.len()
+    }
+
+    /// Consomme le puzzle et fusionne tous les morceaux en un seul vecteur
+    pub fn rebuild(self) -> Vec<u8> {
+        let mut full_data = Vec::new();
+        for chunk in self.slots {
+            if let Some(data) = chunk {
+                full_data.extend(data);
+            }
+        }
+        full_data
     }
 }
 
-pub fn udp_server_video_init(
-    tx_img: Sender<Vec<u8>>,
-    camera_connected: Arc<AtomicBool>,
-    config_udp_vid: AppConfig,
-) -> thread::JoinHandle<()> {
-
-    let handle = thread::spawn(move || {
-        if let Err(e) = udp_video_loop(tx_img, camera_connected, config_udp_vid) {
-            error!("UDP error vid: {:?}", e);
-        }
-    });
-    handle
+#[derive(Clone, Copy, PartialEq)]
+pub enum ReassemblyMode {
+    Volatile,
+    Strict,
 }
 
-const BUFFER_VID_UDP_SIZE: usize = 1400;
+pub struct FragmentReassembler {
+    mode: ReassemblyMode,
+    puzzles: HashMap<u32, Puzzle>,
+    last_completed_id: u32,
+}
 
-fn udp_video_loop(
-    tx_img: Sender<Vec<u8>>,
-    camera_connected: Arc<AtomicBool>,
-    config_udp_vid: AppConfig,
-) -> Result<(), AppError> {
-    let socket = UdpSocket::bind(format!("192.168.4.2:{}", config_udp_vid.udp_port_vid))?;
-    // Receives a single datagram message on the socket. If `buf` is too small to hold
-    // the message, it will be cut off.
-    let mut buf = [0; BUFFER_VID_UDP_SIZE];
-        
-    let mut images: HashMap<u32, Vec<Option<Vec<u8>>>> = HashMap::new();
-    let mut last_completed_id: u32 = 0;
+impl FragmentReassembler {
+    pub fn new(mode: ReassemblyMode) -> Self {
+        Self {
+            mode,
+            puzzles: HashMap::new(),
+            last_completed_id: 0,
+        }
+    }
 
-    loop {
-        let (amt, _) = socket.recv_from(&mut buf)?;
-        
-        // Header parsing
-        let header_vid = match HeaderUdpVid::header_vid_parse(&buf[..amt]) {
-            Ok(h) => h,
-            Err(_) => continue,
-        };
-
-        debug!("Recv frag {}/{} for frame {} ({}B)", 
-            header_vid.frag_idx, header_vid.frag_total, 
-            header_vid.frame_id, amt - HEADER_VID_SIZE);
-
-        //ignoring old frames
-        if header_vid.frame_id < last_completed_id {
-            continue;
+    /// Injecte un fragment et renvoie le vecteur complet si le puzzle est terminé
+    pub fn push_fragment(&mut self, id: u32, idx: usize, total: usize, payload: Vec<u8>) -> Option<Vec<u8>> {
+        // Stratégie Volatile : On ignore les paquets en retard
+        if self.mode == ReassemblyMode::Volatile && id < self.last_completed_id {
+            return None;
         }
 
-        // Empty old fragments from HashMap
-        if images.len() > 5 { 
-            images.retain(|&id, _| id >= header_vid.frame_id);
+        // Nettoyage automatique si la Map devient trop grosse (anti-fuite mémoire)
+        if self.puzzles.len() > 5 && self.mode == ReassemblyMode::Volatile { 
+            self.puzzles.retain(|&p_id, _| p_id >= id);
         }
 
-        let frame_data = images.entry(header_vid.frame_id).or_insert_with(|| {
-            vec![None; header_vid.frag_total as usize]
-        });
+        // Récupère ou crée le puzzle
+        let puzzle = self.puzzles.entry(id).or_insert_with(|| Puzzle::new(total));
+        puzzle.insert(idx, payload);
 
-        if (header_vid.frag_idx as usize) < frame_data.len() {
-            let payload = buf[HEADER_VID_SIZE..amt].to_vec();
-            frame_data[header_vid.frag_idx as usize] = Some(payload);
-        }
-
-        // completion verification
-        if frame_data.iter().all(|x| x.is_some()) {
-            if let Some(completed_frame) = images.remove(&header_vid.frame_id) {
-                let mut full_image = Vec::new();
-                for (i, frag) in completed_frame.iter().enumerate() {
-                    if let Some(data) = frag {
-                        full_image.extend_from_slice(data);
-                    } else {
-                        error!("Fragment {} missing in frame !", i);
-                    }
-                }
-                debug!("Frame {} complete: {} bytes", header_vid.frame_id, full_image.len());
-
-                if config_udp_vid.debug_frag_udp_cam {
-                    if header_vid.frame_id == 10 {
-                        for chunk in full_image.chunks(16) {
-                            let hex = chunk.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
-                            debug!("{}", hex);
-                        }
-                    }
+        // Si le puzzle est complet, on reconstruit et on nettoie
+        if puzzle.is_complete() {
+            if let Some(completed) = self.puzzles.remove(&id) {
+                let full_data = completed.rebuild();
+                
+                if self.mode == ReassemblyMode::Volatile {
+                    self.last_completed_id = id;
                 }
                 
-                if tx_img.send(full_image).is_ok() {
-                    last_completed_id = header_vid.frame_id;
-                    camera_connected.store(true, Ordering::Relaxed);
-                }
-                
+                return Some(full_data);
             }
         }
+
+        None
     }
 }

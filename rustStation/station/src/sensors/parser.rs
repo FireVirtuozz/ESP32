@@ -2,7 +2,7 @@ use std::error::Error;
 
 use eframe::Frame;
 
-use crate::{error::AppError, monitor::{PacketEsp, PacketImu, PacketTemperature, PacketUltrasonic}};
+use crate::{error::AppError, sensors::{PacketEsp, PacketImu, PacketTemperature, PacketUltrasonic}};
 
 pub fn parse_buffer_ina(buffer : &[u8]) -> Result<super::PacketIna, AppError> {
     let bus_voltage       = i16::from_le_bytes(buffer[0..2].try_into()?);
@@ -61,46 +61,24 @@ pub fn parse_buffer_mpu(buffer : &[u8]) -> Result<super::PacketImu, AppError> {
     })
 }
 
-pub struct FrameUdpHeader {
+pub struct SensorsUdpHeader {
     pub ftype: u8,
-    pub flags: u8,
+    pub esp_id: u8,
     pub timestamp: u32,
     //pub checksum: u16, for later use
 }
 
 //size from a manual constant, to avoid padding from struct in memory when using "sizeof"
-pub const HEADER_SIZE: usize = 6;
+pub const SENSORS_HEADER_SIZE: usize = 6;
 
-impl FrameUdpHeader {
+impl SensorsUdpHeader {
     pub fn header_from_buffer(buf: &[u8]) -> Result<Self, AppError> {
-        if buf.len() < HEADER_SIZE {
+        if buf.len() < SENSORS_HEADER_SIZE {
             return Err("Header not valid".into())
         }
 
-        //example with get
-        let ftype = match buf.get(0) {
-            //here, using "&var" because get returns a "&u8"
-            //so according to pattern, "&var" means that "var = u8"
-            //otherwise, if "var" only, then "var = &u8"
-            Some(&frame_type) => match frame_type {
-                0 => {
-                    //println!("Frame valid, of type monitor");
-                    frame_type
-                },
-                1 => {
-                    //println!("Frame valid, of type log");
-                    frame_type
-                },
-                2 => {
-                    //println!("Frame valid, of type log");
-                    frame_type
-                },
-                _ => return Err("Unvalid type in frame".into()),
-            },
-            _ => return Err("Frame not valid".into()),
-        };
-
-        let flags = buf[1];
+        let ftype = buf[0];
+        let esp_id = buf[1];
         let timestamp = u32::from_le_bytes([
             buf[2],
             buf[3],
@@ -110,29 +88,8 @@ impl FrameUdpHeader {
 
         Ok(Self {
             ftype,
-            flags,
+            esp_id,
             timestamp,
-        })
-    }
-}
-
-pub const HEADER_VID_SIZE: usize = 4 + 1 + 1;
-pub struct HeaderUdpVid {
-    pub frame_id: u32,
-    pub frag_total: u8,
-    pub frag_idx: u8,
-}
-
-impl HeaderUdpVid {
-    pub fn header_vid_parse(buf: &[u8]) -> Result<Self, AppError> {
-        if buf.len() < HEADER_VID_SIZE {
-            return Err("Header not valid".into())
-        }
-
-        Ok(Self {
-            frame_id:    u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]),
-            frag_total:  buf[4],
-            frag_idx:    buf[5],
         })
     }
 }

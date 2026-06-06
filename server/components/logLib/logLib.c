@@ -47,7 +47,9 @@ static uint16_t serialize_log(header_log_t *hd, uint8_t* buf) {
     len++;
     memcpy(&buf[len], hd->tag, tag_length * sizeof(char));
     len += tag_length * sizeof(char);
-    memcpy(&buf[len], hd->msg, strlen(hd->msg) * sizeof(char));
+    uint16_t msg_len = (uint16_t)strlen(hd->msg);
+    memcpy(&buf[len], hd->msg, msg_len);
+    len += msg_len;
     return len;
 }
 

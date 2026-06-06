@@ -15,30 +15,42 @@ pub struct DumpEntry {
 impl DumpEntry {
     /// Parse le gros Vec<u8> réassemblé pour créer la structure
     pub fn parse_from_buf(bytes: &[u8]) -> Option<Self> {
-        if bytes.len() < 12 { return None; } // Sécurité minimale (1 + 8 + 1 + 1 + 1)
+        // Sécurité minimale : esp_id(1) + timestamp(4) + lib_len(1) + name_len(1) = 7 octets minimum
+        if bytes.len() < 7 { return None; } 
 
-        let esp_id = bytes[0];
+        let mut cursor = 0;
+
+        // 1. ESP ID
+        let esp_id = bytes[cursor];
+        cursor += 1;
         
-        // Extraction du f64 (timestamp)
-        let timestamp = u32::from_be_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]);
+        // 2. Timestamp (Little Endian)
+        let timestamp_bytes: [u8; 4] = bytes[cursor..cursor+4].try_into().ok()?;
+        let timestamp = u32::from_le_bytes(timestamp_bytes);
+        cursor += 4;
 
-        // Extraction de la Library
-        let lib_len = bytes[5] as usize;
-        let lib_start = 6;
-        let lib_end = lib_start + lib_len;
+        // 3. Extraction de la Library
+        if cursor >= bytes.len() { return None; }
+        let lib_len = bytes[cursor] as usize;
+        cursor += 1;
+
+        let lib_end = cursor + lib_len;
         if lib_end > bytes.len() { return None; }
-        let library = String::from_utf8_lossy(&bytes[lib_start..lib_end]).into_owned();
+        let library = String::from_utf8_lossy(&bytes[cursor..lib_end]).into_owned();
+        cursor = lib_end; // Le curseur avance à la fin de la chaîne library
 
-        // Extraction du Name
-        if lib_end >= bytes.len() { return None; }
-        let name_len = bytes[lib_end] as usize;
-        let name_start = lib_end + 1;
-        let name_end = name_start + name_len;
+        // 4. Extraction du Name
+        if cursor >= bytes.len() { return None; }
+        let name_len = bytes[cursor] as usize;
+        cursor += 1;
+
+        let name_end = cursor + name_len;
         if name_end > bytes.len() { return None; }
-        let name = String::from_utf8_lossy(&bytes[name_start..name_end]).into_owned();
+        let name = String::from_utf8_lossy(&bytes[cursor..name_end]).into_owned();
+        cursor = name_end; // Le curseur avance à la fin de la chaîne name
 
-        // Le reste du paquet, c'est le gros contenu du Dump
-        let content = String::from_utf8_lossy(&bytes[name_end..]).into_owned();
+        // 5. Le reste, c'est le contenu du Dump
+        let content = String::from_utf8_lossy(&bytes[cursor..]).into_owned();
 
         Some(Self { library, name, esp_id, timestamp, content })
     }

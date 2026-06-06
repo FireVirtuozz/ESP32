@@ -189,6 +189,7 @@ dump_t * dump_init(const char* name, const char* library) {
         log_msg_lvl(ESP_LOG_ERROR, TAG, "Error allocating dump");
         return NULL;
     }
+    memset(dump, 0, sizeof(dump_t));
 
 
     int written_name = snprintf(dump->name, sizeof(dump->name), "%s", name);

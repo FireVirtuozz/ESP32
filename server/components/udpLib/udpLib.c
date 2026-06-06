@@ -415,9 +415,9 @@ void udp_server_init()
     
 }
 
-//#define HOST_IP_ADDR "192.168.4.2" /*esp - lenovo*/
+#define HOST_IP_ADDR "192.168.4.2" /*esp - lenovo*/
 //#define HOST_IP_ADDR "192.168.1.48" /*Bbox - lenovo*/
-#define HOST_IP_ADDR "192.168.1.163" /*Bbox - asus*/
+//#define HOST_IP_ADDR "192.168.1.163" /*Bbox - asus*/
 
 #define PORT_SENSORS 34254
 #define VIDEO_PORT 34255
@@ -433,8 +433,12 @@ typedef struct udp_msg_st {
 } udp_msg_t;
 
 static void send_msg_to_queue(const uint8_t * data, uint32_t len, QueueHandle_t queue) {
-    if (data == NULL || queue == NULL) {
-        log_msg_lvl(ESP_LOG_ERROR, TAG, "Invalid args send udp");
+    if (data == NULL) {
+        ESP_LOGE(TAG, "Invalid data arg send udp to queue");
+        return;
+    }
+    if (queue == NULL) {
+        ESP_LOGE(TAG, "Invalid queue arg send udp to queue");
         return;
     }
 
@@ -447,15 +451,16 @@ static void send_msg_to_queue(const uint8_t * data, uint32_t len, QueueHandle_t 
         msg.len = len;
     
         if (xQueueSend(queue, &msg, 0) != pdTRUE) {
-            log_msg_lvl(ESP_LOG_WARN, TAG, "Queue full, freeing data");
+            ESP_LOGW(TAG, "Queue full, freeing data");
             free(msg.data);
         }
     } else {
-        log_msg_lvl(ESP_LOG_ERROR, TAG, "Failed allocating buf cpy");
+        ESP_LOGE(TAG, "Failed allocating buf cpy");
     }
 }
 
 void send_udp_log(const uint8_t * data, uint32_t len){
+    ESP_LOGI(TAG, "Sending udp log to queue (%u)", len);
     uint32_t size = len;
     if (len > UDP_MAX_SIZE) {
         //ensure size
@@ -557,7 +562,7 @@ static void udp_client_generic_task(void *pvParameters)
         } else {
             uint16_t frame_size = 0;
             if (msg_tmp.len > UDP_MAX_SIZE) {
-                log_msg_lvl(ESP_LOG_WARN, TAG, "size overflow udp client");
+                ESP_LOGW(TAG, "size overflow udp client");
                 frame_size = UDP_MAX_SIZE;
             } else {
                 frame_size = msg_tmp.len;
@@ -565,7 +570,7 @@ static void udp_client_generic_task(void *pvParameters)
             int err;
             err = sendto(sock, msg_tmp.data, frame_size, 0, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
             if (err < 0) {
-                log_msg_lvl(ESP_LOG_ERROR, TAG, "Error occurred during sending (%s)", strerror(errno));
+                ESP_LOGE(TAG, "Error occurred during sending (%s)", strerror(errno));
             }
         }
         
@@ -671,5 +676,7 @@ void udp_client_init()
     if (res != pdPASS) {
         log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%d) create client dump UDP task", res);
     }
+
+    log_msg(TAG, "UDP client initialized");
     
 }

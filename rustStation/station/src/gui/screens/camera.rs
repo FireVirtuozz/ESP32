@@ -90,7 +90,7 @@ impl CameraScreen {
                     }
                 }, 
                 CamFormat::YUV => {
-                    let (cam_height, cam_width) = config_egui.cam_res.dimensions();
+                    let (cam_width, cam_height) = config_egui.cam_res.dimensions();
                     let expected_len = cam_width * cam_height * 2;
 
                     if binary_data.len() == expected_len {

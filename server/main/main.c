@@ -77,6 +77,7 @@ void app_main()
 
 #if CONFIG_USE_UDPLIB
     udp_server_init();
+    udp_client_init();
 #endif
 #if CONFIG_USE_MQTTLIB
     mqtt_start();
@@ -102,17 +103,13 @@ void app_main()
     init_sensors();
 #endif
 
-#if CONFIG_USE_UDPLIB
-    udp_client_init();
-#endif
-
 #if CONFIG_USE_ESPNOW
     espnow_init();
 #endif
 
     
 
-    //vTaskDelay(pdMS_TO_TICKS(20000));
+    vTaskDelay(pdMS_TO_TICKS(10000));
     print_chip_info();
 
 #if CONFIG_DEBUG_WIFI

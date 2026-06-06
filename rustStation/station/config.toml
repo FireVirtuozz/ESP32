@@ -1,5 +1,5 @@
 cam_res = "qqvga"
-cam_format = "yuv"
+cam_format = "jpeg"
 
 debug_frag_udp_cam = false
 

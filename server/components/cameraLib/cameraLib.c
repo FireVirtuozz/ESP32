@@ -1,7 +1,10 @@
 #include "cameraLib.h"
+
+#if CONFIG_USE_UDPLIB
 #include "udpLib.h"
+#endif
+
 #include "logLib.h"
-#include "udpLib.h"
 #include "esp_camera.h"
 #include "esp_timer.h"
 
@@ -49,7 +52,7 @@ static camera_config_t camera_config = {
 
     //with encryption, it reduces the frequency available in DMA
     //17.5Mhz is the maximum available for the camera, without Wifi, in RGB565
-    .xclk_freq_hz = 17500000,
+    .xclk_freq_hz = 24000000,
     .ledc_timer = LEDC_TIMER_0,
     .ledc_channel = LEDC_CHANNEL_0,
     .fb_location = CAMERA_FB_IN_PSRAM,
@@ -72,8 +75,8 @@ static camera_config_t camera_config = {
 
 
     .jpeg_quality = 15, //0-63, for OV series camera sensors, lower number means higher quality
-    .fb_count = 1, //When jpeg mode is used, if fb_count more than one, the driver will work in continuous mode.
-    .grab_mode = CAMERA_GRAB_WHEN_EMPTY // Sets when buffers should be filled
+    .fb_count = 2, //When jpeg mode is used, if fb_count more than one, the driver will work in continuous mode.
+    .grab_mode = CAMERA_GRAB_LATEST // Sets when buffers should be filled
 };
 
 
@@ -93,27 +96,14 @@ static void jpg_stream_udp(void *param){
             continue;
         }
 
-#ifdef CONFIG_CAM_FORMAT_JPEG
-        uint8_t * out_buf = NULL;
-        size_t out_len = 0;
-        bool converted = frame2jpg(fb, 50, &out_buf, &out_len);
-#elif defined(CONFIG_CAM_FORMAT_YUV) || defined(CONFIG_CAM_FORMAT_RGB)
-        uint8_t * out_buf = malloc(sizeof(uint8_t) * fb->len);
-        size_t out_len = fb->len;
-
-        memcpy(out_buf, fb->buf, out_len);
-
-        bool converted = true;
+#if CONFIG_USE_UDPLIB
+        if (fb->buf != NULL && fb->len > 0) {
+            send_udp_jpeg(fb->buf, fb->len);
+        }
 #endif
 
         esp_camera_fb_return(fb);
-
-        if (converted) {
-            //log_msg(TAG, "Image converted, len: %u", out_len);
-            send_udp_jpeg(out_buf, out_len);
-        } else {
-            if (out_buf != NULL) free(out_buf);
-        }
+        
         
         #if CONFIG_FPS_COUNT
         frame_count++;

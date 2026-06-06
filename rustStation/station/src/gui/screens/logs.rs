@@ -32,6 +32,16 @@ impl LogLevel {
             _ => Err("Invalid value for LogLevel".into()),
         }
     }
+
+    fn as_str(&self) -> &'static str {
+        match self {
+            LogLevel::VERBOSE => "VRB",
+            LogLevel::DEBUG   => "DBG",
+            LogLevel::INFO    => "INF",
+            LogLevel::WARN    => "WRN",
+            LogLevel::ERROR   => "ERR",
+        }
+    }
 }
 
 pub struct LogPacket {
@@ -45,13 +55,23 @@ pub struct LogPacket {
 impl LogPacket {
 
     pub fn log_from_buffer(buf: &[u8]) -> Result<Self, AppError> {
-        Ok(Self {
+        let tag_len = buf[6];
+        Ok(
+            Self {
             esp_id: buf[0],
             timestamp: u32::from_le_bytes([buf[1], buf[2], buf[3], buf[4]]),
             level: LogLevel::level_from_value(buf[5])?,
-            tag: from_utf8(&buf[7 .. buf[6] as usize])?.to_owned(),
-            msg: from_utf8(&buf[buf[6] as usize .. buf.len()])?.to_owned(),
+            tag: from_utf8(&buf[7 .. 7 + tag_len as usize])?.to_owned(),
+            msg: from_utf8(&buf[7 + tag_len as usize .. buf.len()])?.to_owned(),
         })
+    }
+
+    pub fn formatted_time(&self) -> String {
+        let total_secs = self.timestamp / 1000;
+        let mins = total_secs / 60;
+        let secs = total_secs % 60;
+        let ms = self.timestamp % 1000;
+        format!("[{:02}:{:02}.{:03}]", mins, secs, ms)
     }
 }
 
@@ -75,8 +95,9 @@ impl LogsScreen {
             .frame(egui::Frame::none().fill(Color32::from_rgb(10, 12, 16)))
             .show(ctx, |ui| {
                 self.render_toolbar(ui, logs.len());
-                ui.add_space(2.0);
+                ui.add_space(4.0);
                 ui.separator();
+                ui.add_space(2.0);
                 self.render_logs(ui, logs);
             });
     }
@@ -84,39 +105,42 @@ impl LogsScreen {
     fn render_toolbar(&mut self, ui: &mut Ui, count: usize) {
         ui.horizontal(|ui| {
             ui.label(
-                RichText::new("▌LOGS")
+                RichText::new("▌ SYSTEM LOGS")
                     .font(FontId::monospace(13.0))
                     .color(Color32::from_rgb(80, 200, 120)),
             );
 
             ui.label(
-                RichText::new(format!("{} entries", count))
+                RichText::new(format!("({} entries)", count))
                     .font(FontId::monospace(11.0))
-                    .color(Color32::from_gray(80)),
+                    .color(Color32::from_gray(100)),
             );
 
-            ui.add_space(8.0);
+            ui.add_space(12.0);
 
+            // Filtre de recherche global
             ui.add(
                 TextEdit::singleline(&mut self.search)
-                    .hint_text("filter...")
+                    .hint_text("🔍 Filter by msg, tag, level...")
                     .font(FontId::monospace(11.0))
                     .text_color(Color32::from_gray(200))
-                    .desired_width(180.0),
+                    .desired_width(220.0),
             );
 
+            // Bouton auto-scroll aligné à droite
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let (label, color) = if self.auto_scroll {
-                    ("⬇ AUTO", Color32::from_rgb(80, 200, 120))
+                    ("⬇ AUTO SCROLL", Color32::from_rgb(80, 200, 120))
                 } else {
-                    ("⬇ MANUAL", Color32::from_gray(100))
+                    ("⏸ MANUAL", Color32::from_gray(120))
                 };
+                
                 if ui.add(
                     egui::Button::new(
-                        RichText::new(label).font(FontId::monospace(11.0)).color(color)
+                        RichText::new(label).font(FontId::new(10.0, egui::FontFamily::Monospace)).color(color)
                     )
-                    .fill(Color32::from_rgb(20, 24, 32))
-                    .stroke(egui::Stroke::new(1.0, color)),
+                    .fill(Color32::from_rgb(18, 22, 30))
+                    .stroke(egui::Stroke::new(1.0, color.linear_multiply(0.5))),
                 ).clicked() {
                     self.auto_scroll = !self.auto_scroll;
                 }
@@ -131,63 +155,66 @@ impl LogsScreen {
             .show(ui, |ui| {
                 ui.set_min_width(ui.available_width());
 
-                for (i, packet) in logs.iter().enumerate() {
-                    let msg = &packet.msg;
+                let search_lower = self.search.to_lowercase();
 
-                    if !self.search.is_empty()
-                        && !msg.to_lowercase().contains(&self.search.to_lowercase())
+                for (i, packet) in logs.iter().enumerate() {
+                    // Match de recherche intelligent (Cherche dans le message, le tag ou le nom du level)
+                    if !self.search.is_empty() 
+                        && !packet.msg.to_lowercase().contains(&search_lower)
+                        && !packet.tag.to_lowercase().contains(&search_lower)
+                        && !packet.level.as_str().to_lowercase().contains(&search_lower)
                     {
                         continue;
                     }
 
-                    let (color, content) = (packet.level.to_color(), msg);
-
+                    // Alternance background
                     let bg = if i % 2 == 0 {
                         Color32::from_rgb(14, 16, 22)
                     } else {
-                        Color32::from_rgb(10, 12, 16)
+                        Color32::from_rgb(8, 10, 14)
                     };
 
                     egui::Frame::none()
                         .fill(bg)
-                        .inner_margin(egui::Margin::symmetric(6.0, 2.0))
+                        .inner_margin(egui::Margin::symmetric(8.0, 3.0))
                         .show(ui, |ui| {
                             ui.set_min_width(ui.available_width());
                             ui.horizontal(|ui| {
-                                // Numéro de ligne
+                                
+                                // 1. Index de ligne
                                 ui.label(
                                     RichText::new(format!("{:>4}", i + 1))
-                                        .font(FontId::monospace(11.0))
-                                        .color(Color32::from_gray(40)),
+                                        .font(FontId::monospace(10.0))
+                                        .color(Color32::from_gray(50)),
                                 );
 
+                                // 2. Timestamp formaté de l'ESP32 [MM:SS.mmm]
                                 ui.label(
-                                    RichText::new("│")
+                                    RichText::new(packet.formatted_time())
                                         .font(FontId::monospace(11.0))
-                                        .color(Color32::from_gray(30)),
+                                        .color(Color32::from_rgb(130, 140, 150)),
                                 );
 
-                                // Couleur du level en carré
-                                let (_, level_str) = if msg.starts_with('[') {
-                                    let end = msg.find(']').unwrap_or(0);
-                                    (color, &msg[..=end])
-                                } else {
-                                    (color, "")
-                                };
-
-                                if !level_str.is_empty() {
-                                    ui.label(
-                                        RichText::new(level_str)
-                                            .font(FontId::monospace(11.0))
-                                            .color(color),
-                                    );
-                                }
-
-                                // Message
+                                // 3. Badge du niveau de log [INF], [WRN], etc.
+                                let lvl_color = packet.level.to_color();
                                 ui.label(
-                                    RichText::new(content)
+                                    RichText::new(format!("[{}]", packet.level.as_str()))
+                                        .font(FontId::new(11.0, egui::FontFamily::Monospace))
+                                        .color(lvl_color),
+                                );
+
+                                // 4. Le Tag (ex: CAMERA, WIFI) en jaune/orange discret pour bien le dissocier
+                                ui.label(
+                                    RichText::new(format!("{}:", packet.tag))
+                                        .font(FontId::new(11.0, egui::FontFamily::Monospace))
+                                        .color(Color32::from_rgb(220, 160, 100)),
+                                );
+
+                                // 5. Le message de log textuel
+                                ui.label(
+                                    RichText::new(&packet.msg)
                                         .font(FontId::monospace(11.0))
-                                        .color(Color32::from_gray(200)),
+                                        .color(Color32::from_gray(210)),
                                 );
                             });
                         });

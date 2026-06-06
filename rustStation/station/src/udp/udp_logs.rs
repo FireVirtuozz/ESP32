@@ -4,7 +4,7 @@ use log::{debug, error};
 
 use crate::{config::AppConfig, error::AppError, gui::screens::logs::LogPacket, sensors::{TelemetryEnum, TelemetryPacket, parser::{SENSORS_HEADER_SIZE, SensorsUdpHeader, parse_buffer_hall, parse_buffer_ina, parse_buffer_mpu, parse_buffer_ultrasonic}}};
 
-const MAX_SIZE_LOGS_BUF: usize = 256;
+const MAX_SIZE_LOGS_BUF: usize = 1400;
 
 //return Result, allows us to use ? error propagation in fn 
 pub fn udp_logs_server_init(
@@ -30,7 +30,6 @@ fn udp_logs_loop(
     // Receives a single datagram message on the socket. If `buf` is too small to hold
     // the message, it will be cut off.
     let mut buf = [0; MAX_SIZE_LOGS_BUF];
-    let mut dump_log = VecDeque::<LogPacket>::new();
     loop {
         
         let (amt, src) = socket.recv_from(&mut buf)?;

@@ -4,6 +4,7 @@ use egui::{Color32, FontId, RichText, ScrollArea};
 
 use crate::gui::ScreensTypes;
 
+#[derive(Debug)]
 pub struct DumpEntry {
     pub library: String,
     pub name: String,

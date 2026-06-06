@@ -47,9 +47,10 @@ fn udp_server_dump(
         if let Some(full_dump_bytes) = reassembler.push_fragment(header, payload) {
             // Le puzzle est complet ! On a TOUS les octets du dump.
             // On les passe au parseur pour fabriquer notre belle struct pleine de Strings
-            debug!("dump raw received : {:?}", full_dump_bytes);
+            //debug!("dump raw received : {:?}", full_dump_bytes);
             if let Some(dump_entry) = DumpEntry::parse_from_buf(&full_dump_bytes) {
                 // On envoie la struct finale bien propre à Egui
+                debug!("dump raw received : {:?}", dump_entry);
                 let _ = tx_dump.send(dump_entry);
             }
         }

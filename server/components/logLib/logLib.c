@@ -72,7 +72,7 @@ static uint16_t serialize_dump(header_dump_t *hd, uint8_t* buf) {
     len++;
     memcpy(&buf[len], hd->library, library_length);
     len += library_length;
-    uint8_t name_len = (uint8_t)strlen(hd->msg) * sizeof(char);
+    uint8_t name_len = (uint8_t)strlen(hd->name) * sizeof(char);
     buf[len] = name_len;
     len++;
     memcpy(&buf[len], hd->name, name_len);

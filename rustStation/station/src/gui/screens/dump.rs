@@ -142,32 +142,36 @@ impl DumpScreen {
                     });
                     ui.separator();
 
-                    // On cherche l'entrée correspondante pour l'afficher
-                    // (Idéalement la plus récente si tu en reçois plusieurs avec le même nom)
-                    if let Some(target_entry) = dumps.iter()
+                    // 1. On récupère TOUTES les entrées qui matchent
+                    let matching_entries: Vec<&DumpEntry> = dumps.iter()
                         .filter(|e| &e.library == lib && &e.name == name)
-                        .last() { // .last() prend le dernier reçu (le plus récent)
-                        
+                        .collect();
+
+                    if !matching_entries.is_empty() {
                         ScrollArea::vertical()
                             .auto_shrink([false; 2])
                             .stick_to_bottom(self.auto_scroll)
                             .show(ui, |ui| {
-                                // Affichage du timestamp de l'ESP32
-                                let seconds = target_entry.timestamp as f64 / 1000.0;
-                                ui.label(RichText::new(format!("[Timestamp ESP: {:.3} s]", seconds))
-                                    .color(Color32::GRAY)
-                                    .font(FontId::monospace(11.0)));
-                                ui.add_space(8.0);
                                 
+                                // 2. On affiche chaque ligne trouvée
                                 egui::Frame::canvas(ui.style()).show(ui, |ui| {
+                                    // Ici, on concatène tout pour l'affichage
+                                    let mut full_text = String::new();
+                                    for entry in &matching_entries {
+                                        full_text.push_str(&entry.content);
+                                        // Pas besoin de \n ici si ton content en contient déjà un
+                                    }
+
                                     ui.add_sized(
                                         ui.available_size(),
-                                        egui::Label::new(RichText::new(&target_entry.content).font(FontId::monospace(12.0)))
-                                            .selectable(true) // Permet à l'utilisateur de copier le texte
-                                            .wrap(false)      // 👈 ICI : Désactive complètement le retour à la ligne automatique
+                                        egui::Label::new(RichText::new(full_text).font(FontId::monospace(12.0)))
+                                            .selectable(true)
+                                            .wrap(false)
                                     );
                                 });
                             });
+                    } else {
+                        ui.label("En attente de données...");
                     }
                 }
                 (Some(lib), None) => {

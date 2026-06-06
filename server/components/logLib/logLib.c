@@ -61,7 +61,7 @@ static uint16_t serialize_log(header_log_t *hd, uint8_t* buf) {
     return len;
 }
 
-static uint16_t serialize_dump(header_dump_t *hd, uint8_t* buf) {
+static uint16_t serialize_dump(const header_dump_t *hd, uint8_t* buf, const uint16_t offset) {
     uint16_t len = 0;
     buf[len] = hd->esp_id;
     len++;
@@ -77,9 +77,8 @@ static uint16_t serialize_dump(header_dump_t *hd, uint8_t* buf) {
     len++;
     memcpy(&buf[len], hd->name, name_len);
     len += name_len;
-    uint16_t msg_len = (uint16_t)strlen(hd->msg) * sizeof(char);
-    memcpy(&buf[len], hd->msg, msg_len);
-    len += msg_len;
+    memcpy(&buf[len], hd->msg, offset);
+    len += offset;
     return len;
 }
 
@@ -270,7 +269,11 @@ esp_err_t dump_deploy(dump_t ** dump) {
     header.name = (*dump)->name;
     header.msg = (*dump)->buffer;
     header.library = (*dump)->library;
-    msg_len = serialize_dump(&header, msg);
+    msg_len = serialize_dump(&header, msg, (*dump)->offset);
+
+    ESP_LOGW(TAG, "sending udp dump: len %u, offset %u, strlen %u", msg_len, (*dump)->offset,
+        strlen((*dump)->buffer));
+    ESP_LOG_BUFFER_HEXDUMP("DEBUG_DUMP", (*dump)->buffer, (*dump)->offset, ESP_LOG_WARN);
 
     send_udp_dump(msg, msg_len);
     free(msg);

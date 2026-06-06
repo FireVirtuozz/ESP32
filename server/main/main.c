@@ -109,7 +109,7 @@ void app_main()
 
     
 
-    vTaskDelay(pdMS_TO_TICKS(20000));
+    vTaskDelay(pdMS_TO_TICKS(10000));
     print_chip_info();
 
 #if CONFIG_DEBUG_WIFI

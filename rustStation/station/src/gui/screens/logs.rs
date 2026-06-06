@@ -188,6 +188,12 @@ impl LogsScreen {
                                         .color(Color32::from_gray(50)),
                                 );
 
+                                ui.label(
+                                    RichText::new(format!("[ESP #{}]", packet.esp_id))
+                                        .font(FontId::monospace(11.0))
+                                        .color(Color32::from_rgb(130, 140, 150)),
+                                );
+
                                 // 2. Timestamp formaté de l'ESP32 [MM:SS.mmm]
                                 ui.label(
                                     RichText::new(packet.formatted_time())

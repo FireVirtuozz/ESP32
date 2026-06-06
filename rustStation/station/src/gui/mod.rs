@@ -88,6 +88,10 @@ impl eframe::App for MyApp {
             self.frame = Some(packet);
         }
 
+        while let Ok(packet) = self.rx_dump.try_recv() {
+            self.dumps.push(packet);
+        }
+
         match self.screen {
             ScreensTypes::Sensors => self.screens.sensors_screen.show(ctx, &self.data),
             ScreensTypes::Commands => self.screens.commands_screen.show(ctx, &self.controller_connected, &self.rx_ctrl, &mut self.screen),

@@ -11,8 +11,11 @@ typedef esp_log_level_t log_level_t;
 #define LOG_LEVEL (ESP_LOG_INFO)
 
 #define BUFFER_DUMP_SIZE 2048
+#define NAME_DUMP_SIZE 30
 
 typedef struct dump_st {
+    char name[NAME_DUMP_SIZE];
+    char library[NAME_DUMP_SIZE];
     char buffer[BUFFER_DUMP_SIZE];
     uint16_t offset;
 } dump_t;
@@ -26,7 +29,7 @@ void log_msg(const char* tag, const char* fmt, ...);
 esp_err_t log_init();
 
 //init large dump
-dump_t * dump_init(const char* tag);
+dump_t * dump_init(const char* name, const char* library);
 
 esp_err_t dump_add_line(dump_t * dump, const char* fmt, ...);
 

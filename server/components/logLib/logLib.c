@@ -34,6 +34,14 @@ typedef struct header_log_st {
     const char* msg;
 } header_log_t;
 
+typedef struct header_dump_st {
+    uint8_t esp_id;
+    uint32_t timestamp;
+    const char* library;
+    const char* name;
+    const char* msg;
+} header_dump_t;
+
 static uint16_t serialize_log(header_log_t *hd, uint8_t* buf) {
     uint16_t len = 0;
     buf[len] = hd->esp_id;
@@ -48,6 +56,28 @@ static uint16_t serialize_log(header_log_t *hd, uint8_t* buf) {
     memcpy(&buf[len], hd->tag, tag_length * sizeof(char));
     len += tag_length * sizeof(char);
     uint16_t msg_len = (uint16_t)strlen(hd->msg);
+    memcpy(&buf[len], hd->msg, msg_len);
+    len += msg_len;
+    return len;
+}
+
+static uint16_t serialize_dump(header_dump_t *hd, uint8_t* buf) {
+    uint16_t len = 0;
+    buf[len] = hd->esp_id;
+    len++;
+    memcpy(&buf[len], &hd->timestamp, sizeof(uint32_t));
+    len += sizeof(uint32_t);
+    uint8_t library_length = (uint8_t)strlen(hd->library) * sizeof(char);
+    buf[len] = library_length;
+    len++;
+    memcpy(&buf[len], hd->library, library_length);
+    len += library_length;
+    uint8_t name_len = (uint8_t)strlen(hd->msg) * sizeof(char);
+    buf[len] = name_len;
+    len++;
+    memcpy(&buf[len], hd->name, name_len);
+    len += name_len;
+    uint16_t msg_len = (uint16_t)strlen(hd->msg) * sizeof(char);
     memcpy(&buf[len], hd->msg, msg_len);
     len += msg_len;
     return len;
@@ -152,7 +182,7 @@ esp_err_t log_init() {
     return ESP_OK;
 }
 
-dump_t * dump_init(const char* tag) {
+dump_t * dump_init(const char* name, const char* library) {
 
     dump_t * dump = (dump_t*)malloc(sizeof(struct dump_st));
     if (dump == NULL) {
@@ -161,9 +191,18 @@ dump_t * dump_init(const char* tag) {
     }
 
 
-    int written = snprintf(dump->buffer, sizeof(dump->buffer), "[%s]\n", tag);
-    if (written > 0) {
-        dump->offset = written;
+    int written_name = snprintf(dump->name, sizeof(dump->name), "%s", name);
+    if (written_name > 0) {
+        dump->offset = 0;
+    } else {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error initializing dump");
+        free(dump);
+        return NULL;
+    }
+
+    int written_lib = snprintf(dump->library, sizeof(dump->library), "%s", library);
+    if (written_lib > 0) {
+        dump->offset = 0;
     } else {
         log_msg_lvl(ESP_LOG_ERROR, TAG, "Error initializing dump");
         free(dump);
@@ -220,7 +259,20 @@ esp_err_t dump_deploy(dump_t ** dump) {
 #endif
 
 #if CONFIG_LOG_UDP
-    send_udp_dump((uint8_t*)(*dump)->buffer, (*dump)->offset);
+
+    uint8_t *msg = malloc(sizeof(header_dump_t) + sizeof(dump_t));
+    uint16_t msg_len = 0;
+
+    header_dump_t header = {0};
+    header.esp_id = (uint8_t)CONFIG_ESP_ID;
+    header.timestamp = (uint32_t)(esp_timer_get_time() / 1000);
+    header.name = (*dump)->name;
+    header.msg = (*dump)->buffer;
+    header.library = (*dump)->library;
+    msg_len = serialize_dump(&header, msg);
+
+    send_udp_dump(msg, msg_len);
+    free(msg);
 #else
 
 #if CONFIG_LOG_ESPNOW

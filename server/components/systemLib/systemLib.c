@@ -267,7 +267,7 @@ void print_chip_info() {
     dump_t *d = NULL;
 
     // ====================== EFUSE REVISION ======================
-    d = dump_init("EFUSE REVISION");
+    d = dump_init("EFUSE REVISION", TAG);
     uint8_t mac[6];
     efuse_hal_get_mac(mac);
     dump_add_line(d, "Factory MAC address : %02X:%02X:%02X:%02X:%02X:%02X",
@@ -288,7 +288,7 @@ void print_chip_info() {
     // ========== CHIP INFO ==========
     esp_chip_info_t chip;
     esp_chip_info(&chip);
-    d = dump_init("CHIP INFO");
+    d = dump_init("CHIP INFO", TAG);
     dump_add_line(d, "Model        : %s", get_model_str(chip.model));
     dump_add_line(d, "Cores        : %d", chip.cores);
     dump_add_line(d, "Revision     : %d", chip.revision);
@@ -303,14 +303,14 @@ void print_chip_info() {
     dump_deploy(&d);
 
     // ========== MEMORY ==========
-    d = dump_init("MEMORY");
+    d = dump_init("MEMORY", TAG);
     dump_add_line(d, "Free heap          : %u bytes", esp_get_free_heap_size());
     dump_add_line(d, "Free internal heap : %u bytes", esp_get_free_internal_heap_size());
     dump_add_line(d, "Minimum free heap  : %u bytes", esp_get_minimum_free_heap_size());
     dump_deploy(&d);
 
     // ========== MAC ==========
-    d = dump_init("MAC");
+    d = dump_init("MAC", TAG);
     uint8_t base_mac[6], efuse_mac[6];
     err = esp_base_mac_addr_get(base_mac);
     if (err == ESP_OK) {
@@ -329,7 +329,7 @@ void print_chip_info() {
     dump_deploy(&d);
 
     // ========== CPU ==========
-    d = dump_init("CPU");
+    d = dump_init("CPU", TAG);
     dump_add_line(d, "Cycle cnt  : %u", esp_cpu_get_cycle_count());
     dump_add_line(d, "Stack ptr  : %p", esp_cpu_get_sp());
     dump_add_line(d, "Core ID    : %d", esp_cpu_get_core_id());
@@ -340,7 +340,7 @@ void print_chip_info() {
     dump_deploy(&d);
 
     // ========== APP ==========
-    d = dump_init("APP");
+    d = dump_init("APP", TAG);
     dump_add_line(d, "ESP-IDF version    : %s", esp_get_idf_version());
     const esp_app_desc_t *app_desc = esp_app_get_description();
     if (app_desc) {
@@ -365,7 +365,7 @@ void print_chip_info() {
     // ========== APP HEADER ==========
     const esp_partition_t *partition = esp_partition_find_first(
         ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_ANY, NULL);
-    d = dump_init("APP HEADER");
+    d = dump_init("APP HEADER", TAG);
     if (partition == NULL) {
         dump_add_line(d, "Error accessing app partition");
     } else {
@@ -401,7 +401,7 @@ void print_chip_info() {
     dump_deploy(&d);
 
     // ========== BOOTLOADER DESCRIPTION ==========
-    d = dump_init("BOOTLOADER");
+    d = dump_init("BOOTLOADER", TAG);
     const esp_bootloader_desc_t *boot_desc = esp_bootloader_get_description();
     if (boot_desc != NULL) {
         dump_add_line(d, "Magic byte      : 0x%02X (%s)", boot_desc->magic_byte,
@@ -421,7 +421,7 @@ void print_chip_info() {
     dump_deploy(&d);
 
     // ========== EFUSE GLOBAL ==========
-    d = dump_init("EFUSE GLOBAL");
+    d = dump_init("EFUSE GLOBAL", TAG);
     uint32_t sec_ver = esp_efuse_read_secure_version();
     dump_add_line(d, "Flash encryption : %s", esp_efuse_is_flash_encryption_enabled() ? "ENABLED" : "disabled");
     dump_add_line(d, "Secure version   : %u", sec_ver);
@@ -436,7 +436,7 @@ void print_chip_info() {
 
         char block_tag[32];
         snprintf(block_tag, sizeof(block_tag), "EFUSE %s", get_efuse_block_str(block));
-        d = dump_init(block_tag);
+        d = dump_init(block_tag, TAG);
 
         bool is_key_block = (block >= EFUSE_BLK_KEY0 && block < EFUSE_BLK_KEY_MAX);
         bool rd_dis = false;
@@ -479,7 +479,7 @@ void print_chip_info() {
             dump_deploy(&d);
 
             // -- EFUSE BLK0 : SECURITY --
-            d = dump_init("EFUSE BLK0 SECURITY");
+            d = dump_init("EFUSE BLK0 SECURITY", TAG);
             dump_add_line(d, "JTAG_DISABLE         : %s (size: %d)", esp_efuse_read_field_bit(ESP_EFUSE_JTAG_DISABLE)            ? "YES" : "no", esp_efuse_get_field_size(ESP_EFUSE_JTAG_DISABLE));
             dump_add_line(d, "ABS_DONE_0           : %s (size: %d)", esp_efuse_read_field_bit(ESP_EFUSE_ABS_DONE_0)              ? "YES" : "no", esp_efuse_get_field_size(ESP_EFUSE_ABS_DONE_0));
             dump_add_line(d, "ABS_DONE_1           : %s (size: %d)", esp_efuse_read_field_bit(ESP_EFUSE_ABS_DONE_1)              ? "YES" : "no", esp_efuse_get_field_size(ESP_EFUSE_ABS_DONE_1));
@@ -499,7 +499,7 @@ void print_chip_info() {
             dump_deploy(&d);
 
             // -- EFUSE BLK0 : FLASH / CLOCK / SPI --
-            d = dump_init("EFUSE BLK0 FLASH SPI");
+            d = dump_init("EFUSE BLK0 FLASH SPI", TAG);
             uint8_t wr_dis = 0, rd_dis = 0;
             esp_efuse_read_field_blob(ESP_EFUSE_WR_DIS, &wr_dis, esp_efuse_get_field_size(ESP_EFUSE_WR_DIS));
             esp_efuse_read_field_blob(ESP_EFUSE_RD_DIS, &rd_dis, esp_efuse_get_field_size(ESP_EFUSE_RD_DIS));
@@ -592,7 +592,7 @@ void print_chip_info() {
             if (err != ESP_OK) {
                 log_msg(TAG, "Error (%s) event loop dump", esp_err_to_name(err));
             } else {
-                d = dump_init("EVENT LOOP");
+                d = dump_init("EVENT LOOP", TAG);
                 char *ptr = buf;
                 char *end = buf + strlen(buf);
                 while (ptr < end) {
@@ -623,7 +623,7 @@ void print_chip_info() {
             if (err != ESP_OK) {
                 log_msg(TAG, "Error (%s) mmu mapped blocks dump", esp_err_to_name(err));
             } else {
-                d = dump_init("MMU BLOCKS");
+                d = dump_init("MMU BLOCKS", TAG);
                 char *ptr = buf_mmu;
                 char *end = buf_mmu + strlen(buf_mmu);
                 while (ptr < end) {

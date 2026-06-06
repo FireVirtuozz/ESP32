@@ -887,7 +887,7 @@ static sta_info_strings_t *get_sta_info(wifi_sta_info_t sta) {
 static void print_record(wifi_ap_record_t ap_info) {
     char tag[64];
     snprintf(tag, sizeof(tag), "AP %s", ap_info.ssid);
-    dump_t *d = dump_init(tag);
+    dump_t *d = dump_init(tag, TAG);
  
     dump_add_line(d, "RSSI : %d dBm", ap_info.rssi);
     dump_add_line(d, "Auth : %s", get_authmode_str(ap_info.authmode));
@@ -1646,7 +1646,7 @@ void wifi_scan_task(void *pvParameter) {
     esp_err_t err;
  
     // ========== SCAN PARAMS ==========
-    d = dump_init("WIFI SCAN PARAMS");
+    d = dump_init("WIFI SCAN PARAMS", TAG);
     wifi_scan_default_params_t params;
     err = esp_wifi_get_scan_parameters(&params);
     if (err != ESP_OK) {
@@ -1690,7 +1690,7 @@ void wifi_scan_task(void *pvParameter) {
     }
  
     // ========== SCAN SUMMARY ==========
-    d = dump_init("WIFI SCAN SUMMARY");
+    d = dump_init("WIFI SCAN SUMMARY", TAG);
     dump_add_line(d, "Max slots : %u", DEFAULT_SCAN_LIST_SIZE);
     dump_add_line(d, "Total APs found : %u", ap_count);
     dump_add_line(d, "APs stored : %u", number);
@@ -1739,7 +1739,7 @@ void wifi_scan_esp() {
     wifi_mode_t mode;
 
     // ========== WIFI MODE / PS / BAND ==========
-    d = dump_init("WIFI GENERAL");
+    d = dump_init("WIFI GENERAL", TAG);
     err = esp_wifi_get_mode(&mode);
     if (err != ESP_OK) {
         dump_add_line(d, "Error on getting wifi mode %d", err);
@@ -1796,7 +1796,7 @@ void wifi_scan_esp() {
     dump_deploy(&d);
 
     // ========== WIFI PROTOCOLS ==========
-    d = dump_init("WIFI PROTOCOLS");
+    d = dump_init("WIFI PROTOCOLS", TAG);
     wifi_protocols_t protocols;
     if (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA) {
         err = esp_wifi_get_protocols(WIFI_IF_STA, &protocols);
@@ -1843,7 +1843,7 @@ void wifi_scan_esp() {
     dump_deploy(&d);
 
     // ========== WIFI COUNTRY ==========
-    d = dump_init("WIFI COUNTRY");
+    d = dump_init("WIFI COUNTRY", TAG);
     wifi_country_t country;
     err = esp_wifi_get_country(&country);
     if (err != ESP_OK) {
@@ -1857,7 +1857,7 @@ void wifi_scan_esp() {
     dump_deploy(&d);
 
     // ========== WIFI MAC ==========
-    d = dump_init("WIFI MAC");
+    d = dump_init("WIFI MAC", TAG);
     uint8_t mac[6];
     if (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA) {
         err = esp_wifi_get_mac(WIFI_IF_STA, mac);
@@ -1878,7 +1878,7 @@ void wifi_scan_esp() {
     dump_deploy(&d);
 
     // ========== WIFI PROMISCUOUS ==========
-    d = dump_init("WIFI PROMISCUOUS");
+    d = dump_init("WIFI PROMISCUOUS", TAG);
     bool en;
     err = esp_wifi_get_promiscuous(&en);
     if (err != ESP_OK) {
@@ -1914,7 +1914,7 @@ void wifi_scan_esp() {
 
     // ========== WIFI STA CONFIG ==========
     if (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA) {
-        d = dump_init("WIFI STA CONFIG");
+        d = dump_init("WIFI STA CONFIG", TAG);
         wifi_config_t conf;
         err = esp_wifi_get_config(WIFI_IF_STA, &conf);
         if (err != ESP_OK) {
@@ -1930,7 +1930,7 @@ void wifi_scan_esp() {
 
     // ========== WIFI AP CONFIG ==========
     if (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA) {
-        d = dump_init("WIFI AP CONFIG");
+        d = dump_init("WIFI AP CONFIG", TAG);
         wifi_config_t conf;
         err = esp_wifi_get_config(WIFI_IF_AP, &conf);
         if (err != ESP_OK) {
@@ -1946,7 +1946,7 @@ void wifi_scan_esp() {
 
     // ========== WIFI AP CONNECTED STAs ==========
     if (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA) {
-        d = dump_init("WIFI AP STAS");
+        d = dump_init("WIFI AP STAS", TAG);
         wifi_sta_list_t stas;
         err = esp_wifi_ap_get_sta_list(&stas);
         if (err != ESP_OK) {
@@ -1965,7 +1965,7 @@ void wifi_scan_esp() {
 
     // ========== WIFI STA STATUS ==========
     if (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA) {
-        d = dump_init("WIFI STA STATUS");
+        d = dump_init("WIFI STA STATUS", TAG);
 
         // connected AP info
         wifi_ap_record_t ap_info;
@@ -2018,7 +2018,7 @@ void wifi_scan_esp() {
 
     // ========== WIFI AP STATUS ==========
     if (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA) {
-        d = dump_init("WIFI AP STATUS");
+        d = dump_init("WIFI AP STATUS", TAG);
         uint16_t inactive;
         err = esp_wifi_get_inactive_time(WIFI_IF_AP, &inactive);
         if (err != ESP_OK) {

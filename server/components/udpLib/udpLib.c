@@ -308,7 +308,9 @@ static void udp_server_task(void *pvParameters)
 
             // Error occurred during receiving
             if (len < 0) {
+    #if CONFIG_PACKET_DEBUG
                 log_msg_lvl(ESP_LOG_ERROR, TAG, "recvfrom failed: errno %d", errno);
+    #endif
                 break;
             } else { // Data received
 

@@ -11,6 +11,9 @@
 
 #include "driver/i2c_master.h"
 
+#include "driver/spi_common.h"
+#include "driver/spi_master.h"
+
 #if CONFIG_USE_UDPLIB
 #include "udpLib.h"
 #endif
@@ -967,7 +970,7 @@ static void mpu_task(void * params) {
 
     err = init_mpu();
     if (err != ESP_OK){
-        return;
+        vTaskDelete(NULL);
     }
 
     while (monitoring)
@@ -994,6 +997,311 @@ static void mpu_task(void * params) {
     }
     vTaskDelete(NULL);
 }
+#endif
+
+#if CONFIG_USE_RFID_RC522
+
+#define PIN_NUM_MISO 19
+#define PIN_NUM_MOSI 23
+#define PIN_NUM_CLK  18
+#define PIN_NUM_CS   21
+#define PIN_NUM_RST  22
+
+#define RC522_REG_VERSION  0x37
+#define RC522_REG_TX_CONTROL 0x14
+
+// Registres du RC522
+#define RC522_REG_COMMAND      0x01
+#define RC522_REG_COMM_EN      0x02
+#define RC522_REG_COMM_IRQ     0x04
+#define RC522_REG_ERROR        0x06
+#define RC522_REG_FIFO_DATA    0x09
+#define RC522_REG_FIFO_LEVEL   0x0A
+#define RC522_REG_CONTROL      0x0C
+#define RC522_REG_BIT_FRAMING  0x0D
+
+// Commandes du RC522 (PCD)
+#define PCD_IDLE               0x00
+#define PCD_TRANSCEIVE         0x0C // Transmet et reçoit des données RF
+
+// Commandes des Cartes/Badges (PICC)
+#define PICC_REQA              0x26 // Request Type A (cherche une carte)
+#define PICC_ANTICOLL          0x93 // Anti-collision (demande l'UID)
+#define PICC_HALT              0x50 // Met la carte en sommeil
+
+#define RC522_REG_MODE          0x11  // Registre de définition du mode de transmission
+#define RC522_REG_TX_ASK        0x15  // Registre de configuration de la modulation TX
+#define RC522_REG_RF_CFG        0x26  // Registre du Gain de l'antenne
+
+// Fonction pour ÉCRIRE dans un registre du RC522
+static void rc522_write_reg(spi_device_handle_t spi, uint8_t reg, uint8_t val) {
+    uint8_t tx_data[2];
+    // Formate l'adresse : MSB = 0 (Write), adresse décalée, LSB = 0
+    tx_data[0] = (reg << 1) & 0x7E; 
+    tx_data[1] = val; // La valeur à injecter
+
+    spi_transaction_t t = {
+        .length = 16,           // 2 octets = 16 bits à transmettre
+        .tx_buffer = tx_data,
+        .rx_buffer = NULL       // On n'attend rien en retour
+    };
+
+    // Envoi immédiat sur le bus
+    spi_device_polling_transmit(spi, &t);
+}
+
+// Fonction pour LIRE un registre du RC522
+static uint8_t rc522_read_reg(spi_device_handle_t spi, uint8_t reg) {
+    uint8_t tx_data[2];
+    uint8_t rx_data[2];
+    
+    // Formate l'adresse : MSB = 1 (Read), adresse décalée, LSB = 0
+    tx_data[0] = ((reg << 1) & 0x7E) | 0x80; 
+    tx_data[1] = 0x00; // Octet de bourrage (dummy) pour laisser la puce répondre
+
+    spi_transaction_t t = {
+        .length = 16,           // 16 bits (8 bits adresse + 8 bits réponse)
+        .tx_buffer = tx_data,
+        .rx_buffer = rx_data
+    };
+
+    spi_device_polling_transmit(spi, &t);
+
+    // Le premier octet reçu pendant qu'on envoyait l'adresse est vide.
+    // Le vrai résultat est dans le deuxième octet.
+    return rx_data[1]; 
+}
+
+static esp_err_t rc522_to_card(spi_device_handle_t spi, uint8_t command, 
+                               uint8_t *send_data, uint8_t send_len, 
+                               uint8_t *back_data, uint32_t *back_len) {
+    
+    // 1. On nettoie les anciens ordres et les interruptions
+    rc522_write_reg(spi, RC522_REG_COMMAND, PCD_IDLE);
+    rc522_write_reg(spi, RC522_REG_COMM_IRQ, 0x7F);
+    
+    // 2. On vide le FIFO et on s'assure qu'il est prêt
+    rc522_write_reg(spi, RC522_REG_FIFO_LEVEL, 0x80); 
+
+    // 3. On injecte nos données à envoyer dans le FIFO
+    for (int i = 0; i < send_len; i++) {
+        rc522_write_reg(spi, RC522_REG_FIFO_DATA, send_data[i]);
+    }
+
+    // 4. On exécute la commande (généralement PCD_TRANSCEIVE)
+    rc522_write_reg(spi, RC522_REG_COMMAND, command);
+    if (command == PCD_TRANSCEIVE) {
+        // Donne l'ordre d'envoyer immédiatement les bits stockés dans le FIFO
+        rc522_write_reg(spi, RC522_REG_BIT_FRAMING, rc522_read_reg(spi, RC522_REG_BIT_FRAMING) | 0x80);
+    }
+
+    // 5. On attend que la puce reçoive une réponse (timeout après ~25ms)
+    int i = 2000;
+    uint8_t n;
+    do {
+        n = rc522_read_reg(spi, RC522_REG_COMM_IRQ);
+        i--;
+    } while (i > 0 && !(n & 0x01) && !(n & 0x30)); // Attend la fin du traitement ou une erreur
+
+    // On arrête l'émission immédiate
+    rc522_write_reg(spi, RC522_REG_BIT_FRAMING, rc522_read_reg(spi, RC522_REG_BIT_FRAMING) & 0x7F);
+
+    if (i == 0) return ESP_ERR_TIMEOUT; // Personne n'a répondu
+
+    // 6. On vérifie s'il y a des erreurs de protocole
+    uint8_t error_reg = rc522_read_reg(spi, RC522_REG_ERROR);
+    if (error_reg & 0x13) return ESP_FAIL; // Collision ou erreur de parité
+
+    // 7. Si tout va bien et que l'appelant veut récupérer les données reçues
+    if (back_data && back_len) {
+        uint8_t fifo_len = rc522_read_reg(spi, RC522_REG_FIFO_LEVEL);
+        if (fifo_len > *back_len) fifo_len = *back_len;
+        
+        *back_len = fifo_len;
+        for (int i = 0; i < fifo_len; i++) {
+            back_data[i] = rc522_read_reg(spi, RC522_REG_FIFO_DATA);
+        }
+    }
+
+    return ESP_OK;
+}
+
+// Vérifie si une carte entre dans le champ magnétique
+static esp_err_t rc522_is_card_present(spi_device_handle_t spi) {
+    uint8_t req_cmd = PICC_REQA;
+    uint32_t back_bits = 0;
+    
+    // On configure la puce pour qu'elle s'attende à recevoir des groupes de 7 bits (standard REQA)
+    rc522_write_reg(spi, RC522_REG_BIT_FRAMING, 0x07);
+    
+    // On envoie le ping REQA
+    return rc522_to_card(spi, PCD_TRANSCEIVE, &req_cmd, 1, NULL, &back_bits);
+}
+
+// Récupère l'UID unique de la carte (Procédure d'anti-collision)
+static esp_err_t rc522_get_card_uid(spi_device_handle_t spi, uint8_t *uid, uint8_t *uid_len) {
+    uint8_t valid_bits = 0;
+    uint32_t back_len = 10; // Taille max de notre buffer de réception
+    
+    // Commande d'anti-collision niveau 1 standard (0x93 suivi de 0x20 qui veut dire "on veut tous les bits")
+    uint8_t send_data[2] = { PICC_ANTICOLL, 0x20 };
+    
+    rc522_write_reg(spi, RC522_REG_BIT_FRAMING, 0x00); // Reset du formatage des bits
+    
+    esp_err_t err = rc522_to_card(spi, PCD_TRANSCEIVE, send_data, 2, uid, &back_len);
+    if (err == ESP_OK) {
+        *uid_len = back_len - 1; // Le dernier octet reçu est généralement le BCC (Checksum)
+    }
+    return err;
+}
+
+// Dit à la carte de se taire pour éviter les lectures en boucle
+static void rc522_card_halt(spi_device_handle_t spi) {
+    uint32_t back_len = 0;
+    uint8_t send_data[4] = { PICC_HALT, 0x00, 0x00, 0x00 };
+    
+    // Calcul rapide du CRC requis pour le Halt (normalement requis par le protocole MIFARE)
+    // Pour faire simple et court sans alourdir le code, on envoie la trame brute pré-calculée courante :
+    send_data[2] = 0x57; 
+    send_data[3] = 0xCD;
+
+    rc522_to_card(spi, PCD_TRANSCEIVE, send_data, 4, NULL, &back_len);
+}
+
+static spi_device_handle_t rc522_spi_handle;
+
+static esp_err_t init_rfid_rc522() {
+    esp_err_t err;
+
+    // master bus cfg
+    spi_bus_config_t buscfg = {
+        .miso_io_num = PIN_NUM_MISO,
+        .mosi_io_num = PIN_NUM_MOSI,
+        .sclk_io_num = PIN_NUM_CLK,
+        .quadwp_io_num = -1,
+        .quadhd_io_num = -1,
+        .max_transfer_sz = 4096
+    };
+
+    err = spi_bus_initialize(SPI3_HOST, &buscfg, SPI_DMA_CH_AUTO);
+    if (err != ESP_OK) {
+        log_msg(TAG, "Error (%s) init SPI bus", esp_err_to_name(err));
+        return err;
+    }
+
+    //cf datasheet
+    spi_device_interface_config_t devcfg = {
+        .clock_speed_hz = 4 * 1000 * 1000,  
+        .mode = 0,                              
+        .spics_io_num = PIN_NUM_CS,             
+        .queue_size = 7,                   
+    };
+
+    err = spi_bus_add_device(SPI3_HOST, &devcfg, &rc522_spi_handle);
+    if (err != ESP_OK) {
+        log_msg(TAG, "Error (%s) init SPI bus", esp_err_to_name(err));
+        return err;
+    }
+
+    // reset module
+    gpio_reset_pin(PIN_NUM_RST);
+    gpio_set_direction(PIN_NUM_RST, GPIO_MODE_OUTPUT);
+    gpio_set_level(PIN_NUM_RST, 0);
+    vTaskDelay(pdMS_TO_TICKS(50));
+    gpio_set_level(PIN_NUM_RST, 1);
+    vTaskDelay(pdMS_TO_TICKS(50));
+
+    // --- LE TEST DE VIE ---
+    uint8_t version = rc522_read_reg(rc522_spi_handle, RC522_REG_VERSION);
+    
+    if (version == 0x00 || version == 0xFF) {
+        ESP_LOGE(TAG, "Le RC522 ne répond pas ! Vérifie ton câblage SPI (MISO/MOSI/SDA).");
+        return ESP_FAIL;
+        // On ne coupe pas la tâche, mais on sait que ça ne marchera pas
+    } else {
+        ESP_LOGI(TAG, "RC522 détecté avec succès ! Code Version: 0x%02X", version);
+    }
+
+    // --- ALLUMER L'ANTENNE ---
+    // Par défaut le RC522 dort. On doit activer les broches Tx1 et Tx2 du signal RF
+    uint8_t tx_control = rc522_read_reg(rc522_spi_handle, RC522_REG_TX_CONTROL);
+    if ((tx_control & 0x03) != 0x03) {
+        rc522_write_reg(rc522_spi_handle, RC522_REG_TX_CONTROL, tx_control | 0x03);
+        ESP_LOGI(TAG, "Antenne amplificatrice 13.56 MHz activée.");
+    }
+
+    // 1. Forcer la modulation à 100% ASK (Indispensable pour que le badge comprenne l'ESP32)
+    rc522_write_reg(rc522_spi_handle, RC522_REG_TX_ASK, 0x40); 
+
+    // 3. Augmenter le gain du récepteur au maximum (48 dB) pour contrer la faiblesse du module
+    rc522_write_reg(rc522_spi_handle, RC522_REG_RF_CFG, 0x78);
+
+    return err;
+}
+
+typedef struct rfid_rc522_info_st {
+    uint8_t uid[16];
+} rfid_rc522_info_t;
+
+static void rfid_rc522_task(void * params) {
+    esp_err_t err;
+
+    err = init_rfid_rc522();
+    if (err != ESP_OK){
+        vTaskDelete(NULL);
+    }
+
+    rfid_rc522_info_t rfid_info = {0};
+    uint8_t uid_len = 0;
+
+    while (monitoring) {
+
+        // 1. Log de vie pour être SÛR que la tâche tourne
+        log_msg(TAG, "Antenne en écoute, présentez un badge 13.56MHz...");
+
+        esp_err_t present_err = rc522_is_card_present(rc522_spi_handle);
+        
+        if (present_err == ESP_OK) {
+            log_msg(TAG, " signal RF capté ! Une carte est là. Tentative de lecture de l'UID...");
+            
+            esp_err_t uid_err = rc522_get_card_uid(rc522_spi_handle, rfid_info.uid, &uid_len);
+            if (uid_err == ESP_OK) {
+
+                if(uid_len > sizeof(rfid_info.uid)) {
+                    uid_len = sizeof(rfid_info.uid);
+                }
+                
+                log_msg(TAG, "Badge décodé avec succès !");
+                ESP_LOG_BUFFER_HEX(TAG, rfid_info.uid, uid_len);
+
+                header_sensor_t header = {0};
+                header.esp_id = (uint8_t)CONFIG_ESP_ID;
+                header.timestamp = (uint32_t)(esp_timer_get_time() / 1000);
+                header.type = 4;
+                uint8_t buf[HEADER_SENSOR_SIZE + uid_len];
+                serialize_header(&header, buf);
+                memcpy(&buf[HEADER_SENSOR_SIZE], rfid_info.uid, uid_len);
+                
+            #if CONFIG_USE_UDPLIB
+                send_udp_sensor(buf, sizeof(buf));
+            #endif
+
+                rc522_card_halt(rc522_spi_handle);
+            } else {
+                // Si la carte est là mais qu'on n'arrive pas à lire l'UID
+                log_msg_lvl(ESP_LOG_WARN, TAG, "Impossible de lire l'UID. Code erreur: %s", esp_err_to_name(uid_err));
+            }
+        } else {
+            // On peut afficher ça si on veut voir le timeout en boucle (très verbeux)
+            //log_msg(TAG, "Pas de carte détectée: %s", esp_err_to_name(present_err));
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(500));
+    }
+
+    vTaskDelete(NULL);
+}
+
 #endif
 
 esp_err_t init_sensors() {
@@ -1044,6 +1352,16 @@ esp_err_t init_sensors() {
         log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%d) creating KY monitoring task", res);
         return ESP_FAIL;
     }
+#endif
+
+#if CONFIG_USE_RFID_RC522
+
+    res = xTaskCreate(rfid_rc522_task, "rfid_rc522_monitoring", 4096, NULL, 5, NULL);
+    if (res != pdPASS) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%d) creating rfid_rc522 monitoring task", res);
+        return ESP_FAIL;
+    }
+
 #endif
 
     monitoring = true;

@@ -17,4 +17,8 @@ menu "RC-Sensors"
         bool "MPU9250"
         default n
 
+    config USE_RFID_RC522
+        bool "RFID RC522"
+        default n
+
 endmenu

@@ -19,3 +19,11 @@ Datasheet: cf url
 - *Trig*: Input signal to trigger waves. Has to be a High signal for 10us.
 - *Echo*: 5V high signal
 - VCC / GND : works with 5V
+
+## MPU 9250
+
+## INA226
+
+## KY003
+
+## RFID RC522

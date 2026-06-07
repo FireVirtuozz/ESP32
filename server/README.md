@@ -138,6 +138,7 @@ Config:
 Flash size 16Kb
 
 # Frames
+
 This presents frames that are sent through network.
 Some are fragmented with:
 
@@ -150,14 +151,69 @@ Big-endian.
 
 Little-endian.
 
+Types of sensors
+0) KY-003 (analog)
+1) HC-SR04
+2) MPU9250
+3) INA226
+4) RFID-RC522
+
 ## Logs
 [esp_id u8][timestamp u32][level LogLevel=u8][tag_length u8][tag_str][msg_str]
 
+Little-endian.
+
 ## Dumps
 [esp_id u8][timestamp u32][lib_length u8][lib_str][name_length u8][name_str][msg_str]
+
+Little-endian.
 
 ## Video
 [payload]
 
 ## Commands
 [command_type u8][payload_length u8][payload]
+
+# ESPs network
+
+I implemented a network of EPSs communicating through UDP to PC and ESP-NOW between each other.
+
+Do not forget that ESP-NOW works with wifi interface, becareful if you use an AP config, the address is MAC+1.
+
+## ESP 0
+
+ESP32-S3 N16R8 (16mb flash, 8mb psram)
+
+No encryption (to free a bit of space in DMA for Camera)
+
+Mac : 90:70:69:07:93:60
+
+ESP handling a 120° camera OV2670. It is connected to the **ESP 3** AP gateway (STA config). Sends its frames to PC through UDP.
+
+## ESP 1
+
+ESP32 N4 (4mb flash)
+
+Encryption enabled
+
+Mac : B0:CB:D8:E8:68:38
+
+Handling sensors. HC-SR04, MPU. Sends its frames to **ESP 3** through ESP-NOW.
+
+## ESP 2 
+
+ESP32 N4
+
+Encryption enabled
+
+Mac : A4:F0:0F:66:B8:50
+
+## ESP 3
+
+ESP32-S3 N16R8
+
+Encryption enabled
+
+Mac : 
+
+ESP controlling the car. Receiving ESP-NOW frames from others ESPs and dispatch UDP to PC, commands UDP from PC, sending UDP things to PC.

@@ -51,7 +51,15 @@ impl DumpEntry {
         cursor = name_end; // Le curseur avance à la fin de la chaîne name
 
         // 5. Le reste, c'est le contenu du Dump
-        let content = String::from_utf8_lossy(&bytes[cursor..]).into_owned();
+        let raw_content = &bytes[cursor..];
+
+        // On parcourt les octets et on remplace les 0 par des sauts de ligne '\n' (0x0A en ASCII)
+        let cleaned_bytes: Vec<u8> = raw_content
+            .iter()
+            .map(|&b| if b == 0 { b'\n' } else { b })
+            .collect();
+
+        let content = String::from_utf8_lossy(&cleaned_bytes).into_owned();
 
         Some(Self { library, name, esp_id, timestamp, content })
     }

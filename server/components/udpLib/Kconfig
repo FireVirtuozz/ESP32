@@ -8,4 +8,9 @@ menu "RC-UDP"
     config VID_DEBUG
         bool "DEBUG VIDEO"
         default n
+
+    config CLIENT_DEBUG
+        bool "DEBUG CLIENT"
+        default n
+
 endmenu

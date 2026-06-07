@@ -434,11 +434,15 @@ typedef struct udp_msg_st {
 
 static void send_msg_to_queue(const uint8_t * data, uint32_t len, QueueHandle_t queue) {
     if (data == NULL) {
+    #if CONFIG_CLIENT_DEBUG
         ESP_LOGE(TAG, "Invalid data arg send udp to queue");
+    #endif
         return;
     }
     if (queue == NULL) {
+    #if CONFIG_CLIENT_DEBUG
         ESP_LOGE(TAG, "Invalid queue arg send udp to queue");
+    #endif
         return;
     }
 
@@ -451,7 +455,9 @@ static void send_msg_to_queue(const uint8_t * data, uint32_t len, QueueHandle_t 
         msg.len = len;
     
         if (xQueueSend(queue, &msg, 0) != pdTRUE) {
+    #if CONFIG_CLIENT_DEBUG
             ESP_LOGW(TAG, "Queue full, freeing data");
+    #endif
             free(msg.data);
         }
     } else {
@@ -460,7 +466,9 @@ static void send_msg_to_queue(const uint8_t * data, uint32_t len, QueueHandle_t 
 }
 
 void send_udp_log(const uint8_t * data, uint32_t len){
+#if CONFIG_CLIENT_DEBUG
     ESP_LOGI(TAG, "Sending udp log to queue (%u)", len);
+#endif
     uint32_t size = len;
     if (len > UDP_MAX_SIZE) {
         //ensure size
@@ -562,16 +570,20 @@ static void udp_client_generic_task(void *pvParameters)
         } else {
             uint16_t frame_size = 0;
             if (msg_tmp.len > UDP_MAX_SIZE) {
+            #if CONFIG_CLIENT_DEBUG
                 ESP_LOGW(TAG, "size overflow udp client");
+            #endif
                 frame_size = UDP_MAX_SIZE;
             } else {
                 frame_size = msg_tmp.len;
             }
             int err;
             err = sendto(sock, msg_tmp.data, frame_size, 0, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+            #if CONFIG_CLIENT_DEBUG
             if (err < 0) {
                 ESP_LOGE(TAG, "Error occurred during sending (%s)", strerror(errno));
             }
+            #endif
         }
         
         free(msg_tmp.data);

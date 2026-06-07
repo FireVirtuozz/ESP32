@@ -271,9 +271,11 @@ esp_err_t dump_deploy(dump_t ** dump) {
     header.library = (*dump)->library;
     msg_len = serialize_dump(&header, msg, (*dump)->offset);
 
+    /*
     ESP_LOGW(TAG, "sending udp dump: len %u, offset %u, strlen %u", msg_len, (*dump)->offset,
         strlen((*dump)->buffer));
     ESP_LOG_BUFFER_HEXDUMP("DEBUG_DUMP", (*dump)->buffer, (*dump)->offset, ESP_LOG_WARN);
+    */
 
     send_udp_dump(msg, msg_len);
     free(msg);

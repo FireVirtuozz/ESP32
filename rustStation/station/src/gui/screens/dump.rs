@@ -58,6 +58,7 @@ impl DumpEntry {
 }
 
 pub struct DumpScreen {
+    pub selected_esp_id: Option<u8>,
     pub selected_library: Option<String>,
     pub selected_name: Option<String>,
     pub auto_scroll: bool,
@@ -66,122 +67,153 @@ pub struct DumpScreen {
 impl Default for DumpScreen {
     fn default() -> Self {
         Self {
+            selected_esp_id: None,
             selected_library: None,
             selected_name: None,
             auto_scroll: true,
         }
     }
 }
-
 impl DumpScreen {
-
     pub fn show(&mut self, ctx: &egui::Context, dumps: &[DumpEntry]) {
-        // 1. EXTRACTION DES LIBRAIRIES UNIQUES
-        // On utilise un BTreeSet pour les trier automatiquement par ordre alphabétique
-        let mut libraries: BTreeSet<&String> = BTreeSet::new();
-        for entry in dumps {
-            libraries.insert(&entry.library);
-        }
-
-        // 2. PANNEAU LATÉRAL : L'explorateur dynamique
+        
+        // 1. PANNEAU LATÉRAL : Fixe et stable (exact_width + resizable_false)
         egui::SidePanel::left("dump_explorer")
-            .resizable(true)
-            .default_width(200.0)
+            .resizable(false)   // Empêche le panneau de bouger tout seul
+            .exact_width(240.0)  // Largeur stricte et stable
             .show(ctx, |ui| {
+                
+                // --- SECTION 1 : SÉLECTION DE L'ESP ID ---
+                ui.heading("📱 Appareils");
+                ui.add_space(4.0);
+
+                // Extraction de tous les ESP ID uniques présents dans les dumps
+                let mut esp_ids: BTreeSet<u8> = dumps.iter().map(|e| e.esp_id).collect();
+
+                egui::ComboBox::from_id_source("esp_id_selector")
+                    .selected_text(match self.selected_esp_id {
+                        Some(id) => format!("ESP32 (ID: {})", id),
+                        None => "Choisir un appareil...".to_string(),
+                    })
+                    .show_ui(ui, |ui| {
+                        for id in esp_ids {
+                            if ui.selectable_value(&mut self.selected_esp_id, Some(id), format!("ESP ID: {}", id)).clicked() {
+                                // Si on change d'ESP, on reset les sous-choix pour éviter les bugs
+                                self.selected_library = None;
+                                self.selected_name = None;
+                            }
+                        }
+                    });
+                
+                ui.add_space(10.0);
                 ui.heading("📦 Librairies");
                 ui.separator();
 
-                ScrollArea::vertical().show(ui, |ui| {
-                    // Boucle sur chaque librairie unique trouvée dans les données
-                    for lib in libraries {
-                        let is_lib_selected = self.selected_library.as_ref() == Some(lib);
-                        
-                        // Bouton principal pour la Librairie
-                        if ui.selectable_label(is_lib_selected, format!("📁 {}", lib)).clicked() {
-                            self.selected_library = Some(lib.clone());
-                            self.selected_name = None; // Reset le sous-choix
-                        }
-
-                        // Si cette librairie est sélectionnée, on cherche ses dumps associés
-                        if is_lib_selected {
-                            ui.indent(lib, |ui| {
-                                // Extraction des NOMS de dumps uniques pour CETTE librairie
-                                let mut dump_names: BTreeSet<&String> = BTreeSet::new();
-                                for entry in dumps.iter().filter(|e| &e.library == lib) {
-                                    dump_names.insert(&entry.name);
-                                }
-
-                                if dump_names.is_empty() {
-                                    ui.weak("Aucun dump");
-                                }
-
-                                // Boucle sur les noms de dumps de cette librairie
-                                for name in dump_names {
-                                    let is_name_selected = self.selected_name.as_ref() == Some(name);
-                                    
-                                    // Sous-bouton pour le nom du dump
-                                    if ui.selectable_label(is_name_selected, format!("📄 {}", name)).clicked() {
-                                        self.selected_name = Some(name.clone());
-                                    }
-                                }
-                            });
-                        }
+                // --- SECTION 2 : AFFICHAGE DES LIBRARIERIES FILTRÉES ---
+                if let Some(target_esp_id) = self.selected_esp_id {
+                    // On ne prend que les librairies de l'ESP sélectionné
+                    let mut libraries: BTreeSet<&String> = BTreeSet::new();
+                    for entry in dumps.iter().filter(|e| e.esp_id == target_esp_id) {
+                        libraries.insert(&entry.library);
                     }
-                });
+
+                    ScrollArea::vertical().show(ui, |ui| {
+                        for lib in libraries {
+                            let is_lib_selected = self.selected_library.as_ref() == Some(lib);
+                            
+                            if ui.selectable_label(is_lib_selected, format!("📁 {}", lib)).clicked() {
+                                self.selected_library = Some(lib.clone());
+                                self.selected_name = None;
+                            }
+
+                            if is_lib_selected {
+                                ui.indent(lib, |ui| {
+                                    let mut dump_names: BTreeSet<&String> = BTreeSet::new();
+                                    for entry in dumps.iter().filter(|e| e.esp_id == target_esp_id && &e.library == lib) {
+                                        dump_names.insert(&entry.name);
+                                    }
+
+                                    for name in dump_names {
+                                        let is_name_selected = self.selected_name.as_ref() == Some(name);
+                                        if ui.selectable_label(is_name_selected, format!("📄 {}", name)).clicked() {
+                                            self.selected_name = Some(name.clone());
+                                        }
+                                    }
+                                });
+                            }
+                        }
+                    });
+                } else {
+                    ui.weak("Veuillez sélectionner un ESP ci-dessus.");
+                }
             });
 
-        // 3. PANNEAU CENTRAL : Visualisation du contenu
+        // 2. PANNEAU CENTRAL : Le Terminal de Log
         egui::CentralPanel::default().show(ctx, |ui| {
-            match (&self.selected_library, &self.selected_name) {
-                (Some(lib), Some(name)) => {
+            match (self.selected_esp_id, &self.selected_library, &self.selected_name) {
+                (Some(id), Some(lib), Some(name)) => {
+                    // Header du log
                     ui.horizontal(|ui| {
-                        ui.heading(format!("{} ➔ {}", lib, name));
+                        ui.heading(format!("ESP {} ➔ {} ➔ {}", id, lib, name));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.checkbox(&mut self.auto_scroll, "Auto-scroll");
                         });
                     });
                     ui.separator();
 
-                    // 1. On récupère TOUTES les entrées qui matchent
+                    // Récupération des entrées correspondantes
                     let matching_entries: Vec<&DumpEntry> = dumps.iter()
-                        .filter(|e| &e.library == lib && &e.name == name)
+                        .filter(|e| e.esp_id == id && &e.library == lib && &e.name == name)
                         .collect();
 
                     if !matching_entries.is_empty() {
-                        ScrollArea::vertical()
-                            .auto_shrink([false; 2])
-                            .stick_to_bottom(self.auto_scroll)
-                            .show(ui, |ui| {
-                                
-                                // 2. On affiche chaque ligne trouvée
-                                egui::Frame::canvas(ui.style()).show(ui, |ui| {
-                                    // Ici, on concatène tout pour l'affichage
-                                    let mut full_text = String::new();
-                                    for entry in &matching_entries {
-                                        full_text.push_str(&entry.content);
-                                        // Pas besoin de \n ici si ton content en contient déjà un
-                                    }
+                        let mut full_text = String::new();
+                        for entry in &matching_entries {
+                            full_text.push_str(&entry.content);
+                        }
 
-                                    ui.add_sized(
-                                        ui.available_size(),
-                                        egui::Label::new(RichText::new(full_text).font(FontId::monospace(12.0)))
-                                            .selectable(true)
-                                            .wrap(false)
-                                    );
-                                });
+                        // Style "Console de Dev"
+                        egui::Frame::none()
+                            .fill(Color32::from_rgb(15, 15, 15)) // Fond sombre type terminal
+                            .inner_margin(8.0)
+                            .show(ui, |ui| {
+                                ScrollArea::vertical()
+                                    .auto_shrink([false; 2])
+                                    .stick_to_bottom(self.auto_scroll)
+                                    .show(ui, |ui| {
+                                        // On force l'alignement Top-Down et à Gauche (Align::Min)
+                                        ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                                            
+                                            // Utilisation d'un TextEdit multiline en lecture seule : 
+                                            // C'est le meilleur composant egui pour afficher des pavés de logs textuels purs.
+                                            let mut text_ref = full_text.as_str();
+                                            ui.add(
+                                                egui::TextEdit::multiline(&mut text_ref)
+                                                    .font(FontId::monospace(13.0)) // Police console
+                                                    .text_color(Color32::from_rgb(220, 220, 220)) // Texte blanc cassé
+                                                    .frame(false) // Retire la bordure de saisie de texte
+                                                    .desired_width(f32::INFINITY) // Prend toute la largeur dispo
+                                            );
+                                        });
+                                    });
                             });
                     } else {
-                        ui.label("En attente de données...");
+                        ui.label("Aucune donnée reçue pour ce flux.");
                     }
                 }
-                (Some(lib), None) => {
+                (Some(_), Some(lib), None) => {
                     ui.centered_and_justified(|ui| {
-                        ui.heading(format!("👈 Sélectionne un dump de la librairie [{}]", lib));
+                        ui.heading(format!("👈 Sélectionne un dump dans la librairie [{}]", lib));
+                    });
+                }
+                (Some(_), None, _) => {
+                    ui.centered_and_justified(|ui| {
+                        ui.heading("👈 Sélectionne une librairie");
                     });
                 }
                 _ => {
                     ui.centered_and_justified(|ui| {
-                        ui.heading("👈 Sélectionne une librairie pour commencer");
+                        ui.heading("👈 Sélectionne un appareil ESP pour commencer");
                     });
                 }
             }

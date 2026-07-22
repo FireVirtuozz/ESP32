@@ -4,7 +4,7 @@ use egui::Vec2b;
 use egui_plot::{Line, Plot, PlotBounds, PlotPoints};
 use log::debug;
 
-use crate::{config::AppConfig, controller::ControllerPacket, gui::screens::{camera::CameraScreen, commands::CommandsScreen, dump::{DumpEntry, DumpScreen}, home::HomeScreen, logs::{LogPacket, LogsScreen}, main::MainScreen, sensors::SensorsScreen}, sensors::TelemetryPacket};
+use crate::{config::AppConfig, controller::ControllerPacket, gui::screens::{camera::CameraScreen, car::CarScreen, commands::CommandsScreen, dump::{DumpEntry, DumpScreen}, home::HomeScreen, logs::{LogPacket, LogsScreen}, main::MainScreen, sensors::SensorsScreen}, sensors::TelemetryPacket};
 
 pub mod screens;
 
@@ -19,6 +19,7 @@ pub enum ScreensTypes {
     Commands,
     Camera,
     Dump,
+    Car,
 }
 
 #[derive(Default)]
@@ -30,6 +31,7 @@ pub struct Screens {
     pub main_screen: MainScreen,
     pub camera_screen: CameraScreen,
     pub dump_screen: DumpScreen,
+    pub car_screen: CarScreen,
 }
 
 pub struct MyApp {
@@ -59,12 +61,14 @@ pub struct MyApp {
 
 impl eframe::App for MyApp {
 
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+
+        let ctx = ui.ctx().clone();
+
         while let Ok(packet) = self.rx_sensors.try_recv() {
             let t = self.start.elapsed().as_secs_f64();
             self.data.push_back((packet, t));
-            if self.data.len() > 1000 {
+            if self.data.len() > 10000 {
                 self.data.pop_front();
             }
         }
@@ -93,14 +97,16 @@ impl eframe::App for MyApp {
         }
 
         match self.screen {
-            ScreensTypes::Sensors => self.screens.sensors_screen.show(ctx, &self.data),
-            ScreensTypes::Commands => self.screens.commands_screen.show(ctx, &self.controller_connected, &self.rx_ctrl, &mut self.screen),
-            ScreensTypes::Home => self.screens.home_screen.show(ctx, &mut self.screen),
-            ScreensTypes::Logs => self.screens.logs_screen.show(ctx, &self.logs),
-            ScreensTypes::Main => self.screens.main_screen.show(ctx,
+            ScreensTypes::Sensors => self.screens.sensors_screen.show(&ctx, &self.data, &mut self.screen),
+            ScreensTypes::Commands => self.screens.commands_screen.show(&ctx, &self.controller_connected, &self.rx_ctrl, &mut self.screen),
+            ScreensTypes::Home => self.screens.home_screen.show(&ctx, &mut self.screen),
+            ScreensTypes::Logs => self.screens.logs_screen.show(&ctx, &self.logs, &mut self.screen),
+            ScreensTypes::Main => self.screens.main_screen.show(&ctx,
                 &mut self.screen, &self.sensors_connected, &self.logs_connected, &self.camera_connected),
-            ScreensTypes::Camera => self.screens.camera_screen.show(ctx, &mut self.frame, &self.config_egui),
-            ScreensTypes::Dump => self.screens.dump_screen.show(ctx, &self.dumps),
+            ScreensTypes::Camera => self.screens.camera_screen.show(&ctx, &mut self.frame, &self.config_egui),
+            ScreensTypes::Dump => self.screens.dump_screen.show(&ctx, &self.dumps),
+            ScreensTypes::Car => self.screens.car_screen.show(&ctx, &mut self.screen, &self.data,
+                &self.controller_connected, &self.rx_ctrl, &self.start),
         }
 
         ctx.request_repaint();

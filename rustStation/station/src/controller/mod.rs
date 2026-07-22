@@ -1,11 +1,11 @@
-use std::{net::UdpSocket, sync::{Arc, atomic::{AtomicBool, Ordering}, mpsc::Sender}, thread};
+use std::{net::UdpSocket, sync::{Arc, atomic::{AtomicBool, Ordering}, mpsc::Sender}, thread, time::Instant};
 
 use gilrs::{Gilrs, Event, Button, Axis};
 use log::error;
 
 use crate::error::AppError;
 
-const UDP_FRAME_SIZE: usize = 9;
+const UDP_FRAME_SIZE: usize = 13;
 
 #[derive(Debug, Copy, Clone)]
 pub struct ControllerPacket {
@@ -33,8 +33,9 @@ impl Default for ControllerPacket{
 }
 
 impl ControllerPacket {
-    pub fn to_udp_frame(&self) -> [u8; UDP_FRAME_SIZE] {
+    pub fn to_udp_frame(&self, start_instant: Instant) -> [u8; UDP_FRAME_SIZE] {
         let mut frame: [u8; UDP_FRAME_SIZE] = [0; UDP_FRAME_SIZE];
+        let timestamp = start_instant.elapsed().as_millis() as u32;
         frame[0] = 0;
         frame[1] = 7;
         frame[2] = self.left_x as u8;
@@ -44,20 +45,23 @@ impl ControllerPacket {
         frame[6] = (self.left_trig as i16 * 2 - 100) as u8;
         frame[7] = (self.right_trig as i16 * 2 - 100) as u8;
         frame[8] = self.buttons_mask;
+        frame[9 .. 13].copy_from_slice(&timestamp.to_le_bytes());
         frame
     }
 }
 
-pub fn init_controller(tx: Sender<ControllerPacket>, controller_connected: Arc<AtomicBool>) -> thread::JoinHandle<()> {
+pub fn init_controller(tx: Sender<ControllerPacket>, controller_connected: Arc<AtomicBool>, start_instant: Instant)
+ -> thread::JoinHandle<()> {
     let handle = thread::spawn(move || {
-        if let Err(e) = controller_loop(tx, controller_connected) {
+        if let Err(e) = controller_loop(tx, controller_connected, start_instant) {
             error!("UDP error ctrl: {:?}", e);
         }
     });
     handle
 }
 
-fn controller_loop(tx: Sender<ControllerPacket>, controller_connected: Arc<AtomicBool>) -> Result<(), AppError> {
+fn controller_loop(tx: Sender<ControllerPacket>, controller_connected: Arc<AtomicBool>, start_instant: Instant) 
+-> Result<(), AppError> {
     let mut gilrs = Gilrs::new().unwrap();
     let mut controller_pck = ControllerPacket::default();
     let socket = UdpSocket::bind("0.0.0.0:0")?;
@@ -141,7 +145,9 @@ fn controller_loop(tx: Sender<ControllerPacket>, controller_connected: Arc<Atomi
                     controller_pck.left_trig = val as i8;
                 },
                 gilrs::EventType::ButtonChanged(Button::RightTrigger2, val, _) => {
-                    let val = val * 100.0;
+                    let val = val * 100.0 * 1.3;
+                    let val = if val > 100.0 {100.0} else {val};
+                    //println!("{}", val);
                     controller_pck.right_trig = val as i8;
                 },
                 gilrs::EventType::Connected => {
@@ -154,7 +160,8 @@ fn controller_loop(tx: Sender<ControllerPacket>, controller_connected: Arc<Atomi
             }
         }
 
-        socket.send_to(&controller_pck.to_udp_frame(), "192.168.4.1:3333")?;
+        //socket.send_to(&controller_pck.to_udp_frame(), "192.168.4.1:3333")?;
+        socket.send_to(&controller_pck.to_udp_frame(start_instant), "192.168.1.58:3333")?;
         tx.send(controller_pck)?;
         thread::sleep(std::time::Duration::from_millis(30));
     }

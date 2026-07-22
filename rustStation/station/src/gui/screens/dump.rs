@@ -181,7 +181,7 @@ impl DumpScreen {
                         }
 
                         // Style "Console de Dev"
-                        egui::Frame::none()
+                        egui::Frame::new()
                             .fill(Color32::from_rgb(15, 15, 15)) // Fond sombre type terminal
                             .inner_margin(8.0)
                             .show(ui, |ui| {
@@ -199,7 +199,7 @@ impl DumpScreen {
                                                 egui::TextEdit::multiline(&mut text_ref)
                                                     .font(FontId::monospace(13.0)) // Police console
                                                     .text_color(Color32::from_rgb(220, 220, 220)) // Texte blanc cassé
-                                                    .frame(false) // Retire la bordure de saisie de texte
+                                                    .frame(egui::Frame::NONE) // Retire la bordure de saisie de texte
                                                     .desired_width(f32::INFINITY) // Prend toute la largeur dispo
                                             );
                                         });

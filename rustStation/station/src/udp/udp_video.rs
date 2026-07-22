@@ -21,8 +21,6 @@ pub fn udp_server_video_init(
     handle
 }
 
-
-
 fn udp_video_loop(
     tx_img: Sender<Vec<u8>>,
     camera_connected: Arc<AtomicBool>,

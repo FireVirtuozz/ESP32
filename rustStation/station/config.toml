@@ -10,3 +10,8 @@ udp_port_sensors = 34254
 udp_port_vid = 34255
 udp_port_dump = 34256
 udp_port_logs = 34257
+
+replay_file = "replay_data.json"
+recording = false
+replay = true
+replay_speed = 1.0

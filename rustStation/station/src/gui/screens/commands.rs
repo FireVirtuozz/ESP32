@@ -74,10 +74,10 @@ impl CommandsScreen {
                             } else {
                                 (egui::Color32::from_gray(40), egui::Color32::GRAY)
                             };
-                            egui::Frame::none()
+                            egui::Frame::new()
                                 .fill(bg)
-                                .rounding(6.0)
-                                .inner_margin(egui::Margin::symmetric(10.0, 4.0))
+                                .corner_radius(6.0)
+                                .inner_margin(egui::Margin::symmetric(10, 4))
                                 .show(ui, |ui| {
                                     ui.colored_label(fg, *name);
                             });
@@ -125,5 +125,4 @@ fn draw_stick(ui: &mut egui::Ui, x: i8, y: i8) {
         painter.line_segment([center, dot], egui::Stroke::new(1.5, egui::Color32::from_rgb(55, 138, 221)));
         painter.circle_filled(dot, 5.0, egui::Color32::from_rgb(55, 138, 221));
     }
-}       
-
+}

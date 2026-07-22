@@ -3,13 +3,42 @@ name = "station"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "station"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "station_bin"
+path = "src/main.rs"
+
 [dependencies]
-eframe = "0.27"
-egui = "0.27"
-egui_plot = "0.27"
+eframe = { version = "=0.34.0", default-features = false, features = ["glow", "default_fonts", "android-native-activity"] }
+egui = "=0.34.0"
+egui_plot = "=0.35.0"
 env_logger = "0.11.10"
 gilrs = "0.10"
 image = "0.25.10"
 log = "0.4.29"
-serde = {version="1.0.228", features = ["derive"]}
+nalgebra = "0.35.0"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.151"
 toml = "1.1.2"
+
+[target.'cfg(target_os = "android")'.dependencies]
+android_logger = "0.14"
+# Après cargo update, vérifier `cargo tree -i winit` pour matcher exactement
+# la version résolue par eframe/egui-winit (cf. galères précédentes).
+winit = { version = "0.30", default-features = false, features = ["android-native-activity"] }
+
+[package.metadata.android]
+package = "com.ruststation.station"
+label = "Station"
+build_targets = ["aarch64-linux-android", "x86_64-linux-android"]
+large_heap = true
+
+[[package.metadata.android.permission]]
+name = "android.permission.INTERNET"
+
+[[package.metadata.android.permission]]
+name = "android.permission.ACCESS_NETWORK_STATE"

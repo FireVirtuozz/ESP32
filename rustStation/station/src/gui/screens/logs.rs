@@ -1,7 +1,7 @@
 use std::{collections::VecDeque, str::from_utf8};
 use egui::{Color32, FontId, RichText, ScrollArea, TextEdit, Ui};
 
-use crate::error::AppError;
+use crate::{error::AppError, gui::ScreensTypes};
 
 pub enum LogLevel {
     VERBOSE = 5,
@@ -90,11 +90,11 @@ impl Default for LogsScreen {
 }
 
 impl LogsScreen {
-    pub fn show(&mut self, ctx: &egui::Context, logs: &VecDeque<LogPacket>) {
+    pub fn show(&mut self, ctx: &egui::Context, logs: &VecDeque<LogPacket>,  screen : &mut ScreensTypes) {
         egui::CentralPanel::default()
-            .frame(egui::Frame::none().fill(Color32::from_rgb(10, 12, 16)))
+            .frame(egui::Frame::new().fill(Color32::from_rgb(10, 12, 16)))
             .show(ctx, |ui| {
-                self.render_toolbar(ui, logs.len());
+                self.render_toolbar(ui, logs.len(), screen);
                 ui.add_space(4.0);
                 ui.separator();
                 ui.add_space(2.0);
@@ -102,8 +102,9 @@ impl LogsScreen {
             });
     }
 
-    fn render_toolbar(&mut self, ui: &mut Ui, count: usize) {
+    fn render_toolbar(&mut self, ui: &mut Ui, count: usize, screen : &mut ScreensTypes) {
         ui.horizontal(|ui| {
+            if ui.button("Back").clicked() { *screen = ScreensTypes::Main; }
             ui.label(
                 RichText::new("▌ SYSTEM LOGS")
                     .font(FontId::monospace(13.0))
@@ -174,9 +175,9 @@ impl LogsScreen {
                         Color32::from_rgb(8, 10, 14)
                     };
 
-                    egui::Frame::none()
+                    egui::Frame::new()
                         .fill(bg)
-                        .inner_margin(egui::Margin::symmetric(8.0, 3.0))
+                        .inner_margin(egui::Margin::symmetric(8, 3))
                         .show(ui, |ui| {
                             ui.set_min_width(ui.available_width());
                             ui.horizontal(|ui| {

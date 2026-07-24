@@ -101,7 +101,7 @@ static esp_err_t _http_client_init_cb(esp_http_client_handle_t http_client)
 
 void advanced_ota_example_task(void *pvParameter)
 {
-    log_msg(TAG, "Starting Advanced OTA example");
+    log_msg(TAG, "Starting Advanced OTA");
 
     esp_err_t err;
     esp_err_t ota_finish_err = ESP_OK;
@@ -125,7 +125,7 @@ void advanced_ota_example_task(void *pvParameter)
     esp_https_ota_handle_t https_ota_handle = NULL;
     err = esp_https_ota_begin(&ota_config, &https_ota_handle);
     if (err != ESP_OK) {
-        log_msg(TAG, "ESP HTTPS OTA Begin failed");
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "ESP HTTPS OTA Begin failed");
         atomic_store(&ota_lock, false);
         vTaskDelete(NULL);
     }
@@ -133,12 +133,12 @@ void advanced_ota_example_task(void *pvParameter)
     esp_app_desc_t app_desc = {};
     err = esp_https_ota_get_img_desc(https_ota_handle, &app_desc);
     if (err != ESP_OK) {
-        log_msg(TAG, "esp_https_ota_get_img_desc failed");
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "esp_https_ota_get_img_desc failed");
         goto ota_end;
     }
     err = validate_image_header(&app_desc);
     if (err != ESP_OK) {
-        log_msg(TAG, "image header verification failed");
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "image header verification failed");
         goto ota_end;
     }
 
@@ -158,7 +158,7 @@ void advanced_ota_example_task(void *pvParameter)
 
     if (esp_https_ota_is_complete_data_received(https_ota_handle) != true) {
         // the OTA image was not completely received and user can customise the response to this situation.
-        log_msg(TAG, "Complete data was not received.");
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Complete data was not received.");
     } else {
 
         ota_finish_err = esp_https_ota_finish(https_ota_handle);
@@ -170,10 +170,10 @@ void advanced_ota_example_task(void *pvParameter)
         } else {
 
             if (ota_finish_err == ESP_ERR_OTA_VALIDATE_FAILED) {
-                log_msg(TAG, "Image validation failed, image is corrupted");
+                log_msg_lvl(ESP_LOG_ERROR, TAG, "Image validation failed, image is corrupted");
             }
 
-            log_msg(TAG, "ESP_HTTPS_OTA upgrade failed 0x%x", ota_finish_err);
+            log_msg_lvl(ESP_LOG_ERROR, TAG, "ESP_HTTPS_OTA upgrade failed 0x%x", ota_finish_err);
             atomic_store(&ota_lock, false);
             vTaskDelete(NULL);
         }
@@ -181,7 +181,7 @@ void advanced_ota_example_task(void *pvParameter)
 
 ota_end:
     esp_https_ota_abort(https_ota_handle);
-    log_msg(TAG, "ESP_HTTPS_OTA upgrade failed");
+    log_msg_lvl(ESP_LOG_ERROR, TAG, "ESP_HTTPS_OTA upgrade failed");
     atomic_store(&ota_lock, false);
     vTaskDelete(NULL);
 }
@@ -193,7 +193,7 @@ void ota_init() {
     esp_err_t err = esp_event_handler_register(ESP_HTTPS_OTA_EVENT,
         ESP_EVENT_ANY_ID, &event_handler, NULL);
     if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) registering handler", esp_err_to_name(err));
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) registering handler", esp_err_to_name(err));
         atomic_store(&ota_lock, false);
         return;
     }

@@ -574,9 +574,6 @@ static void send_msg_to_queue(const uint8_t * data, uint32_t len, QueueHandle_t 
     #endif
         return;
     }
-    if (atomic_load(&ota_lock)) {
-        return; // skip tous les envois
-    }
 
     uint8_t *buf_cpy = malloc(len);
     if (buf_cpy != NULL) {
@@ -611,6 +608,10 @@ void send_udp_log(const uint8_t * data, uint32_t len){
 }
 
 void send_udp_sensor(const uint8_t * data, uint32_t len){
+
+    if (atomic_load(&ota_lock)) {
+        return; // skip tous les envois
+    }
     uint32_t size = len;
     if (len > UDP_MAX_SIZE) {
         //ensure size
@@ -728,12 +729,18 @@ static void udp_client_generic_task(void *pvParameters)
 static QueueHandle_t queue_send_video = NULL;
 
 void send_udp_jpeg(const uint8_t *data, uint32_t len) {
+    if (atomic_load(&ota_lock)) {
+        return; // skip tous les envois
+    }
     send_msg_to_queue(data, len, queue_send_video);
 }
 
 static QueueHandle_t queue_send_dump = NULL;
 
 void send_udp_dump(const uint8_t *data, uint32_t len) {
+    if (atomic_load(&ota_lock)) {
+        return; // skip tous les envois
+    }
     send_msg_to_queue(data, len, queue_send_dump);
 }
 

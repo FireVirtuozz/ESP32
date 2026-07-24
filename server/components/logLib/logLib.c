@@ -169,7 +169,7 @@ esp_err_t log_init() {
     esp_log_level_set("nvs_library", ESP_LOG_VERBOSE);
     esp_log_level_set("udp_library", ESP_LOG_VERBOSE);
     esp_log_level_set("wifi_library", ESP_LOG_INFO);
-    esp_log_level_set("ota_library", ESP_LOG_VERBOSE);
+    esp_log_level_set("ota_library", ESP_LOG_INFO);
     esp_log_level_set("led_library", ESP_LOG_VERBOSE);
     esp_log_level_set("cmd_library", ESP_LOG_VERBOSE);
     esp_log_level_set("lcd_library", ESP_LOG_VERBOSE);

@@ -25,8 +25,6 @@ static const char *TAG = "ota_library";
 #define SKIP_VERSION_CHECK 1
 #define OTA_RECV_TIMEOUT 5000
 #define OTA_BUF_SIZE 1024
-#define USE_CERT_BUNDLE 1
-//depends on MBEDTLS_CERTIFICATE_BUNDLE
 
 /* Event handler for catching system events */
 static void event_handler(void* arg, esp_event_base_t event_base,
@@ -153,7 +151,7 @@ void advanced_ota_example_task(void *pvParameter)
         // monitor the status of OTA upgrade by calling esp_https_ota_get_image_len_read, which gives length of image
         // data read so far.
         const size_t len = esp_https_ota_get_image_len_read(https_ota_handle);
-        log_msg(TAG, "Image bytes read: %d", len);
+        log_msg_lvl(ESP_LOG_DEBUG, TAG, "Image bytes read: %d", len);
     }
 
     if (esp_https_ota_is_complete_data_received(https_ota_handle) != true) {

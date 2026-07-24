@@ -130,7 +130,7 @@ void app_main()
     vTaskDelay(pdMS_TO_TICKS(10000));
     camera_init();
 #endif
-    
+    log_msg(TAG, "yo");
 /*
     int16_t percent = 0;
     while(1) {

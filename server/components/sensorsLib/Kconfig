@@ -21,4 +21,96 @@ menu "RC-Sensors"
         bool "RFID RC522"
         default n
 
+    config USE_RCWL_0515
+        bool "RCWL_0515"
+        default n
+
+    config USE_VL53L1X
+        bool "VL53L1X"
+        default n
+    
+    config USE_AS5600
+        bool "AS5600"
+        default n
+
+    config USE_KY035
+        bool "KY035"
+        default n
+
+    config USE_FC33
+        bool "FC-33"
+        default n
+
+    config USE_KY033
+        bool "KY033"
+        default n
+
+    config USE_KY002
+        bool "KY002"
+        default n
+    
+    config USE_KY040
+        bool "KY040"
+        default n
+
+    config USE_DHT11
+        bool "DHT11"
+        default n
+
+    config USE_KY020
+        bool "KY020"
+        default n
+    
+    config USE_KY018
+        bool "KY018"
+        default n
+
+    config USE_KY031
+        bool "KY031"
+        default n
+
+    config USE_KY017
+        bool "KY017"
+        default n
+
+    config USE_KY005
+        bool "KY005"
+        default n
+
+    config USE_KY022
+        bool "KY022"
+        default n
+    
+    config USE_KY021
+        bool "KY021"
+        default n
+    
+    config USE_KY004
+        bool "KY004"
+        default n
+
+    config USE_KY039
+        bool "KY039"
+        default n
+
+    config USE_KY032
+        bool "KY032"
+        default n
+
+    config USE_KY023
+        bool "KY023"
+        default n
+
+    menu "ESP"
+    config USE_ESP
+        bool "ESP"
+        default n
+    
+    config FREE_RTOS_TASK_DEBUG
+        bool "FREERTOS TASK DEBUG"
+        default n
+        depends on USE_ESP
+    endmenu
+
+
 endmenu

@@ -12,6 +12,8 @@
 
 static const char* TAG = "cmd_library";
 
+static volatile drive_mode_e drive_mode = DEFAULT;
+
 esp_err_t get_cmd_type(const int8_t *buf, command_type_t *cmd_type) {
 
     if (buf == NULL || cmd_type == NULL) return ESP_ERR_INVALID_ARG;
@@ -130,21 +132,104 @@ esp_err_t get_android_value(const android_t *android, const android_field_t fiel
     return ESP_OK;
 }
 
+drive_mode_e get_drive_mode() {
+    return drive_mode;
+}
+
 esp_err_t apply_gamepad_commands(const gamepad_t *gamepad) {
     if (gamepad == NULL) return ESP_ERR_INVALID_ARG;
+
+    static bool last_dpadright = false;
+    static bool last_dpadleft = false;
+
+    static bool last_dpadup = false;
+    static bool last_dpaddown = false;
+
+    bool current_dpadleft = (gamepad->buttons & 0b00100000);
+    bool current_dpadright = (gamepad->buttons & 0b01000000);
+
+    bool current_dpadup = (gamepad->buttons & 0b10000000);
+    bool current_dpaddown = (gamepad->buttons & 0b00010000);
+
+    log_msg(TAG, "buttons: 0b%c%c%c%c%c%c%c%c | L:%d R:%d U:%d D:%d",
+        (gamepad->buttons & 0x80) ? '1' : '0',
+        (gamepad->buttons & 0x40) ? '1' : '0',
+        (gamepad->buttons & 0x20) ? '1' : '0',
+        (gamepad->buttons & 0x10) ? '1' : '0',
+        (gamepad->buttons & 0x08) ? '1' : '0',
+        (gamepad->buttons & 0x04) ? '1' : '0',
+        (gamepad->buttons & 0x02) ? '1' : '0',
+        (gamepad->buttons & 0x01) ? '1' : '0',
+        current_dpadleft, 
+        current_dpadright,
+        current_dpadup,
+        current_dpaddown
+    );
+
+    if (!last_dpadleft && current_dpadleft) {
+        if (drive_mode > DEFAULT) {
+            drive_mode--;
+        }
+    }
+
+    if (!last_dpadright && current_dpadright) {
+        if (drive_mode < EXPERT) {
+            drive_mode++;
+        }
+    }
+
+    last_dpadleft = current_dpadleft;
+    last_dpadright = current_dpadright;
+
+    last_dpadup = current_dpadup;
+    last_dpaddown = current_dpaddown;
 
     //leftX --> direction
     ledc_angle((int16_t)(((int16_t)gamepad->leftX + 100) * 9 / 10));
 
-    if (gamepad->rightTrigger > -95 && gamepad->leftTrigger > -95) { //2 triggers activated --> brake
-        ledc_motor(0);
-    } else if (gamepad->rightTrigger > -95) { //right --> accelerate
-        ledc_motor((int16_t)(((int16_t)gamepad->rightTrigger + 100) / 2));
-    } else if (gamepad->leftTrigger > -95) { //left --> reverse
-        ledc_motor((int16_t)(((int16_t)gamepad->leftTrigger + 100) / (-2)));
-    } else { //nothing --> brake
-        ledc_motor(0);
+    // 2. Calcul de la vitesse de base (Brute, de -100 à +100)
+    int16_t target_speed = 0;
+
+    if (gamepad->rightTrigger > -95 && gamepad->leftTrigger > -95) { 
+        // 2 gâchettes activées --> frein
+        target_speed = 0;
+    } else if (gamepad->rightTrigger > -95) { 
+        // Gâchette droite --> marche avant (0 à 100)
+        target_speed = (int16_t)(((int16_t)gamepad->rightTrigger + 100) / 2);
+    } else if (gamepad->leftTrigger > -95) { 
+        // Gâchette gauche --> marche arrière (-100 à 0)
+        target_speed = (int16_t)(((int16_t)gamepad->leftTrigger + 100) / (-2));
+    } else { 
+        // Rien --> frein
+        target_speed = 0;
     }
+
+    float speed_factor = 1.0f;
+    
+    // On imagine que tu as ajouté 'drive_mode' dans ta structure gamepad_t
+    switch (drive_mode) {
+        case DEFAULT:  // Mode ECO (Bridé à 40% de la puissance)
+            speed_factor = 0.25f; 
+            break;
+        case MIDDLE:  // Mode NORMAL (Bridé à 70% de la puissance)
+            speed_factor = 0.40f; 
+            break;
+        case ADVANCED:  // Mode SPORT (Pleine puissance)
+            speed_factor = 0.70f; 
+            break;
+        case EXPERT:  // Mode SPORT (Pleine puissance)
+            speed_factor = 1.00f; 
+            break;
+        default: // Sécurité si le mode reçu est corrompu/inconnu
+            speed_factor = 0.40f; 
+            break;
+    }
+
+    // Applique le coefficient multiplicateur
+    int16_t final_speed = (int16_t)((float)target_speed * speed_factor);
+
+    // 4. Envoi de la commande finale bridée au moteur
+    ledc_motor(final_speed * 10);
 
     return ESP_OK;
 }
@@ -186,7 +271,7 @@ void dump_android(const android_t *android) {
 
 esp_err_t cmd_dispatch(const int8_t *data) {
     esp_err_t err;
-    command_type_t type;
+    command_type_t type = CMD_TYPE_MAX;
     err = get_cmd_type(data, &type);
     if (err != ESP_OK) {
         log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) getting command type", 

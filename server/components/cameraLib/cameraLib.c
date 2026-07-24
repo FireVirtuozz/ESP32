@@ -29,7 +29,98 @@
 #define CAM_PIN_D6 17
 #define CAM_PIN_D7 16
 
+#define CAMCFG_OFF_MASK            0   // u32, 4 bytes
+#define CAMCFG_OFF_FRAMESIZE       4   // u8
+#define CAMCFG_OFF_BRIGHTNESS      5   // i8
+#define CAMCFG_OFF_CONTRAST        6   // i8
+#define CAMCFG_OFF_SATURATION      7   // i8
+#define CAMCFG_OFF_SHARPNESS       8   // i8
+#define CAMCFG_OFF_DENOISE         9   // u8
+#define CAMCFG_OFF_QUALITY         10  // u8
+#define CAMCFG_OFF_GAINCEILING     11  // u8
+#define CAMCFG_OFF_COLORBAR        12  // u8
+#define CAMCFG_OFF_WHITEBAL        13  // u8
+#define CAMCFG_OFF_AWB_GAIN        14  // u8
+#define CAMCFG_OFF_WB_MODE         15  // u8
+#define CAMCFG_OFF_EXPOSURE_CTRL   16  // u8
+#define CAMCFG_OFF_AEC2            17  // u8
+#define CAMCFG_OFF_AE_LEVEL        18  // i8
+#define CAMCFG_OFF_AEC_VALUE       19  // u16, 2 bytes
+#define CAMCFG_OFF_GAIN_CTRL       21  // u8
+#define CAMCFG_OFF_AGC_GAIN        22  // u8
+#define CAMCFG_OFF_HMIRROR         23  // u8
+#define CAMCFG_OFF_VFLIP           24  // u8
+#define CAMCFG_OFF_DCW             25  // u8
+#define CAMCFG_OFF_BPC             26  // u8
+#define CAMCFG_OFF_WPC             27  // u8
+#define CAMCFG_OFF_RAW_GMA         28  // u8
+#define CAMCFG_OFF_LENC            29  // u8
+#define CAMCFG_OFF_SPECIAL_EFFECT  30  // u8
+
+// Guard contre les fonctions non implémentées par certains drivers de capteur (varie selon OV2640/OV2660/OV3660)
+#define CALL_IF(fn, ...) do { if ((fn) != NULL) { (fn)(__VA_ARGS__); } } while (0)
+
+typedef enum {
+    CAM_CFG_FRAMESIZE      = 1 << 0,
+    CAM_CFG_BRIGHTNESS     = 1 << 1,
+    CAM_CFG_CONTRAST       = 1 << 2,
+    CAM_CFG_SATURATION     = 1 << 3,
+    CAM_CFG_SHARPNESS      = 1 << 4,
+    CAM_CFG_DENOISE        = 1 << 5,
+    CAM_CFG_QUALITY        = 1 << 6,
+    CAM_CFG_GAINCEILING    = 1 << 7,
+    CAM_CFG_COLORBAR       = 1 << 8,
+    CAM_CFG_WHITEBAL       = 1 << 9,
+    CAM_CFG_AWB_GAIN       = 1 << 10,
+    CAM_CFG_WB_MODE        = 1 << 11,
+    CAM_CFG_EXPOSURE_CTRL  = 1 << 12,
+    CAM_CFG_AEC2           = 1 << 13,
+    CAM_CFG_AE_LEVEL       = 1 << 14,
+    CAM_CFG_AEC_VALUE      = 1 << 15,
+    CAM_CFG_GAIN_CTRL      = 1 << 16,
+    CAM_CFG_AGC_GAIN       = 1 << 17,
+    CAM_CFG_HMIRROR        = 1 << 18,
+    CAM_CFG_VFLIP          = 1 << 19,
+    CAM_CFG_DCW            = 1 << 20,
+    CAM_CFG_BPC            = 1 << 21,
+    CAM_CFG_WPC            = 1 << 22,
+    CAM_CFG_RAW_GMA        = 1 << 23,
+    CAM_CFG_LENC           = 1 << 24,
+    CAM_CFG_SPECIAL_EFFECT = 1 << 25,
+} camera_config_field_t;
+
+typedef struct {
+    uint32_t field_mask;
+    framesize_t framesize;
+    int brightness;
+    int contrast;
+    int saturation;
+    int sharpness;
+    int denoise;
+    int quality;
+    gainceiling_t gainceiling;
+    int colorbar;
+    int whitebal;
+    int awb_gain;
+    int wb_mode;
+    int exposure_ctrl;
+    int aec2;
+    int ae_level;
+    int aec_value;
+    int gain_ctrl;
+    int agc_gain;
+    int hmirror;
+    int vflip;
+    int dcw;
+    int bpc;
+    int wpc;
+    int raw_gma;
+    int lenc;
+    int special_effect;
+} camera_config_t_app;
+
 static const char* TAG = "camera_library";
+
 
 static camera_config_t camera_config = {
     .pin_pwdn  = CAM_PIN_PWDN,
@@ -78,6 +169,87 @@ static camera_config_t camera_config = {
     .fb_count = 2, //When jpeg mode is used, if fb_count more than one, the driver will work in continuous mode.
     .grab_mode = CAMERA_GRAB_LATEST // Sets when buffers should be filled
 };
+
+static void deserialize_camera_config(const uint8_t *buffer, size_t len, camera_config_t_app *out) {
+
+    uint16_t aec_value;
+    memset(out, 0, sizeof(camera_config_t_app));
+
+    out->field_mask = (uint32_t)buffer[0]
+                     | ((uint32_t)buffer[1] << 8)
+                     | ((uint32_t)buffer[2] << 16)
+                     | ((uint32_t)buffer[3] << 24);
+
+    out->framesize      = (framesize_t)buffer[CAMCFG_OFF_FRAMESIZE];
+    out->brightness     = (int8_t)buffer[CAMCFG_OFF_BRIGHTNESS];
+    out->contrast       = (int8_t)buffer[CAMCFG_OFF_CONTRAST];
+    out->saturation     = (int8_t)buffer[CAMCFG_OFF_SATURATION];
+    out->sharpness      = (int8_t)buffer[CAMCFG_OFF_SHARPNESS];
+    out->denoise        = buffer[CAMCFG_OFF_DENOISE];
+    out->quality        = buffer[CAMCFG_OFF_QUALITY];
+    out->gainceiling    = (gainceiling_t)buffer[CAMCFG_OFF_GAINCEILING];
+    out->colorbar       = buffer[CAMCFG_OFF_COLORBAR];
+    out->whitebal       = buffer[CAMCFG_OFF_WHITEBAL];
+    out->awb_gain       = buffer[CAMCFG_OFF_AWB_GAIN];
+    out->wb_mode        = buffer[CAMCFG_OFF_WB_MODE];
+    out->exposure_ctrl  = buffer[CAMCFG_OFF_EXPOSURE_CTRL];
+    out->aec2           = buffer[CAMCFG_OFF_AEC2];
+    out->ae_level       = (int8_t)buffer[CAMCFG_OFF_AE_LEVEL];
+    memcpy(&aec_value, &buffer[CAMCFG_OFF_AEC_VALUE], sizeof(uint16_t));
+    out->aec_value      = aec_value;
+    out->gain_ctrl      = buffer[CAMCFG_OFF_GAIN_CTRL];
+    out->agc_gain       = buffer[CAMCFG_OFF_AGC_GAIN];
+    out->hmirror        = buffer[CAMCFG_OFF_HMIRROR];
+    out->vflip          = buffer[CAMCFG_OFF_VFLIP];
+    out->dcw            = buffer[CAMCFG_OFF_DCW];
+    out->bpc            = buffer[CAMCFG_OFF_BPC];
+    out->wpc            = buffer[CAMCFG_OFF_WPC];
+    out->raw_gma        = buffer[CAMCFG_OFF_RAW_GMA];
+    out->lenc           = buffer[CAMCFG_OFF_LENC];
+    out->special_effect = buffer[CAMCFG_OFF_SPECIAL_EFFECT];
+
+}
+
+void apply_camera_config(const uint8_t *buffer, size_t len) {
+    camera_config_t_app cfg;
+
+    deserialize_camera_config(buffer, len, &cfg);
+
+    sensor_t *s = esp_camera_sensor_get();
+    if (s == NULL) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Camera not initialized");
+        return;
+    }
+
+    if (cfg.field_mask & CAM_CFG_FRAMESIZE)      CALL_IF(s->set_framesize, s, cfg.framesize);
+    if (cfg.field_mask & CAM_CFG_BRIGHTNESS)     CALL_IF(s->set_brightness, s, cfg.brightness);
+    if (cfg.field_mask & CAM_CFG_CONTRAST)       CALL_IF(s->set_contrast, s, cfg.contrast);
+    if (cfg.field_mask & CAM_CFG_SATURATION)     CALL_IF(s->set_saturation, s, cfg.saturation);
+    if (cfg.field_mask & CAM_CFG_SHARPNESS)      CALL_IF(s->set_sharpness, s, cfg.sharpness);
+    if (cfg.field_mask & CAM_CFG_DENOISE)        CALL_IF(s->set_denoise, s, cfg.denoise);
+    if (cfg.field_mask & CAM_CFG_QUALITY)        CALL_IF(s->set_quality, s, cfg.quality);
+    if (cfg.field_mask & CAM_CFG_GAINCEILING)    CALL_IF(s->set_gainceiling, s, cfg.gainceiling);
+    if (cfg.field_mask & CAM_CFG_COLORBAR)       CALL_IF(s->set_colorbar, s, cfg.colorbar);
+    if (cfg.field_mask & CAM_CFG_WHITEBAL)       CALL_IF(s->set_whitebal, s, cfg.whitebal);
+    if (cfg.field_mask & CAM_CFG_AWB_GAIN)       CALL_IF(s->set_awb_gain, s, cfg.awb_gain);
+    if (cfg.field_mask & CAM_CFG_WB_MODE)        CALL_IF(s->set_wb_mode, s, cfg.wb_mode);
+    if (cfg.field_mask & CAM_CFG_EXPOSURE_CTRL)  CALL_IF(s->set_exposure_ctrl, s, cfg.exposure_ctrl);
+    if (cfg.field_mask & CAM_CFG_AEC2)           CALL_IF(s->set_aec2, s, cfg.aec2);
+    if (cfg.field_mask & CAM_CFG_AE_LEVEL)       CALL_IF(s->set_ae_level, s, cfg.ae_level);
+    if (cfg.field_mask & CAM_CFG_AEC_VALUE)      CALL_IF(s->set_aec_value, s, cfg.aec_value);
+    if (cfg.field_mask & CAM_CFG_GAIN_CTRL)      CALL_IF(s->set_gain_ctrl, s, cfg.gain_ctrl);
+    if (cfg.field_mask & CAM_CFG_AGC_GAIN)       CALL_IF(s->set_agc_gain, s, cfg.agc_gain);
+    if (cfg.field_mask & CAM_CFG_HMIRROR)        CALL_IF(s->set_hmirror, s, cfg.hmirror);
+    if (cfg.field_mask & CAM_CFG_VFLIP)          CALL_IF(s->set_vflip, s, cfg.vflip);
+    if (cfg.field_mask & CAM_CFG_DCW)            CALL_IF(s->set_dcw, s, cfg.dcw);
+    if (cfg.field_mask & CAM_CFG_BPC)            CALL_IF(s->set_bpc, s, cfg.bpc);
+    if (cfg.field_mask & CAM_CFG_WPC)            CALL_IF(s->set_wpc, s, cfg.wpc);
+    if (cfg.field_mask & CAM_CFG_RAW_GMA)        CALL_IF(s->set_raw_gma, s, cfg.raw_gma);
+    if (cfg.field_mask & CAM_CFG_LENC)           CALL_IF(s->set_lenc, s, cfg.lenc);
+    if (cfg.field_mask & CAM_CFG_SPECIAL_EFFECT) CALL_IF(s->set_special_effect, s, cfg.special_effect);
+
+    log_msg(TAG, "Config applied, mask=0x%08lx", (unsigned long)cfg.field_mask);
+}
 
 
 static void jpg_stream_udp(void *param){

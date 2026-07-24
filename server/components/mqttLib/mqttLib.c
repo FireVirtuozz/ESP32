@@ -92,7 +92,7 @@ static void handle_mqtt_data(const char *data, size_t len) {
         if (cJSON_IsNumber(duty)) {
             log_msg(TAG, "Updating servo duty : %d",
                      duty->valueint);
-            ledc_duty(duty->valueint, DIRECTION_IDX);
+            ledc_angle(duty->valueint);
         } else {
             log_msg(TAG, "Invalid SERVO_DUTY JSON");
         }
@@ -103,7 +103,7 @@ static void handle_mqtt_data(const char *data, size_t len) {
         if (cJSON_IsNumber(duty)) {
             log_msg(TAG, "Updating motor fwd duty : %d",
                      duty->valueint);
-            ledc_duty(duty->valueint, MOTOR_IDX_FWD);
+            ledc_motor(duty->valueint);
         } else {
             log_msg(TAG, "Invalid MOTOR_DUTY_FWD JSON");
         }
@@ -114,7 +114,7 @@ static void handle_mqtt_data(const char *data, size_t len) {
         if (cJSON_IsNumber(duty)) {
             log_msg(TAG, "Updating motor bwd duty : %d",
                      duty->valueint);
-            ledc_duty(duty->valueint, MOTOR_IDX_BWD);
+            ledc_motor(duty->valueint);
         } else {
             log_msg(TAG, "Invalid MOTOR_DUTY_BWD JSON");
         }

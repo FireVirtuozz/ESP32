@@ -9,6 +9,16 @@ dependencies:
       registry_url: https://components.espressif.com/
       type: service
     version: 1.7.19
+  espressif/esp-zigbee-lib:
+    component_hash: 8e815d149f904b3429100d8735a2ed81dea38caff3e2b5e38e5751ffc0af6d89
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 2.0.3
   espressif/esp32-camera:
     component_hash: 2b75f6f0c987fb0e3687ccbd464cd00c163ea8cb05d2470cfb05adf6535bc488
     dependencies:
@@ -56,10 +66,11 @@ dependencies:
     version: 9.4.0
 direct_dependencies:
 - espressif/cjson
+- espressif/esp-zigbee-lib
 - espressif/esp32-camera
 - espressif/mqtt
 - idf
 - lvgl/lvgl
-manifest_hash: 2de136f41b0c6e0edf0104515c9abc297fe1da1d1d31f7a74843af8ae08c90c6
-target: esp32
+manifest_hash: 470b2da42f27fbc61c4111cfc3916218a5ba1c775ab2a2c7aab3422d2b12b125
+target: esp32s3
 version: 3.0.0

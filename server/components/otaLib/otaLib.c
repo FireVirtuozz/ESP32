@@ -18,18 +18,14 @@
 
 static const char *TAG = "ota_library";
 
-//mutex for running, because r/w in multiple tasks.
-//here it is still ok, not spamming..
-static bool ota_running = false;
+#define FIRMWARE_UPGRADE_URL "http://192.168.1.163:8070/firmware.bin"
+//"https://raw.githubusercontent.com/FireVirtuozz/ESP32/main/server/build/server.bin"
 
-#define EXAMPLE_FIRMWARE_UPGRADE_URL \
-"https://raw.githubusercontent.com/FireVirtuozz/ESP32/main/server/build/server.bin"
-
-#define EXAMPLE_SKIP_COMMON_NAME_CHECK 1
-#define EXAMPLE_SKIP_VERSION_CHECK 0
-#define EXAMPLE_OTA_RECV_TIMEOUT 5000
-#define EXAMPLE_OTA_BUF_SIZE 1024
-#define EXAMPLE_USE_CERT_BUNDLE 1
+#define USE_TLS 0
+#define SKIP_VERSION_CHECK 1
+#define OTA_RECV_TIMEOUT 5000
+#define OTA_BUF_SIZE 1024
+#define USE_CERT_BUNDLE 1
 //depends on MBEDTLS_CERTIFICATE_BUNDLE
 
 /* Event handler for catching system events */
@@ -85,7 +81,7 @@ static esp_err_t validate_image_header(esp_app_desc_t *new_app_info)
         log_msg(TAG, "New firmware version: %s", new_app_info->version);
     }
 
-#if !EXAMPLE_SKIP_VERSION_CHECK
+#if !SKIP_VERSION_CHECK
     if (memcmp(new_app_info->version, running_app_info.version, sizeof(new_app_info->version)) == 0) {
         log_msg(TAG, "Current running version is the same as a new. We will not continue the update.");
         return ESP_FAIL;
@@ -110,11 +106,15 @@ void advanced_ota_example_task(void *pvParameter)
     esp_err_t err;
     esp_err_t ota_finish_err = ESP_OK;
     esp_http_client_config_t config = {
-        .url = EXAMPLE_FIRMWARE_UPGRADE_URL,
+        .url = FIRMWARE_UPGRADE_URL,
+    #if USE_TLS
         .crt_bundle_attach = esp_crt_bundle_attach,
-        .timeout_ms = EXAMPLE_OTA_RECV_TIMEOUT,
+    #else
+        .use_global_ca_store = true,
+    #endif
+        .timeout_ms = OTA_RECV_TIMEOUT,
         .keep_alive_enable = true,
-        .buffer_size = EXAMPLE_OTA_BUF_SIZE,
+        .buffer_size = OTA_BUF_SIZE,
         };
 
     esp_https_ota_config_t ota_config = {
@@ -126,7 +126,7 @@ void advanced_ota_example_task(void *pvParameter)
     err = esp_https_ota_begin(&ota_config, &https_ota_handle);
     if (err != ESP_OK) {
         log_msg(TAG, "ESP HTTPS OTA Begin failed");
-        ota_running = false;
+        atomic_store(&ota_lock, false);
         vTaskDelete(NULL);
     }
 
@@ -174,7 +174,7 @@ void advanced_ota_example_task(void *pvParameter)
             }
 
             log_msg(TAG, "ESP_HTTPS_OTA upgrade failed 0x%x", ota_finish_err);
-            ota_running = false;
+            atomic_store(&ota_lock, false);
             vTaskDelete(NULL);
         }
     }
@@ -182,30 +182,25 @@ void advanced_ota_example_task(void *pvParameter)
 ota_end:
     esp_https_ota_abort(https_ota_handle);
     log_msg(TAG, "ESP_HTTPS_OTA upgrade failed");
-    ota_running = false;
+    atomic_store(&ota_lock, false);
     vTaskDelete(NULL);
 }
 
 void ota_init() {
 
-    if (!ota_running) {
-        ota_running = true;
-        log_msg(TAG, "OTA start");
+    log_msg(TAG, "OTA start");
 
-        esp_err_t err = esp_event_handler_register(ESP_HTTPS_OTA_EVENT,
-            ESP_EVENT_ANY_ID, &event_handler, NULL);
-        if (err != ESP_OK) {
-            log_msg(TAG, "Error (%s) registering handler", esp_err_to_name(err));
-            ota_running = false;
-            return;
-        }
-
-        // esp_wifi_set_ps(WIFI_PS_NONE);
-
-        xTaskCreate(&advanced_ota_example_task,
-            "advanced_ota_example_task", 1024 * 8, NULL, 5, NULL);
-
-    } else {
-        log_msg(TAG, "OTA already updating");
+    esp_err_t err = esp_event_handler_register(ESP_HTTPS_OTA_EVENT,
+        ESP_EVENT_ANY_ID, &event_handler, NULL);
+    if (err != ESP_OK) {
+        log_msg(TAG, "Error (%s) registering handler", esp_err_to_name(err));
+        atomic_store(&ota_lock, false);
+        return;
     }
+
+    // esp_wifi_set_ps(WIFI_PS_NONE);
+
+    xTaskCreate(&advanced_ota_example_task,
+        "advanced_ota_example_task", 1024 * 8, NULL, 5, NULL);
+
 }

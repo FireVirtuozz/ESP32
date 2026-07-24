@@ -1,6 +1,8 @@
 #ifndef WIFILIB_H_
 #define WIFILIB_H_
 
+#include <esp_err.h>
+
 //Get the IP address of ESP
 const char* wifi_get_ip(void);
 
@@ -20,5 +22,7 @@ void get_ap_info();
 
 //check if there already is a wifi scan
 bool is_scanning();
+
+esp_err_t sta_get_rssi(int *rssi);
 
 #endif

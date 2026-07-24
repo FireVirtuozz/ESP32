@@ -18,3 +18,4 @@ dependencies:
   espressif/cjson: '*'
   lvgl/lvgl: '*'
   espressif/esp32-camera: '*'
+  espressif/esp-zigbee-lib: '*'

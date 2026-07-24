@@ -2,11 +2,7 @@
 #define LEDLIB_H_
 
 #include <inttypes.h>
-
-//idx for channels
-#define MOTOR_IDX_FWD  0
-#define MOTOR_IDX_BWD  1
-#define DIRECTION_IDX  2
+#include <esp_err.h>
 
 //init ledc & led gpio
 void init_all_gpios();
@@ -45,9 +41,6 @@ void init_ledc();
 //apply duty with fade
 void ledc_duty_fade(const uint32_t duty, const uint8_t idx);
 
-//apply duty directly
-void ledc_duty(const uint32_t duty, const uint8_t idx);
-
 //apply angle to servo
 void ledc_angle(int16_t angle);
 
@@ -55,6 +48,22 @@ void ledc_angle(int16_t angle);
 void ledc_motor(int16_t motor_percent);
 
 //get current servo angle
-uint8_t get_servo_angle();
+esp_err_t get_servo_angle(uint8_t* angle);
+
+esp_err_t get_motor_percent(int16_t* motor);
+
+esp_err_t set_motor_percent(int16_t motor);
+
+esp_err_t force_motor_stop();
+
+void ledc_buzzer(int16_t buzzer_percent);
+
+void ledc_ky029(int16_t ky029_percent, const bool red);
+
+void ledc_ky009(int16_t ky009_percent, const uint8_t color);
+
+void set_led_color(uint8_t r, uint8_t g, uint8_t b);
+
+esp_err_t apply_config(uint8_t *buf, uint8_t len);
 
 #endif

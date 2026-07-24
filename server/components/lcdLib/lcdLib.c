@@ -81,7 +81,7 @@ void set_bar_steer(const int32_t v)
 void set_label_ip(const char* ip_str) {
     if (label_ip != NULL) {
         if (strcmp((char*)label_ip_text, ip_str) != 0) {
-            strncpy((char*)label_ip_text, ip_str, sizeof(label_ip_text));
+            snprintf((char*)label_ip_text, sizeof(label_ip_text), "%s", ip_str);
             label_ip_text[sizeof(label_ip_text) - 1] = '\0'; //security if out of bounds
             label_ip_text_changed = 1;
             _lock_acquire(&lvgl_api_lock);

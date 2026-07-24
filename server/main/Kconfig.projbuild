@@ -57,6 +57,11 @@ menu "ESP RC Car"
         bool "ESP-NOW"
         default n
         depends on USE_WIFI
+
+    config USE_ZIGBEE
+        bool "ZIGBEE"
+        default n
+
     endmenu
 
 

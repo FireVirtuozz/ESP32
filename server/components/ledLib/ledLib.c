@@ -34,8 +34,14 @@
 #include "esp_private/esp_gpio_reserve.h"
 #endif
 
+#include "driver/rmt_tx.h"
+
 //timer configs
 
+//duty properties
+#define GET_MAX_DUTY(res) ((1 << (res)) - 1)
+
+#if CONFIG_USE_BTS7960
 //for h-bridge bts7960
 #define BTS_TIMER           LEDC_TIMER_0
 #if CONFIG_IDF_TARGET_ESP32
@@ -43,36 +49,12 @@
 #else
 #define BTS_SPEED_MODE      LEDC_LOW_SPEED_MODE
 #endif
-#define BTS_GPIO_FWD        32
+#define BTS_GPIO_FWD        41
 #define BTS_CHANNEL_FWD     LEDC_CHANNEL_0
-#define BTS_GPIO_BWD        33
+#define BTS_GPIO_BWD        42
 #define BTS_CHANNEL_BWD     LEDC_CHANNEL_1
 #define BTS_FREQ            20000 //max frequency BTS : 25kHz
 #define BTS_RESOLUTION      LEDC_TIMER_11_BIT
-
-//for servo mg996r
-#define MG_TIMER            LEDC_TIMER_1
-#if CONFIG_IDF_TARGET_ESP32
-#define MG_SPEED_MODE       LEDC_HIGH_SPEED_MODE
-#else
-#define MG_SPEED_MODE       LEDC_LOW_SPEED_MODE
-#endif
-#define MG_GPIO             (4) //parentheses reliable to avoid bugs in calculus
-#define MG_CHANNEL          LEDC_CHANNEL_2
-#define MG_FREQ             50 //50 Hz for mg996r
-#if CONFIG_IDF_TARGET_ESP32
-#define MG_RESOLUTION       LEDC_TIMER_15_BIT
-#else
-#define MG_RESOLUTION       LEDC_TIMER_14_BIT
-#endif
-
-
-#define LEDC_TEST_FADE_TIME    (3000)
-
-#define LEDC_NUM_TEST 3
-
-//duty properties
-#define GET_MAX_DUTY(res) ((1 << (res)) - 1)
 
 //bts7960
 #define DEADZONE_MOTOR 5
@@ -80,6 +62,24 @@
 #define MAX_MOTOR_DUTY_FWD GET_MAX_DUTY(BTS_RESOLUTION) //max duty : 2^resolution - 1
 #define MIN_MOTOR_DUTY_BWD 0
 #define MAX_MOTOR_DUTY_BWD GET_MAX_DUTY(BTS_RESOLUTION)
+#endif
+
+#if CONFIG_USE_MG996R
+//for servo mg996r
+#define MG_TIMER            LEDC_TIMER_1
+#if CONFIG_IDF_TARGET_ESP32
+#define MG_SPEED_MODE       LEDC_HIGH_SPEED_MODE
+#else
+#define MG_SPEED_MODE       LEDC_LOW_SPEED_MODE
+#endif
+#define MG_GPIO             (7) //parentheses reliable to avoid bugs in calculus
+#define MG_CHANNEL          LEDC_CHANNEL_2
+#define MG_FREQ             50 //50 Hz for mg996r
+#if CONFIG_IDF_TARGET_ESP32
+#define MG_RESOLUTION       LEDC_TIMER_15_BIT
+#else
+#define MG_RESOLUTION       LEDC_TIMER_14_BIT
+#endif
 
 //mg996r
 #if CONFIG_IDF_TARGET_ESP32
@@ -89,21 +89,157 @@
 #define MIN_SERVO_DUTY 819
 #define MAX_SERVO_DUTY 1639
 #endif
+#endif
 
+
+#define LEDC_TEST_FADE_TIME    (3000)
+
+
+#if CONFIG_USE_KY006
+//passive buzzer
+#define BUZZER_GPIO 19
+#define BUZZER_RESOLUTION LEDC_TIMER_13_BIT
+#define BUZZER_START_FREQ 2000
+#define BUZZER_MIN_DUTY 0
+#define BUZZER_MAX_DUTY (GET_MAX_DUTY(BUZZER_RESOLUTION) / 2)
+#define BUZZER_SPEED_MODE LEDC_LOW_SPEED_MODE
+#define BUZZER_LEDC_TIMER LEDC_TIMER_2
+#define BUZZER_LEDC_CHANNEL LEDC_CHANNEL_4
+#endif
+
+#if CONFIG_USE_KY029
+#define KY029_RED_GPIO          18  // À adapter selon ton câblage
+#define KY029_GREEN_GPIO        19   // À adapter selon ton câblage
+#define KY029_RESOLUTION        LEDC_TIMER_13_BIT
+#define KY029_FREQ              5000 // 5 kHz (parfait pour les LEDs, aucun scintillement)
+#define KY029_MIN_DUTY          0
+#define KY029_MAX_DUTY          GET_MAX_DUTY(KY029_RESOLUTION) // 100% de luminosité (pas divisé par 2 !)
+#define KY029_SPEED_MODE        LEDC_LOW_SPEED_MODE
+#define KY029_LEDC_TIMER        LEDC_TIMER_3  // Nouveau timer (car fréquence différente du buzzer)
+#define KY029_RED_CHANNEL       LEDC_CHANNEL_5
+#define KY029_GREEN_CHANNEL     LEDC_CHANNEL_6
+#endif
+
+#if CONFIG_USE_KY009
+#define KY009_RED_GPIO          18  // À adapter selon ton câblage
+#define KY009_GREEN_GPIO        19   // À adapter selon ton câblage
+#define KY009_BLUE_GPIO         17  // À adapter selon ton câblage
+#define KY009_RESOLUTION        LEDC_TIMER_13_BIT
+#define KY009_FREQ              5000 // 5 kHz (parfait pour les LEDs, aucun scintillement)
+#define KY009_MIN_DUTY          0
+#define KY009_MAX_DUTY          GET_MAX_DUTY(KY009_RESOLUTION) // 100% de luminosité (pas divisé par 2 !)
+#define KY009_SPEED_MODE        LEDC_LOW_SPEED_MODE
+#define KY009_LEDC_TIMER        LEDC_TIMER_3  // Nouveau timer (car fréquence différente du buzzer)
+#define KY009_RED_CHANNEL       LEDC_CHANNEL_5
+#define KY009_GREEN_CHANNEL     LEDC_CHANNEL_6
+#define KY009_BLUE_CHANNEL     LEDC_CHANNEL_7
+#endif
+
+#if CONFIG_USE_BUILTIN_LED
 //LED pin gpio connected on breadboard
 #define LED_PIN 2
 
-//global variables
-static uint8_t current_angle = 0;
-static int8_t current_motor = 0;
-static volatile int8_t target_motor = 0;
-static int led_state = 0; //TODO : convert to uint8
-
-//mutex for changes to global variables
-static SemaphoreHandle_t xMutex = NULL;
+#endif
 
 static const char *TAG = "led_library";
 
+#if CONFIG_USE_BUILTIN_LED_W2812B
+#define LED_GPIO             48
+#define RMT_CLK_RES_HZ       10000000 // Horloge à 10MHz -> 1 tick = 100ns
+
+// Définition de nos timings en nombre de ticks
+#define T0H  4   // 400ns à l'état HAUT
+#define T0L  8   // 800ns à l'état BAS
+#define T1H  8   // 800ns à l'état HAUT
+#define T1L  4   // 400ns à l'état BAS
+
+static rmt_channel_handle_t tx_chan = NULL;
+static rmt_encoder_handle_t copy_encoder = NULL;
+
+static void init_ws2812_rmt(void) {
+    // 1. Configuration du canal matériel RMT TX
+    rmt_tx_channel_config_t tx_chan_config = {
+        .clk_src = RMT_CLK_SRC_DEFAULT,
+        .gpio_num = LED_GPIO,
+        .mem_block_symbols = 64,        // Buffer interne suffisant pour 1 LED (24 bits)
+        .resolution_hz = RMT_CLK_RES_HZ,
+        .trans_queue_depth = 4,
+    };
+    rmt_new_tx_channel(&tx_chan_config, &tx_chan);
+
+    // 2. Initialisation de l'encodeur "Copy" d'ESP-IDF
+    // Il va copier notre tableau de symboles directement vers la mémoire du RMT
+    rmt_copy_encoder_config_t copy_encoder_config = {};
+    rmt_new_copy_encoder(&copy_encoder_config, &copy_encoder);
+
+    // 3. Activation du canal matériel
+    rmt_enable(tx_chan);
+
+    log_msg(TAG, "BUILTIN W2812B initialized");
+}
+
+#endif
+
+void set_led_color(uint8_t r, uint8_t g, uint8_t b) {
+
+#if CONFIG_USE_BUILTIN_LED_W2812B
+    // ATTENTION : Le WS2812B attend les couleurs dans l'ordre G-R-B (Vert, Rouge, Bleu)
+    // On fusionne les trois octets dans un seul entier 24 bits
+    uint32_t color_val = ((uint32_t)g << 16) | ((uint32_t)r << 8) | b;
+
+    // 1 LED = 24 bits = Il nous faut un tableau de 24 symboles RMT
+    rmt_symbol_word_t led_symbols[24];
+
+    // On boucle sur les 24 bits, du plus fort (MSB) au plus faible (LSB)
+    for (int i = 0; i < 24; i++) {
+        // Extraction du bit courant (0 ou 1)
+        uint32_t bit = (color_val >> (23 - i)) & 0x01;
+
+        if (bit == 0) {
+            // Configuration de la vague pour un bit '0'
+            led_symbols[i] = (rmt_symbol_word_t) {
+                .duration0 = T0H, .level0 = 1, // Reste HAUT pendant T0H ticks
+                .duration1 = T0L, .level1 = 0  // Puis passe BAS pendant T0L ticks
+            };
+        } else {
+            // Configuration de la vague pour un bit '1'
+            led_symbols[i] = (rmt_symbol_word_t) {
+                .duration0 = T1H, .level0 = 1, // Reste HAUT pendant T1H ticks
+                .duration1 = T1L, .level1 = 0  // Puis passe BAS pendant T1L ticks
+            };
+        }
+    }
+
+    // Configuration de la transmission
+    rmt_transmit_config_t transmit_config = {
+        .loop_count = 0, // On envoie une seule fois
+    };
+
+    // Transmission des données (la taille demandée doit être en octets !)
+    rmt_transmit(tx_chan, copy_encoder, led_symbols, sizeof(led_symbols), &transmit_config);
+    
+    // Attente synchrone que le RMT ait fini de cracher les bits sur la pin
+    rmt_tx_wait_all_done(tx_chan, portMAX_DELAY);
+
+    log_msg(TAG, "W2812B color set to: %u,%u,%u [RGB]", r, g, b);
+#endif
+}
+
+#if CONFIG_USE_MG996R
+//global variables
+static uint8_t current_angle = 0;
+#endif
+
+#if CONFIG_USE_BTS7960
+static volatile int16_t current_motor = 0;
+static volatile int16_t target_motor = 0;
+#endif
+
+static int led_state = 0; //TODO : convert to uint8
+//mutex for changes to global variables
+static SemaphoreHandle_t xMutex = NULL;
+
+#if CONFIG_USE_BTS7960
 /*
 * Prepare and set configuration of timers
 * that will be used by LED Controller
@@ -115,7 +251,8 @@ static ledc_timer_config_t ledc_timer_bts = {
     .timer_num = BTS_TIMER,            // timer index
     .clk_cfg = LEDC_AUTO_CLK,              // Auto select the source clock
 };
-
+#endif
+#if CONFIG_USE_MG996R
 static ledc_timer_config_t ledc_timer_mg = {
     .duty_resolution = MG_RESOLUTION, // resolution of PWM duty : 0..8191
     .freq_hz = MG_FREQ,                      // frequency of PWM signal : 20ms
@@ -123,6 +260,91 @@ static ledc_timer_config_t ledc_timer_mg = {
     .timer_num = MG_TIMER,            // timer index
     .clk_cfg = LEDC_AUTO_CLK,              // Auto select the source clock
 };
+#endif
+#if CONFIG_USE_KY006
+static ledc_timer_config_t ledc_timer_buzzer = {
+    .duty_resolution = BUZZER_RESOLUTION, // resolution of PWM duty : 0..8191
+    .freq_hz = BUZZER_START_FREQ,                      // frequency of PWM signal : 20ms
+    .speed_mode = BUZZER_SPEED_MODE,           // timer mode
+    .timer_num = BUZZER_LEDC_TIMER,            // timer index
+    .clk_cfg = LEDC_AUTO_CLK,              // Auto select the source clock
+};
+#endif
+#if CONFIG_USE_KY029
+static ledc_timer_config_t ledc_timer_ky029 = {
+    .duty_resolution = KY029_RESOLUTION, // resolution of PWM duty : 0..8191
+    .freq_hz = KY029_FREQ,                      // frequency of PWM signal : 20ms
+    .speed_mode = KY029_SPEED_MODE,           // timer mode
+    .timer_num = KY029_LEDC_TIMER,            // timer index
+    .clk_cfg = LEDC_AUTO_CLK,              // Auto select the source clock
+};
+#endif
+#if CONFIG_USE_KY009
+static ledc_timer_config_t ledc_timer_ky009 = {
+    .duty_resolution = KY009_RESOLUTION, // resolution of PWM duty : 0..8191
+    .freq_hz = KY009_FREQ,                      // frequency of PWM signal : 20ms
+    .speed_mode = KY009_SPEED_MODE,           // timer mode
+    .timer_num = KY009_LEDC_TIMER,            // timer index
+    .clk_cfg = LEDC_AUTO_CLK,              // Auto select the source clock
+};
+#endif
+
+// 1. Détermination des canaux pour le BTS7960 (2 canaux si activé, 0 sinon)
+#if CONFIG_USE_BTS7960
+    #define BTS7960_CHANNELS 2
+#else
+    #define BTS7960_CHANNELS 0
+#endif
+
+// 2. Détermination pour le KY006 (1 canal si activé, 0 sinon)
+#if CONFIG_USE_KY006
+    #define KY006_CHANNELS 1
+#else
+    #define KY006_CHANNELS 0
+#endif
+
+// 3. Détermination pour le MG996R (1 canal si activé, 0 sinon)
+#if CONFIG_USE_MG996R
+    #define MG996R_CHANNELS 1
+#else
+    #define MG996R_CHANNELS 0
+#endif
+
+#if CONFIG_USE_KY029
+    #define KY029_CHANNELS 2
+#else
+    #define KY029_CHANNELS 0
+#endif
+
+#if CONFIG_USE_KY009
+    #define KY009_CHANNELS 3
+#else
+    #define KY009_CHANNELS 0
+#endif
+
+// Somme totale sécurisée
+#define LEDC_CHANNELS_COUNT (BTS7960_CHANNELS + KY006_CHANNELS + MG996R_CHANNELS + KY029_CHANNELS + KY009_CHANNELS)
+
+//idx for channels
+#if CONFIG_USE_BTS7960
+#define MOTOR_IDX_FWD  0
+#define MOTOR_IDX_BWD  1
+#endif
+#if CONFIG_USE_MG996R
+#define DIRECTION_IDX  BTS7960_CHANNELS
+#endif
+#if CONFIG_USE_KY006
+#define BUZZER_IDX     BTS7960_CHANNELS + MG996R_CHANNELS
+#endif
+#if CONFIG_USE_KY029
+#define KY029_RED_IDX     BTS7960_CHANNELS + MG996R_CHANNELS + KY006_CHANNELS
+#define KY029_GREEN_IDX     BTS7960_CHANNELS + MG996R_CHANNELS + KY006_CHANNELS + 1
+#endif
+#if CONFIG_USE_KY009
+#define KY009_RED_IDX     BTS7960_CHANNELS + MG996R_CHANNELS + KY006_CHANNELS
+#define KY009_GREEN_IDX     BTS7960_CHANNELS + MG996R_CHANNELS + KY006_CHANNELS + 1
+#define KY009_BLUE_IDX     BTS7960_CHANNELS + MG996R_CHANNELS + KY006_CHANNELS + 2
+#endif
 
 /*
 * Prepare individual configuration
@@ -137,8 +359,8 @@ static ledc_timer_config_t ledc_timer_mg = {
 *         then frequency and bit_num of these channels
 *         will be the same
 */
-static ledc_channel_config_t ledc_channel[LEDC_NUM_TEST] = {
-
+static ledc_channel_config_t ledc_channel[LEDC_CHANNELS_COUNT] = {
+#if CONFIG_USE_BTS7960
     {
         .channel    = BTS_CHANNEL_FWD,
         .duty       = 0,
@@ -157,6 +379,8 @@ static ledc_channel_config_t ledc_channel[LEDC_NUM_TEST] = {
         .timer_sel  = BTS_TIMER,
         .flags.output_invert = 0
     },
+#endif
+#if CONFIG_USE_MG996R
     {
         .channel    = MG_CHANNEL,
         .duty       = 0,
@@ -166,6 +390,67 @@ static ledc_channel_config_t ledc_channel[LEDC_NUM_TEST] = {
         .timer_sel  = MG_TIMER,
         .flags.output_invert = 0
     },
+#endif
+#if CONFIG_USE_KY006
+    {
+        .channel             = BUZZER_LEDC_CHANNEL,     
+        .duty                = 0,                   
+        .gpio_num            = BUZZER_GPIO,         
+        .speed_mode          = BUZZER_SPEED_MODE, 
+        .hpoint              = 0,
+        .timer_sel           = BUZZER_LEDC_TIMER,     
+        .flags.output_invert = 0
+    },
+#endif
+#if CONFIG_USE_KY029
+    {
+        .channel             = KY029_RED_CHANNEL,     
+        .duty                = 0,                   
+        .gpio_num            = KY029_RED_GPIO,         
+        .speed_mode          = KY029_SPEED_MODE, 
+        .hpoint              = 0,
+        .timer_sel           = KY029_LEDC_TIMER,     
+        .flags.output_invert = 0
+    },
+    {
+        .channel             = KY029_GREEN_CHANNEL,     
+        .duty                = 0,                   
+        .gpio_num            = KY029_GREEN_GPIO,         
+        .speed_mode          = KY029_SPEED_MODE, 
+        .hpoint              = 0,
+        .timer_sel           = KY029_LEDC_TIMER,     
+        .flags.output_invert = 0
+    },
+#endif
+#if CONFIG_USE_KY009
+    {
+        .channel             = KY009_RED_CHANNEL,     
+        .duty                = 0,                   
+        .gpio_num            = KY009_RED_GPIO,         
+        .speed_mode          = KY009_SPEED_MODE, 
+        .hpoint              = 0,
+        .timer_sel           = KY009_LEDC_TIMER,     
+        .flags.output_invert = 0
+    },
+    {
+        .channel             = KY009_GREEN_CHANNEL,     
+        .duty                = 0,                   
+        .gpio_num            = KY009_GREEN_GPIO,         
+        .speed_mode          = KY009_SPEED_MODE, 
+        .hpoint              = 0,
+        .timer_sel           = KY009_LEDC_TIMER,     
+        .flags.output_invert = 0
+    },
+    {
+        .channel             = KY009_BLUE_CHANNEL,     
+        .duty                = 0,                   
+        .gpio_num            = KY009_BLUE_GPIO,         
+        .speed_mode          = KY009_SPEED_MODE, 
+        .hpoint              = 0,
+        .timer_sel           = KY009_LEDC_TIMER,     
+        .flags.output_invert = 0
+    },
+#endif
 };
 
 //semaphore for fade events
@@ -376,30 +661,117 @@ static IRAM_ATTR bool cb_ledc_fade_end_event(const ledc_cb_param_t *param, void 
     return (taskAwoken == pdTRUE);
 }
 
+/**
+ * Apply duty
+ * -Set & update duty
+ */
+static void ledc_duty(const uint32_t duty, const uint8_t idx) {
+
+    esp_err_t err;
+
+    if (idx > LEDC_CHANNELS_COUNT) {
+        log_msg(TAG, "Out of bounds");
+        return;
+    }
+
+    err = ledc_set_duty(ledc_channel[idx].speed_mode, ledc_channel[idx].channel, duty);
+    if (err != ESP_OK) {
+        log_msg(TAG, "Error (%s) setting duty %d on channel %d",
+            esp_err_to_name(err), duty, idx);
+        return;
+    }
+
+    err = ledc_update_duty(ledc_channel[idx].speed_mode, ledc_channel[idx].channel);
+    if (err != ESP_OK) {
+        log_msg(TAG, "Error (%s) updating duty %d on channel %d",
+            esp_err_to_name(err), duty, idx);
+        return;
+    }
+
+    log_msg_lvl(ESP_LOG_VERBOSE, TAG, "Duty : %d, on channel %d", duty, idx);
+}
+
+#if CONFIG_USE_BTS7960
+
+#include <math.h>
+
+#if CONFIG_USE_UDPLIB && CONFIG_USE_SENSORS
+#include "udpLib.h"  
+#include "sensorsLib.h"
+#endif
+
 #define MOTOR_CTRL_PERIOD 20000
+
+typedef enum { 
+    CURVE_LINEAR = 0, 
+    CURVE_EXP = 1, 
+    CURVE_COSINE = 2 
+} CurveType;
+
+#define MOTOR_FRAME_SIZE 7
+
+typedef struct {
+    uint8_t curve_type;
+    uint8_t accel_param;   // 0-255, sens dépend du curve_type
+    uint8_t decel_param;   // idem, séparé (asymétrie accel/frein)
+} DriveProfileConfig;
+
+void serialize_motor(DriveProfileConfig *cfg, uint8_t* buf) {
+    buf[0] = cfg->curve_type;
+    buf[1] = cfg->accel_param;
+    buf[2] = cfg->decel_param;
+    int16_t curr = current_motor;
+    int16_t targ = target_motor;
+    memcpy(&buf[3], &curr, sizeof(int16_t));
+    memcpy(&buf[5], &targ, sizeof(int16_t));
+}
+
+static DriveProfileConfig cfg = { CURVE_LINEAR, 5, 150 };
+static int32_t ramp_start_motor = 0;
+static uint32_t ramp_tick = 0;
+
+static int32_t apply_curve_step(int32_t current, int32_t target, uint8_t param, uint8_t curve_type) {
+    int32_t delta = target - current;
+    if (delta == 0) return current;
+
+    switch (curve_type) {
+        case CURVE_LINEAR: {
+            int32_t step = (delta > 0) ? param : -param;
+            int32_t next = current + step;
+            return (delta > 0) ? (next > target ? target : next) : (next < target ? target : next);
+        }
+        case CURVE_EXP: {
+            float alpha = param / 255.0f;
+            return current + (int32_t)(delta * alpha);
+        }
+        case CURVE_COSINE: {
+            ramp_tick++;
+            uint32_t total_ticks = 200 - param; // param haut = rampe courte/nerveuse
+            if (total_ticks < 1) total_ticks = 1;
+            float t = (float)ramp_tick / total_ticks;
+            if (t > 1.0f) t = 1.0f;
+            float s = (1.0f - cosf(M_PI * t)) / 2.0f;
+            return ramp_start_motor + (int32_t)((target - ramp_start_motor) * s);
+        }
+    }
+    return current;
+}
 
 static void apply_target_motor(void* args) { 
 
     if (current_motor != target_motor) {
 
-        if (target_motor > current_motor && current_motor >= 0) {
-            current_motor += 2;
-            if (current_motor > target_motor) current_motor = target_motor;
-        } else if (target_motor < current_motor && current_motor <= 0){
-            current_motor -= 2;
-            if (current_motor < target_motor) current_motor = target_motor;
-        } else if (target_motor < current_motor && current_motor >= 0) {
-            current_motor -= 15;
-            if (current_motor < target_motor) current_motor = target_motor;
-        } else { //target_motor > current_motor && current_motor <= 0
-            current_motor += 15;
-            if (current_motor > target_motor) current_motor = target_motor;
-        }
+        bool is_accel = (target_motor > current_motor && current_motor >= 0) ||
+            (target_motor < current_motor && current_motor <= 0);
+        if (current_motor == ramp_start_motor && ramp_tick == 0) ramp_start_motor = current_motor; // reset si nouveau ramp
+
+        current_motor = apply_curve_step(current_motor, target_motor,
+            is_accel ? cfg.accel_param : cfg.decel_param, cfg.curve_type);
 
         //applying duty forward et 0 backward
         if (current_motor > 0) {
             ledc_duty(
-                MIN_MOTOR_DUTY_FWD + ((MAX_MOTOR_DUTY_FWD - MIN_MOTOR_DUTY_FWD) * current_motor) / 100, MOTOR_IDX_FWD
+                MIN_MOTOR_DUTY_FWD + ((MAX_MOTOR_DUTY_FWD - MIN_MOTOR_DUTY_FWD) * current_motor) / 1000, MOTOR_IDX_FWD
             );
             ledc_duty(0, MOTOR_IDX_BWD);
         }
@@ -407,7 +779,7 @@ static void apply_target_motor(void* args) {
         //applying duty backward et 0 forward
         else if (current_motor < 0) {
             ledc_duty(
-                MIN_MOTOR_DUTY_BWD + ((MAX_MOTOR_DUTY_BWD - MIN_MOTOR_DUTY_BWD) * - current_motor) / 100, MOTOR_IDX_BWD
+                MIN_MOTOR_DUTY_BWD + ((MAX_MOTOR_DUTY_BWD - MIN_MOTOR_DUTY_BWD) * - current_motor) / 1000, MOTOR_IDX_BWD
             );
             ledc_duty(0, MOTOR_IDX_FWD);
         }
@@ -417,6 +789,17 @@ static void apply_target_motor(void* args) {
             ledc_duty(0, MOTOR_IDX_FWD);
             ledc_duty(0, MOTOR_IDX_BWD);
         }
+
+    #if CONFIG_USE_UDPLIB && CONFIG_USE_SENSORS
+        header_sensor_t header = {0};
+        header.esp_id = (uint8_t)CONFIG_ESP_ID;
+        header.timestamp = (uint32_t)(esp_timer_get_time() / 1000);
+        header.type = SENSOR_TYPE_MOTOR;
+        uint8_t buf[HEADER_SENSOR_SIZE + MOTOR_FRAME_SIZE];
+        serialize_header(&header, buf);
+        serialize_motor(&cfg, &buf[HEADER_SENSOR_SIZE]);
+        send_udp_sensor(buf, sizeof(buf));
+    #endif
         
         log_msg(TAG, "Motor : %d/%d, on pins; fwd : %d, bwd : %d",
             current_motor, target_motor, BTS_GPIO_FWD, BTS_GPIO_BWD);
@@ -432,7 +815,19 @@ static void apply_target_motor(void* args) {
         ssd1306_draw_string(tmp, 0, 4);
 #endif
 #endif
+    } else {
+        ramp_tick = 0;
+        ramp_start_motor = current_motor;
     }
+}
+
+#endif
+
+esp_err_t apply_config(uint8_t *buf, uint8_t len) {
+    cfg.curve_type = buf[0];
+    cfg.accel_param = buf[1];
+    cfg.decel_param = buf[2];
+    return ESP_OK;
 }
 
 /**
@@ -443,7 +838,7 @@ static void apply_target_motor(void* args) {
  * -Load previous state in nvs and apply it
  */
 void led_init() {
-
+#if CONFIG_USE_BUILTIN_LED
     if( xMutex != NULL )
     {
         log_msg(TAG, "Mutex already initialized");
@@ -471,13 +866,14 @@ void led_init() {
         log_msg(TAG, "Error (%s) setting direction pin %d", esp_err_to_name(err), LED_PIN);
         return;
     }
-
+#if CONFIG_SAVE_LED
     //load led state in nvs and apply it to gpio
     err = load_nvs_int("led_state", &led_state);
     if (err != ESP_OK) {
         log_msg(TAG, "Error (%s) loading nvs int : led_state", esp_err_to_name(err));
         return;
     }
+#endif
     err = gpio_set_level(LED_PIN, led_state);
     if (err != ESP_OK) {
         log_msg(TAG, "Error (%s) setting level on pin : %d", esp_err_to_name(err), LED_PIN);
@@ -485,6 +881,7 @@ void led_init() {
     }
 
     log_msg(TAG, "Led initialized on pin %d", LED_PIN);
+#endif
 
 }
 
@@ -493,6 +890,7 @@ void led_init() {
  */
 void led_on() {
 
+#if CONFIG_USE_BUILTIN_LED
     if (xMutex == NULL) {
         log_msg(TAG, "Error on mutex creation");
         return;
@@ -503,27 +901,30 @@ void led_on() {
             led_state = 1;
             esp_err_t err = gpio_set_level(LED_PIN, led_state);
             if (err != ESP_OK) {
-                log_msg(TAG, "Error (%s) setting level on pin : %d", esp_err_to_name(err), LED_PIN);
+                log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) setting level on pin : %d", esp_err_to_name(err), LED_PIN);
                 xSemaphoreGive(xMutex);
                 return;
             }
+        #if CONFIG_SAVE_LED
             err = save_nvs_int("led_state", led_state);
             if (err != ESP_OK) {
-                log_msg(TAG, "Error (%s) loading saving led_state in nvs", esp_err_to_name(err));
+                log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) loading saving led_state in nvs", esp_err_to_name(err));
                 xSemaphoreGive(xMutex);
                 return;
             }
+        #endif
             log_msg(TAG, "Led on");
         }
         xSemaphoreGive(xMutex);
     }
+#endif
 }
 
 /**
  * Led off : set level of gpio to LOW and save it to nvs
  */
 void led_off() {
-
+#if CONFIG_USE_BUILTIN_LED
     if (xMutex == NULL) {
         log_msg(TAG, "Error on mutex creation");
         return;
@@ -538,23 +939,26 @@ void led_off() {
                 xSemaphoreGive(xMutex);
                 return;
             }
+    #if CONFIG_SAVE_LED
             err = save_nvs_int("led_state", led_state);
             if (err != ESP_OK) {
                 log_msg(TAG, "Error (%s) loading saving led_state in nvs", esp_err_to_name(err));
                 xSemaphoreGive(xMutex);
                 return;
             }
+    #endif
             log_msg(TAG, "Led off");
         }
         xSemaphoreGive(xMutex);
     }
+#endif
 }
 
 /**
  * Led toggle : reverse level and save it to nvs
  */
 void led_toggle() {
-
+#if CONFIG_USE_BUILTIN_LED
     if (xMutex == NULL) {
         log_msg(TAG, "Error on mutex creation");
         return;
@@ -568,15 +972,18 @@ void led_toggle() {
             xSemaphoreGive(xMutex);
             return;
         }
+    #if CONFIG_SAVE_LED
         err = save_nvs_int("led_state", led_state);
         if (err != ESP_OK) {
             log_msg(TAG, "Error (%s) loading saving led_state in nvs", esp_err_to_name(err));
             xSemaphoreGive(xMutex);
             return;
         }
+    #endif
         log_msg(TAG, "Led toggled to : %d", led_state);
         xSemaphoreGive(xMutex);
     }
+#endif
 }
 
 /**
@@ -585,15 +992,16 @@ void led_toggle() {
  * -Destroy mutex
  */
 void close_led() {
-
+#if CONFIG_USE_BUILTIN_LED
     if (xMutex == NULL) {
         log_msg(TAG, "Error on mutex creation");
         return;
     }
+#endif
 
     //destroy ledc
     esp_err_t err;
-    for (int i = 0; i < LEDC_NUM_TEST; i++) {
+    for (int i = 0; i < LEDC_CHANNELS_COUNT; i++) {
         //idle level to 0 = LOW?
         err = ledc_stop(ledc_channel[i].speed_mode, ledc_channel[i].channel, 0);
         if (err != ESP_OK) {
@@ -602,31 +1010,77 @@ void close_led() {
     }
     ledc_fade_func_uninstall();
 
+#if CONFIG_USE_BTS7960
     err = ledc_timer_rst(ledc_timer_bts.speed_mode, ledc_timer_bts.timer_num);
     if (err != ESP_OK) {
         log_msg(TAG, "Error (%s) on reset ledc timer BTS", esp_err_to_name(err));
     }
+#endif
+#if CONFIG_USE_MG996R
     err = ledc_timer_rst(ledc_timer_mg.speed_mode, ledc_timer_mg.timer_num);
     if (err != ESP_OK) {
         log_msg(TAG, "Error (%s) on reset ledc timer MG", esp_err_to_name(err));
     }
+#endif
+#if CONFIG_USE_KY006
+    err = ledc_timer_rst(ledc_timer_buzzer.speed_mode, ledc_timer_buzzer.timer_num);
+    if (err != ESP_OK) {
+        log_msg(TAG, "Error (%s) on reset ledc timer buzzer", esp_err_to_name(err));
+    }
+#endif
+#if CONFIG_USE_KY029
+    err = ledc_timer_rst(ledc_timer_ky029.speed_mode, ledc_timer_ky029.timer_num);
+    if (err != ESP_OK) {
+        log_msg(TAG, "Error (%s) on reset ledc timer ky029", esp_err_to_name(err));
+    }
+#endif
+#if CONFIG_USE_KY009
+    err = ledc_timer_rst(ledc_timer_ky009.speed_mode, ledc_timer_ky009.timer_num);
+    if (err != ESP_OK) {
+        log_msg(TAG, "Error (%s) on reset ledc timer ky029", esp_err_to_name(err));
+    }
+#endif
 
+#if CONFIG_USE_BTS7960
     err = ledc_timer_pause(ledc_timer_bts.speed_mode, ledc_timer_bts.timer_num);
     if (err != ESP_OK) {
         log_msg(TAG, "Error (%s) on pause ledc timer BTS", esp_err_to_name(err));
     }
+#endif
+#if CONFIG_USE_MG996R
     err = ledc_timer_pause(ledc_timer_mg.speed_mode, ledc_timer_mg.timer_num);
     if (err != ESP_OK) {
         log_msg(TAG, "Error (%s) on pause ledc timer MG", esp_err_to_name(err));
     }
+#endif
+#if CONFIG_USE_KY006
+    err = ledc_timer_pause(ledc_timer_buzzer.speed_mode, ledc_timer_buzzer.timer_num);
+    if (err != ESP_OK) {
+        log_msg(TAG, "Error (%s) on pause ledc timer buzzer", esp_err_to_name(err));
+    }
+#endif
+#if CONFIG_USE_KY029
+    err = ledc_timer_pause(ledc_timer_ky029.speed_mode, ledc_timer_ky029.timer_num);
+    if (err != ESP_OK) {
+        log_msg(TAG, "Error (%s) on pause ledc timer ky029", esp_err_to_name(err));
+    }
+#endif
+#if CONFIG_USE_KY009
+    err = ledc_timer_pause(ledc_timer_ky009.speed_mode, ledc_timer_ky009.timer_num);
+    if (err != ESP_OK) {
+        log_msg(TAG, "Error (%s) on pause ledc timer ky029", esp_err_to_name(err));
+    }
+#endif
 
     if (counting_sem != NULL) {
         vSemaphoreDelete(counting_sem);
         counting_sem = NULL;
     }
 
+#if CONFIG_USE_BUILTIN_LED
     vSemaphoreDelete(xMutex);
     xMutex = NULL;
+#endif
 
     log_msg(TAG, "Led & Ledc closed");
 }
@@ -636,8 +1090,9 @@ void close_led() {
  * @return int current led state, -1 if error
  */
 int get_led_state() {
-    int led = -1;
 
+    int led = -1;
+#if CONFIG_USE_BUILTIN_LED
     if (xMutex == NULL) {
         log_msg(TAG, "Error on mutex creation");
         return led;
@@ -647,6 +1102,7 @@ int get_led_state() {
         led = led_state;
         xSemaphoreGive(xMutex);
     }
+#endif
     return led;
 }
 
@@ -660,20 +1116,46 @@ void init_ledc() {
     int ch;
 
     // Set configuration of timer bts & mg for high speed channels
+#if CONFIG_USE_BTS7960
     err = ledc_timer_config(&ledc_timer_bts);
     if (err != ESP_OK) {
         log_msg(TAG, "Error (%s) setting timer for BTS", esp_err_to_name(err));
         return;
     }
+#endif
 
+#if CONFIG_USE_MG996R
     err = ledc_timer_config(&ledc_timer_mg);
     if (err != ESP_OK) {
         log_msg(TAG, "Error (%s) setting timer for MG", esp_err_to_name(err));
         return;
     }
+#endif
+
+#if CONFIG_USE_KY006
+    err = ledc_timer_config(&ledc_timer_buzzer);
+    if (err != ESP_OK) {
+        log_msg(TAG, "Error (%s) setting timer for buzzer", esp_err_to_name(err));
+        return;
+    }
+#endif
+#if CONFIG_USE_KY029
+    err = ledc_timer_config(&ledc_timer_ky029);
+    if (err != ESP_OK) {
+        log_msg(TAG, "Error (%s) setting timer for KY-029", esp_err_to_name(err));
+        return;
+    }
+#endif
+#if CONFIG_USE_KY009
+    err = ledc_timer_config(&ledc_timer_ky009);
+    if (err != ESP_OK) {
+        log_msg(TAG, "Error (%s) setting timer for KY-009", esp_err_to_name(err));
+        return;
+    }
+#endif
 
     // Set LED Controller with previously prepared configuration
-    for (ch = 0; ch < LEDC_NUM_TEST; ch++) {
+    for (ch = 0; ch < LEDC_CHANNELS_COUNT; ch++) {
         err = ledc_channel_config(&ledc_channel[ch]);
         if (err != ESP_OK) {
             log_msg(TAG, "Error (%s) setting channel %d",
@@ -691,14 +1173,14 @@ void init_ledc() {
     ledc_cbs_t callbacks = {
         .fade_cb = cb_ledc_fade_end_event
     };
-    counting_sem = xSemaphoreCreateCounting(LEDC_NUM_TEST, 0);
+    counting_sem = xSemaphoreCreateCounting(LEDC_CHANNELS_COUNT, 0);
     if (counting_sem == NULL) {
         log_msg(TAG, "Error creating ledc semaphore");
         return;
     }
 
 
-    for (ch = 0; ch < LEDC_NUM_TEST; ch++) {
+    for (ch = 0; ch < LEDC_CHANNELS_COUNT; ch++) {
         err = ledc_cb_register(ledc_channel[ch].speed_mode, ledc_channel[ch].channel, &callbacks, (void *) counting_sem);
         if (err != ESP_OK) {
             log_msg(TAG, "Error (%s) registering callback on channel %d", esp_err_to_name(err), ch);
@@ -706,6 +1188,7 @@ void init_ledc() {
         }
     }
 
+#if CONFIG_USE_BTS7960
     log_msg(TAG, "Setting up control timer");
     const esp_timer_create_args_t ctrl_timer_args = {
         .callback = &apply_target_motor,
@@ -722,6 +1205,7 @@ void init_ledc() {
         log_msg_lvl(ESP_LOG_ERROR, TAG, "failed to start periodic timer");
         return;
     }
+#endif
 
     log_msg(TAG, "LEDC initialized");
 
@@ -734,6 +1218,10 @@ void init_all_gpios() {
 
     led_init();
     init_ledc();
+
+    #if CONFIG_USE_BUILTIN_LED_W2812B
+    init_ws2812_rmt();
+    #endif
 }
 
 /**
@@ -743,6 +1231,11 @@ void init_all_gpios() {
 void ledc_duty_fade(const uint32_t duty, const uint8_t idx) {
 
     esp_err_t err;
+
+    if (idx > LEDC_CHANNELS_COUNT) {
+        log_msg(TAG, "Out of bounds");
+        return;
+    }
 
     err = ledc_set_fade_with_time(ledc_channel[idx].speed_mode,
                                 ledc_channel[idx].channel, duty, LEDC_TEST_FADE_TIME);
@@ -767,36 +1260,39 @@ void ledc_duty_fade(const uint32_t duty, const uint8_t idx) {
     xSemaphoreTake(counting_sem, portMAX_DELAY);
 }
 
+
+
 /**
- * Apply duty
- * -Set & update duty
+ * Get current angle of servo
  */
-void ledc_duty(const uint32_t duty, const uint8_t idx) {
-
-    esp_err_t err;
-
-    err = ledc_set_duty(ledc_channel[idx].speed_mode, ledc_channel[idx].channel, duty);
-    if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) setting duty %d on channel %d",
-            esp_err_to_name(err), duty, idx);
-        return;
-    }
-
-    err = ledc_update_duty(ledc_channel[idx].speed_mode, ledc_channel[idx].channel);
-    if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) updating duty %d on channel %d",
-            esp_err_to_name(err), duty, idx);
-        return;
-    }
-
-    log_msg_lvl(ESP_LOG_VERBOSE, TAG, "Duty : %d, on channel %d", duty, idx);
+esp_err_t get_servo_angle(uint8_t* angle) {
+#if CONFIG_USE_MG996R
+    *angle = current_angle;
+    return ESP_OK;
+#else
+    return ESP_FAIL;
+#endif
 }
 
 /**
  * Get current angle of servo
  */
-uint8_t get_servo_angle() {
-    return current_angle;
+esp_err_t get_motor_percent(int16_t* motor) {
+#if CONFIG_USE_BTS7960
+    *motor = current_motor;
+    return ESP_OK;
+#else
+    return ESP_FAIL;
+#endif
+}
+
+esp_err_t set_motor_percent(int16_t motor) {
+#if CONFIG_USE_BTS7960
+    target_motor = motor;
+    return ESP_OK;
+#else
+    return ESP_FAIL;
+#endif
 }
 
 /**
@@ -805,7 +1301,7 @@ uint8_t get_servo_angle() {
  * -Write to screen if set
  */
 void ledc_angle(int16_t angle) {
-
+#if CONFIG_USE_MG996R
     //clamp
     if (angle < 0) angle = 0;
     if (angle > 180) angle = 180;
@@ -832,8 +1328,24 @@ void ledc_angle(int16_t angle) {
 #endif
 #endif
     }
+#endif
     
 }
+
+esp_err_t force_motor_stop() {
+#if CONFIG_USE_BTS7960
+    target_motor = 0;
+    current_motor = 0;
+    ledc_duty(0, MOTOR_IDX_FWD);
+    ledc_duty(0, MOTOR_IDX_BWD);
+    return ESP_OK;
+#else
+    return ESP_FAIL;
+#endif
+
+}
+
+
 
 /**
  * Apply a ledc motor for BTS
@@ -841,7 +1353,7 @@ void ledc_angle(int16_t angle) {
  * -Write to screen if set
  */
 void ledc_motor(int16_t motor_percent) {
-
+#if CONFIG_USE_BTS7960
     //clamp
     if (motor_percent < -100) motor_percent = -100;
     if (motor_percent > 100) motor_percent = 100; 
@@ -852,6 +1364,78 @@ void ledc_motor(int16_t motor_percent) {
     }
 
     target_motor = -motor_percent;
+#endif
+    
+}
+
+
+void ledc_buzzer(int16_t buzzer_percent) {
+
+    #if CONFIG_USE_KY006
+    //clamp
+    if (buzzer_percent < 0) buzzer_percent = 0;
+    if (buzzer_percent > 100) buzzer_percent = 100; 
+
+    ledc_duty(
+            BUZZER_MIN_DUTY + ((BUZZER_MAX_DUTY - BUZZER_MIN_DUTY) * buzzer_percent) / 100, BUZZER_IDX
+        );
+    
+    ESP_LOGI(TAG, "apply duty %u", BUZZER_MIN_DUTY + ((BUZZER_MAX_DUTY - BUZZER_MIN_DUTY) * buzzer_percent) / 100);
+    #endif
+    
+}
+
+void ledc_ky029(int16_t ky029_percent, const bool red) {
+
+    #if CONFIG_USE_KY029
+    //clamp
+    if (ky029_percent < 0) ky029_percent = 0;
+    if (ky029_percent > 100) ky029_percent = 100; 
+
+    ledc_duty(
+            KY029_MIN_DUTY + ((KY029_MAX_DUTY - KY029_MIN_DUTY) * ky029_percent) / 100, 
+            red ? KY029_RED_IDX : KY029_GREEN_IDX
+        );
+    
+    ESP_LOGI(TAG, "apply duty %u", KY029_MIN_DUTY + ((KY029_MAX_DUTY - KY029_MIN_DUTY) * ky029_percent) / 100);
+    #endif
+    
+}
+
+void ledc_ky009(int16_t ky009_percent, const uint8_t color) {
+
+    #if CONFIG_USE_KY009
+    //clamp
+    if (ky009_percent < 0) ky009_percent = 0;
+    if (ky009_percent > 100) ky009_percent = 100; 
+
+    int8_t idx = -1;
+    switch (color)
+    {
+    case 0:
+        idx = KY009_RED_IDX;
+        break;
+    case 1:
+        idx = KY009_GREEN_IDX;
+        break;
+    case 2:
+        idx = KY009_BLUE_IDX;
+        break;
+    
+    default:
+        break;
+    }
+
+    if (idx != -1) {
+        ledc_duty(
+            KY009_MIN_DUTY + ((KY009_MAX_DUTY - KY009_MIN_DUTY) * ky009_percent) / 100, 
+            idx
+        );
+    
+        ESP_LOGI(TAG, "apply duty %u", KY009_MIN_DUTY + ((KY009_MAX_DUTY - KY009_MIN_DUTY) * ky009_percent) / 100);
+    }
+
+    #endif
     
 }
 

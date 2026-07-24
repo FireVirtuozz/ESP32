@@ -1435,6 +1435,9 @@ static void wifi_init_sta(void)
         log_msg(TAG, "UNEXPECTED EVENT");
         return;
     }
+
+    //ESP_LOGI("WIFI", "Activation du Power Save pour la coexistence Zigbee...");
+    //esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
 }
 #endif
 
@@ -2030,6 +2033,13 @@ void wifi_scan_esp() {
     }
 }
 #endif
+
+esp_err_t sta_get_rssi(int *rssi) {
+    esp_err_t err;
+    err = esp_wifi_sta_get_rssi(rssi);
+    return err;
+}
+
 
 //wifi not used
 //esp_wifi_deinit

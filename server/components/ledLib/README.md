@@ -5,8 +5,7 @@ This is a library to generate PWM signals. It has 8 timer channels to generate i
 ## Components used
 
 - **ledc** for pwm control
-- **FreeRTOS Task** for IRAM callback during fade
-- **FreeRTOS** for mutex & thread-safe operations
+- **FreeRTOS** for thread-safe operations
 - **gpio** for access to gpio pins
 
 ## Key concepts
@@ -98,3 +97,88 @@ For communications like I2C, the pin needs to listen & send data so it needs to 
 
 **Interruptions**
 Interruptions could be used for input GPIOs to register ISR functions when there are events like rising/falling edges of input signal.
+
+## Sensor & components
+
+### BTS7960: H bridge motor control
+
+This module can control brushed DC motors.
+
+**Principle**
+
+To control a motor, we need to switch cables in order to change the way of rotation. And the motor can ask a lot of current. So, to "switch" cables it uses MOSFETs. Some chips are here to ensure the protection of the module, and to handle switches.
+
+It can supports up to 43A. 
+
+**Protocol** LEDC / MCPWM
+
+**Pins**
+- VCC/GND: 5V
+- M+/M-: Motor
+- B+/B-: Battery (5v - 27v)
+- R/L_EN: Activate R/L side
+- R/L_PWM: pwm for R/L side
+- R/L_IS: strength produced by motor (ADC) on each side
+
+### MG996R: Servo motor
+
+This module can rotate objects with an angle.
+
+**Principle**
+
+There are a DC motor, potentiometer and a chip that controls the motor by reading the potentiometer to have the current angle.
+
+The PWM signal must be 50Hz, about 1ms for 0°, 2ms for 180°.
+
+**Protocol** LEDC / MCPWM
+
+**Pins**
+- VCC/GND: 4.5v-6v
+- PWM: GPIO esp
+
+### KY-006: Passive buzzer
+
+This module emits sounds based on PWM frequency.
+
+**Principle**
+
+An inverse piezoelectric element can vibrate by applying burst squared signal. This one "pushes" the air creating the soundwave.
+
+**Protocol** LEDC
+
+**Pins**
+- VCC/GND: 3.3v
+- S: In PWM signal
+
+
+### KY-029 / KY-011 : Two-color LED
+
+This module is a two color LED.
+
+**Principle**
+
+Light emitting diode. P and N material are facing each other. Electrons fall from a certain level of N, landing in a hole of P, producing an energy shift (bandgap) and freed photons at different frequency, thus creating light. On this LED, there a in fact 2 LEDs with linked to the same cathod (gnd), that is why there are 2 pins for (+) and only 1 for (-).
+
+**Protocol** LEDC
+
+**Pins**
+- GND
+- R: red pwm
+- G: green pwm
+
+
+### KY-009 / KY-016 : RGB LED
+
+This module is a RGB LED.
+
+**Principle**
+
+Same as 2 color LED but with another LED.
+
+**Protocol** LEDC
+
+**Pins**
+- GND
+- R: red pwm
+- G: green pwm
+- B: blue pwm

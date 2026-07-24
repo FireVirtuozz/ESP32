@@ -49,6 +49,13 @@ typedef struct android_st {
     int8_t sliderY;
 } android_t;
 
+typedef enum drive_mode_enum {
+    DEFAULT,
+    MIDDLE,
+    ADVANCED,
+    EXPERT,
+} drive_mode_e;
+
 esp_err_t get_cmd_type(const int8_t *buf, command_type_t *cmd_type);
 
 esp_err_t gamepad_from_buffer(const int8_t *buf, gamepad_t *gamepad);
@@ -70,5 +77,7 @@ void dump_android(const android_t *android);
 esp_err_t cmd_dispatch(const int8_t *data);
 
 void reset_command();
+
+drive_mode_e get_drive_mode();
 
 #endif

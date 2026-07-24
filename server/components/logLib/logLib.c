@@ -101,18 +101,22 @@ static void log_msg_va(const log_level_t level, const char* tag, const char* fmt
     #endif
 
 #if CONFIG_LOG_UDP
-    uint8_t msg[UDP_MAX_SIZE];
-    uint16_t msg_len = 0;
+    uint8_t* msg = malloc(UDP_MAX_SIZE);
+    if (msg != NULL) {
+        uint16_t msg_len = 0;
 
-    header_log_t header = {0};
-    header.esp_id = (uint8_t)CONFIG_ESP_ID;
-    header.level = level;
-    header.timestamp = (uint32_t)(esp_timer_get_time() / 1000);
-    header.tag = tag;
-    header.msg = buf;
-    msg_len = serialize_log(&header, msg);
+        header_log_t header = {0};
+        header.esp_id = (uint8_t)CONFIG_ESP_ID;
+        header.level = level;
+        header.timestamp = (uint32_t)(esp_timer_get_time() / 1000);
+        header.tag = tag;
+        header.msg = buf;
+        msg_len = serialize_log(&header, msg);
 
-    send_udp_log(msg, msg_len);
+        send_udp_log(msg, msg_len);
+        free(msg);
+    }
+    
 #else
 
 #if CONFIG_LOG_ESPNOW
@@ -175,7 +179,8 @@ esp_err_t log_init() {
     esp_log_level_set("sensors_library", ESP_LOG_INFO);
     esp_log_level_set("system_library", ESP_LOG_INFO);
     esp_log_level_set("espnow_library", ESP_LOG_VERBOSE);
-    esp_log_level_set("camera_library", ESP_LOG_INFO);
+    esp_log_level_set("camera_library", ESP_LOG_VERBOSE);
+    esp_log_level_set("zigbee_library", ESP_LOG_INFO);
     esp_log_level_set("main", ESP_LOG_INFO);
 
     return ESP_OK;

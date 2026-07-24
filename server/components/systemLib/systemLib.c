@@ -240,7 +240,8 @@ static const char *get_key_purpose_str(esp_efuse_purpose_t purpose)
         case ESP_EFUSE_KEY_PURPOSE_MAX:                         return "MAX";
         default:                                                return "Unknown purpose";
     }
-#else
+#endif
+#if CONFIG_IDF_TARGET_ESP32S3
     switch (purpose) {
         case ESP_EFUSE_KEY_PURPOSE_USER:                          return "USER (Software only)";
         case ESP_EFUSE_KEY_PURPOSE_RESERVED:                      return "RESERVED";
@@ -258,6 +259,23 @@ static const char *get_key_purpose_str(esp_efuse_purpose_t purpose)
         default:                                                  return "Unknown purpose";
     }
 #endif
+#if CONFIG_IDF_TARGET_ESP32C6
+    switch (purpose) {
+        case ESP_EFUSE_KEY_PURPOSE_USER:                          return "USER (Software only)";
+        case ESP_EFUSE_KEY_PURPOSE_RESERVED:                      return "RESERVED";
+        case ESP_EFUSE_KEY_PURPOSE_XTS_AES_128_KEY:               return "XTS_AES_128_KEY (Flash/PSRAM)";
+        case ESP_EFUSE_KEY_PURPOSE_HMAC_DOWN_ALL:                 return "HMAC Downstream All";
+        case ESP_EFUSE_KEY_PURPOSE_HMAC_DOWN_JTAG:                return "HMAC Downstream JTAG (Soft enable)";
+        case ESP_EFUSE_KEY_PURPOSE_HMAC_DOWN_DIGITAL_SIGNATURE:   return "HMAC Downstream Digital Signature";
+        case ESP_EFUSE_KEY_PURPOSE_HMAC_UP:                       return "HMAC Upstream";
+        case ESP_EFUSE_KEY_PURPOSE_SECURE_BOOT_DIGEST0:           return "SECURE_BOOT_DIGEST0";
+        case ESP_EFUSE_KEY_PURPOSE_SECURE_BOOT_DIGEST1:           return "SECURE_BOOT_DIGEST1";
+        case ESP_EFUSE_KEY_PURPOSE_SECURE_BOOT_DIGEST2:           return "SECURE_BOOT_DIGEST2";
+        case ESP_EFUSE_KEY_PURPOSE_MAX:                           return "MAX";
+        default:                                                  return "Unknown purpose";
+    }
+#endif
+    return "Unknown target";
 }
 
 

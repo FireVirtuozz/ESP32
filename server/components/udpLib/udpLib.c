@@ -16,6 +16,10 @@
 
 #include "freertos/idf_additions.h"
 
+#include "otaLib.h"
+#include "sensorsLib.h"
+#include "esp_timer.h"
+
 #if CONFIG_PACKET_DEBUG
 #include "esp_timer.h"
 #endif
@@ -134,16 +138,14 @@ static char * source_ip_to_str(int val) {
 }
 #endif
 
+static volatile int nb_packets_received = 0;
+
 static void udp_server_task(void *pvParameters)
 {
-    int8_t temp_buffer[10];
+    int8_t temp_buffer[15];
     int addr_family = (int)pvParameters;
     int ip_protocol = 0;
     struct sockaddr_in6 dest_addr;
-
-#if CONFIG_PACKET_DEBUG
-    static int nb_packets_received = 0;
-#endif
 
     while (1) {
 
@@ -312,6 +314,8 @@ static void udp_server_task(void *pvParameters)
                 log_msg_lvl(ESP_LOG_ERROR, TAG, "recvfrom failed: errno %d", errno);
     #endif
                 break;
+            } else if (atomic_load(&ota_lock)) {
+                continue;
             } else { // Data received
 
 #if CONFIG_PACKET_DEBUG
@@ -382,13 +386,24 @@ static void udp_server_task(void *pvParameters)
                 log_msg(TAG, "IP : %s", ip_buf);
                 log_msg(TAG, "Family : %s", addr_family_to_str(source_addr_ip4->sin_family));
                 log_msg(TAG, "Port : %d", ntohs(source_addr_ip4->sin_port));
-                
-                nb_packets_received++;
+
                 log_msg(TAG, "Received %d bytes: packet number : %d",
-                    len, nb_packets_received);
-#endif
+                    len, nb_packets_received + 1);
+#endif              
+                nb_packets_received++;
+
+                header_sensor_t header = {0};
+                header.esp_id = (uint8_t)CONFIG_ESP_ID;
+                header.timestamp = (uint32_t)(esp_timer_get_time() / 1000);
+                header.type = SENSOR_TYPE_PING;
+                uint8_t buf[HEADER_SENSOR_SIZE + sizeof(uint32_t)];
+                serialize_header(&header, buf);
+                memcpy(&buf[HEADER_SENSOR_SIZE], &temp_buffer[9], sizeof(uint32_t));
+
+                send_udp_sensor(buf, sizeof(buf));
 
                 cmd_dispatch(temp_buffer);
+                
             }
                 
             }
@@ -404,22 +419,134 @@ static void udp_server_task(void *pvParameters)
     vTaskDelete(NULL);
 }
 
+#if CONFIG_USE_CAMERA
+#include "cameraLib.h"
+#endif
+
+#define PORT_CMD_CAM 3334
+
+static void udp_server_cfg_task(void *pvParameters)
+{
+    uint8_t temp_buffer[40];
+    int addr_family = (int)pvParameters;
+    int ip_protocol = 0;
+    struct sockaddr_in6 dest_addr;
+
+    while (1) {
+
+        //if ipv4
+        if (addr_family == AF_INET) {
+            struct sockaddr_in *dest_addr_ip4 = (struct sockaddr_in *)&dest_addr; //ipv4 struct
+            dest_addr_ip4->sin_addr.s_addr = htonl(INADDR_ANY); //setting ip type receiving
+            dest_addr_ip4->sin_family = AF_INET; //setting type ipv4
+            dest_addr_ip4->sin_port = htons(PORT_CMD_CAM); //setting port
+            ip_protocol = IPPROTO_IP; //setting ip protocol
+        }
+
+        int sock = socket(addr_family, SOCK_DGRAM, ip_protocol); //create socket    
+        if (sock < 0) {
+            log_msg_lvl(ESP_LOG_ERROR, TAG, "Unable to create socket: %d, %s", errno, strerror(errno));
+            break;
+        }
+        log_msg(TAG, "Socket created");
+
+        //bind socket to port
+        int err = bind(sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+        if (err < 0) {
+            log_msg_lvl(ESP_LOG_ERROR, TAG, "Socket unable to bind: errno %d", errno);
+        }
+        log_msg(TAG, "Socket bound, port %d", PORT);
+
+        struct sockaddr_storage source_addr; // Large enough for both IPv4 or IPv6
+        socklen_t socklen = sizeof(source_addr);
+
+        while (1) {
+            log_msg(TAG, "Waiting for data");
+
+            //wait to receive data, store source socket addr
+            int len = recvfrom(sock, temp_buffer, sizeof(temp_buffer), 0, (struct sockaddr *)&source_addr, &socklen);
+
+            // Error occurred during receiving
+            if (len < 0) {
+                break;
+            } else if (atomic_load(&ota_lock)) {
+                continue;
+            } else { // Data received 
+                switch (temp_buffer[0])
+                {
+                case 1:
+                    apply_config(&temp_buffer[1], 3);
+                    break;
+                case 2:
+            #if CONFIG_USE_CAMERA
+                    apply_camera_config(&temp_buffer[1], CAMCFG_FRAME_SIZE);
+            #endif
+                case 3:
+                    atomic_store(&ota_lock, true);
+
+                    set_motor_percent(0);
+
+                    int16_t motor = 0;
+                    get_motor_percent(&motor);
+
+                    // attend la décélération réelle, pas un délai arbitraire
+                    const int max_wait_ms = 2000; // pire cas : plein régime + decel_param le plus doux possible
+                    int waited = 0;
+                    while (motor != 0 && waited < max_wait_ms) {
+                        vTaskDelay(pdMS_TO_TICKS(20)); // aligné sur MOTOR_CTRL_PERIOD, laisse le ramp s'exécuter
+                        waited += 20;
+                        get_motor_percent(&motor);
+                    }
+
+                    // sécurité : force à 0 si le timeout est atteint malgré tout
+                    if (motor != 0) {
+                        force_motor_stop();
+                    }
+
+                    ota_init();
+                    break;
+                default:
+                    break;
+                }
+            }
+        }
+
+        //shutdown socket if error
+        if (sock != -1) {
+            log_msg(TAG, "Shutting down socket and restarting...");
+            shutdown(sock, 0);
+            close(sock);
+        }
+    }
+    vTaskDelete(NULL);
+}
+
+int get_command_packet_received() {
+    return nb_packets_received;
+}
+
 /**
  * Function to init server : 
  * Create task udp server with 15 priority & on core 1
  */
 void udp_server_init()
 {
-    BaseType_t res = xTaskCreatePinnedToCore(udp_server_task, "udp_server", 8192, (void*)AF_INET, 15, NULL, 0);
+    BaseType_t res;
+
+    res = xTaskCreatePinnedToCore(udp_server_task, "udp_server", 8192, (void*)AF_INET, 15, NULL, 0);
     if (res != pdPASS) {
-        log_msg(TAG, "Error (%d) create UDP task on core 1", res);
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%d) create server UDP task on core 1", res);
+    }
+    res = xTaskCreate(udp_server_cfg_task, "udp_server_cmd_cfg", 8192, (void*)AF_INET, 4, NULL);
+    if (res != pdPASS) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%d) create server command config UDP task", res);
     }
     
 }
 
-#define HOST_IP_ADDR "192.168.4.2" /*esp - lenovo*/
+//#define HOST_IP_ADDR "192.168.4.2" /*esp - lenovo*/
 //#define HOST_IP_ADDR "192.168.1.48" /*Bbox - lenovo*/
-//#define HOST_IP_ADDR "192.168.1.163" /*Bbox - asus*/
+#define HOST_IP_ADDR "192.168.1.163" /*Bbox - asus*/
 
 #define PORT_SENSORS 34254
 #define VIDEO_PORT 34255
@@ -446,6 +573,9 @@ static void send_msg_to_queue(const uint8_t * data, uint32_t len, QueueHandle_t 
         ESP_LOGE(TAG, "Invalid queue arg send udp to queue");
     #endif
         return;
+    }
+    if (atomic_load(&ota_lock)) {
+        return; // skip tous les envois
     }
 
     uint8_t *buf_cpy = malloc(len);

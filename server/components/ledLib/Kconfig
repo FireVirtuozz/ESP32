@@ -19,4 +19,37 @@ menu "RC-LED-LEDC"
         default n
         depends on USE_SCREENLIB
 
+    config USE_BTS7960
+        bool "BTS7960"
+        default n
+    
+    config USE_MG996R
+        bool "MG996R"
+        default n
+
+    config USE_KY006
+        bool "KY006"
+        default n
+
+    config USE_KY029
+        bool "KY029"
+        default n
+
+    config USE_KY009
+        bool "KY009"
+        default n
+
+    config USE_BUILTIN_LED
+        bool "BUILTIN LED"
+        default n
+
+    config SAVE_LED
+        bool "Save LED state to NVS"
+        default n
+        depends on USE_BUILTIN_LED
+    
+    config USE_BUILTIN_LED_W2812B
+        bool "BUILTIN LED W2812B"
+        default n
+
 endmenu

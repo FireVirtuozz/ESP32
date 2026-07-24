@@ -25,4 +25,6 @@ void send_udp_jpeg(const uint8_t * data, uint32_t len);
 // Send a dump UDP message
 void send_udp_dump(const uint8_t * data, uint32_t len);
 
+int get_command_packet_received();
+
 #endif

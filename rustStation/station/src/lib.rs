@@ -7,6 +7,7 @@ pub mod gui;
 pub mod sensors;
 pub mod udp;
 pub mod recorder;
+pub mod ota;
 
 use config::AppConfig;
 use error::AppError;
@@ -43,11 +44,13 @@ pub fn build_app(config: AppConfig) -> MyApp {
     // gérer une manette Bluetooth sur tel/tablette.
     #[cfg(not(target_os = "android"))]
     {
-        let _handle_ctrl = controller::init_controller(
-            tx_ctrl, 
-            Arc::clone(&controller_connected),
-            start_instant,
-        );
+        if !config.is_relay_tailscale {
+            let _handle_ctrl = controller::init_controller(
+                tx_ctrl, 
+                Arc::clone(&controller_connected),
+                start_instant,
+            );
+        }
     }
     #[cfg(target_os = "android")]
     {
@@ -55,7 +58,7 @@ pub fn build_app(config: AppConfig) -> MyApp {
     }
 
     if config.replay {
-        let _handle_replay_sensor = replay_recording(tx_sensors, config.clone());
+        let _handle_replay_sensor = replay_recording(tx_sensors, config.clone(), Arc::clone(&sensors_connected));
     } else {
         let _handle_udp_sensors = udp_sensors_server_init(
             tx_sensors,
@@ -86,7 +89,7 @@ pub fn build_app(config: AppConfig) -> MyApp {
             config.clone(),
         );
     }
-
+    
     MyApp {
         data: VecDeque::new(),
         frame: None,
@@ -116,12 +119,17 @@ pub fn build_app(config: AppConfig) -> MyApp {
 pub fn run_app(options: eframe::NativeOptions) -> Result<(), AppError> {
     let config = AppConfig::load();
 
-    eframe::run_native(
-        "Station",
-        options,
-        Box::new(move |_cc| Ok(Box::new(build_app(config)))),
-    )
-    .map_err(AppError::Eframe)
+    if !config.is_relay_tailscale {
+        eframe::run_native(
+            "Station",
+            options,
+            Box::new(move |_cc| Ok(Box::new(build_app(config)))),
+        )
+        .map_err(AppError::Eframe)
+    } else {
+        build_app(config);
+        Ok(())
+    }
 }
 
 // IMPORTANT : `winit` est désormais déclaré explicitement dans Cargo.toml
@@ -139,7 +147,7 @@ pub fn run_app(options: eframe::NativeOptions) -> Result<(), AppError> {
 #[cfg(target_os = "android")]
 use winit::platform::android::activity::AndroidApp;
 
-use crate::recorder::{recorder_init, replay_recording};
+use crate::{ota::serve_firmware, recorder::{recorder_init, replay_recording}};
 
 #[cfg(target_os = "android")]
 #[unsafe(no_mangle)]

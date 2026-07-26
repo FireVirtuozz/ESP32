@@ -4,7 +4,7 @@ use std::{error::Error, time::Instant};
 use eframe::Frame;
 use serde::{Deserialize, Serialize};
 
-use crate::{error::AppError, sensors::{DriveMode, EspPacket, EspResetReason, PacketImu, PacketPong, PacketTemperature, PacketUltrasonic, SensorType}};
+use crate::{error::AppError, gui::screens::tuning::CurveType, sensors::{DriveMode, EspPacket, EspResetReason, PacketImu, PacketMotor, PacketPong, PacketTemperature, PacketUltrasonic, SensorType}};
 
 pub fn parse_buffer_ina(buffer : &[u8]) -> Result<super::PacketIna, AppError> {
     let bus_voltage       = i16::from_le_bytes(buffer[0..2].try_into()?);
@@ -108,11 +108,11 @@ pub fn parse_buffer_esp(buffer: &[u8]) -> Result<EspPacket, AppError> {
     let free_psram       = u32::from_le_bytes(buffer[14 .. 18].try_into()?);
     let free_psram_block = u32::from_le_bytes(buffer[18 .. 22].try_into()?);
     let angle            = buffer[22];
-    let motor            = buffer[23] as i8;
-    let nb_packets       = u32::from_le_bytes(buffer[24 .. 28].try_into()?);
-    let core0            = f32::from_le_bytes(buffer[28 .. 32].try_into()?);
-    let core1            = f32::from_le_bytes(buffer[32 .. 36].try_into()?);
-    let drive_mode = DriveMode::from_u8(buffer[36]);
+    let motor            = i16::from_le_bytes(buffer[23 .. 25].try_into()?);
+    let nb_packets       = u32::from_le_bytes(buffer[25 .. 29].try_into()?);
+    let core0            = f32::from_le_bytes(buffer[29 .. 33].try_into()?);
+    let core1            = f32::from_le_bytes(buffer[33 .. 37].try_into()?);
+    let drive_mode = DriveMode::from_u8(buffer[37]);
 
     Ok(EspPacket {
         esp_deg,
@@ -137,5 +137,21 @@ pub fn parse_buffer_pong(buffer: &[u8], start_instant: Instant) -> Result<Packet
     let ping_pong = now_ms.wrapping_sub(timestamp_pc);
     Ok(PacketPong { 
         ping_pong,
+    })
+}
+
+pub fn parse_buffer_motor(buf: &[u8]) -> Result<PacketMotor, AppError> {
+    let curve_type = CurveType::from_u8(buf[0]);
+    let accel_param = buf[1];
+    let decel_param = buf[2];
+    let current_motor = i16::from_le_bytes(buf[3 .. 5].try_into()?);
+    let target_motor = i16::from_le_bytes(buf[5 .. 7].try_into()?);
+
+    Ok(PacketMotor {
+        accel_param,
+        decel_param,
+        curve_type,
+        current_motor,
+        target_motor,
     })
 }

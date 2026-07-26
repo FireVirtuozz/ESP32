@@ -12,6 +12,9 @@ udp_port_dump = 34256
 udp_port_logs = 34257
 
 replay_file = "replay_data.json"
-recording = false
-replay = true
+recording = true
+replay = false
 replay_speed = 1.0
+
+is_relay_tailscale = false
+tailscale_addresses = ["100.117.149.41", "100.75.27.50"]

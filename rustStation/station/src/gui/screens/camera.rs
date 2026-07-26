@@ -63,38 +63,39 @@ pub struct CameraConfig {
 }
 
 impl CameraConfig {
-    pub fn to_bytes(&self) -> [u8; 31] {
-        let mut frame = [0u8; 31];
+    pub fn to_bytes(&self) -> [u8; 32] {
+        let mut frame = [0u8; 32];
         let mut mask: u32 = 0;
 
-        if let Some(v) = self.framesize      { mask |= CAM_CFG_FRAMESIZE;      frame[4] = v; }
-        if let Some(v) = self.brightness     { mask |= CAM_CFG_BRIGHTNESS;     frame[5] = v as u8; }
-        if let Some(v) = self.contrast       { mask |= CAM_CFG_CONTRAST;       frame[6] = v as u8; }
-        if let Some(v) = self.saturation     { mask |= CAM_CFG_SATURATION;     frame[7] = v as u8; }
-        if let Some(v) = self.sharpness      { mask |= CAM_CFG_SHARPNESS;      frame[8] = v as u8; }
-        if let Some(v) = self.denoise        { mask |= CAM_CFG_DENOISE;        frame[9] = v; }
-        if let Some(v) = self.quality        { mask |= CAM_CFG_QUALITY;        frame[10] = v; }
-        if let Some(v) = self.gainceiling    { mask |= CAM_CFG_GAINCEILING;    frame[11] = v; }
-        if let Some(v) = self.colorbar       { mask |= CAM_CFG_COLORBAR;       frame[12] = v as u8; }
-        if let Some(v) = self.whitebal       { mask |= CAM_CFG_WHITEBAL;       frame[13] = v as u8; }
-        if let Some(v) = self.awb_gain       { mask |= CAM_CFG_AWB_GAIN;       frame[14] = v as u8; }
-        if let Some(v) = self.wb_mode        { mask |= CAM_CFG_WB_MODE;        frame[15] = v; }
-        if let Some(v) = self.exposure_ctrl  { mask |= CAM_CFG_EXPOSURE_CTRL;  frame[16] = v as u8; }
-        if let Some(v) = self.aec2           { mask |= CAM_CFG_AEC2;           frame[17] = v as u8; }
-        if let Some(v) = self.ae_level       { mask |= CAM_CFG_AE_LEVEL;       frame[18] = v as u8; }
-        if let Some(v) = self.aec_value      { mask |= CAM_CFG_AEC_VALUE;      frame[19..21].copy_from_slice(&v.to_le_bytes()); }
-        if let Some(v) = self.gain_ctrl      { mask |= CAM_CFG_GAIN_CTRL;      frame[21] = v as u8; }
-        if let Some(v) = self.agc_gain       { mask |= CAM_CFG_AGC_GAIN;       frame[22] = v; }
-        if let Some(v) = self.hmirror        { mask |= CAM_CFG_HMIRROR;        frame[23] = v as u8; }
-        if let Some(v) = self.vflip          { mask |= CAM_CFG_VFLIP;          frame[24] = v as u8; }
-        if let Some(v) = self.dcw            { mask |= CAM_CFG_DCW;            frame[25] = v as u8; }
-        if let Some(v) = self.bpc            { mask |= CAM_CFG_BPC;            frame[26] = v as u8; }
-        if let Some(v) = self.wpc            { mask |= CAM_CFG_WPC;            frame[27] = v as u8; }
-        if let Some(v) = self.raw_gma        { mask |= CAM_CFG_RAW_GMA;        frame[28] = v as u8; }
-        if let Some(v) = self.lenc           { mask |= CAM_CFG_LENC;           frame[29] = v as u8; }
-        if let Some(v) = self.special_effect { mask |= CAM_CFG_SPECIAL_EFFECT; frame[30] = v; }
+        frame[0] = 2;
+        if let Some(v) = self.framesize      { mask |= CAM_CFG_FRAMESIZE;      frame[5] = v; }
+        if let Some(v) = self.brightness     { mask |= CAM_CFG_BRIGHTNESS;     frame[6] = v as u8; }
+        if let Some(v) = self.contrast       { mask |= CAM_CFG_CONTRAST;       frame[7] = v as u8; }
+        if let Some(v) = self.saturation     { mask |= CAM_CFG_SATURATION;     frame[8] = v as u8; }
+        if let Some(v) = self.sharpness      { mask |= CAM_CFG_SHARPNESS;      frame[9] = v as u8; }
+        if let Some(v) = self.denoise        { mask |= CAM_CFG_DENOISE;        frame[10] = v; }
+        if let Some(v) = self.quality        { mask |= CAM_CFG_QUALITY;        frame[11] = v; }
+        if let Some(v) = self.gainceiling    { mask |= CAM_CFG_GAINCEILING;    frame[12] = v; }
+        if let Some(v) = self.colorbar       { mask |= CAM_CFG_COLORBAR;       frame[13] = v as u8; }
+        if let Some(v) = self.whitebal       { mask |= CAM_CFG_WHITEBAL;       frame[14] = v as u8; }
+        if let Some(v) = self.awb_gain       { mask |= CAM_CFG_AWB_GAIN;       frame[15] = v as u8; }
+        if let Some(v) = self.wb_mode        { mask |= CAM_CFG_WB_MODE;        frame[16] = v; }
+        if let Some(v) = self.exposure_ctrl  { mask |= CAM_CFG_EXPOSURE_CTRL;  frame[17] = v as u8; }
+        if let Some(v) = self.aec2           { mask |= CAM_CFG_AEC2;           frame[18] = v as u8; }
+        if let Some(v) = self.ae_level       { mask |= CAM_CFG_AE_LEVEL;       frame[19] = v as u8; }
+        if let Some(v) = self.aec_value      { mask |= CAM_CFG_AEC_VALUE;      frame[20..22].copy_from_slice(&v.to_le_bytes()); }
+        if let Some(v) = self.gain_ctrl      { mask |= CAM_CFG_GAIN_CTRL;      frame[22] = v as u8; }
+        if let Some(v) = self.agc_gain       { mask |= CAM_CFG_AGC_GAIN;       frame[23] = v; }
+        if let Some(v) = self.hmirror        { mask |= CAM_CFG_HMIRROR;        frame[24] = v as u8; }
+        if let Some(v) = self.vflip          { mask |= CAM_CFG_VFLIP;          frame[25] = v as u8; }
+        if let Some(v) = self.dcw            { mask |= CAM_CFG_DCW;            frame[26] = v as u8; }
+        if let Some(v) = self.bpc            { mask |= CAM_CFG_BPC;            frame[27] = v as u8; }
+        if let Some(v) = self.wpc            { mask |= CAM_CFG_WPC;            frame[28] = v as u8; }
+        if let Some(v) = self.raw_gma        { mask |= CAM_CFG_RAW_GMA;        frame[29] = v as u8; }
+        if let Some(v) = self.lenc           { mask |= CAM_CFG_LENC;           frame[30] = v as u8; }
+        if let Some(v) = self.special_effect { mask |= CAM_CFG_SPECIAL_EFFECT; frame[31] = v; }
 
-        frame[0..4].copy_from_slice(&mask.to_le_bytes());
+        frame[1..5].copy_from_slice(&mask.to_le_bytes());
         frame
     }
 }

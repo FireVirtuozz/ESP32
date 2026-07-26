@@ -27,6 +27,8 @@ impl MainScreen {
                 if ui.button("Commands").clicked() { *screen = ScreensTypes::Commands; }
                 if ui.button("Dumps").clicked() { *screen = ScreensTypes::Dump; }
                 if ui.button("Car").clicked() { *screen = ScreensTypes::Car; }
+                if ui.button("Tuning").clicked() { *screen = ScreensTypes::Tuning; }
+                if ui.button("Ota").clicked() { *screen = ScreensTypes::Ota; }
                 ui.add_space(10.0);
                 if ui.button("Quit").clicked() { 
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close);

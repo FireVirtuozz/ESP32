@@ -3,7 +3,7 @@ use std::{error::Error, f64::consts::PI, io, string::FromUtf8Error};
 use log::error;
 use serde::{Deserialize, Serialize};
 
-use crate::{error::AppError, sensors::parser::SensorsUdpHeader};
+use crate::{error::AppError, gui::screens::tuning::CurveType, sensors::parser::SensorsUdpHeader};
 
 pub mod parser;
 
@@ -39,8 +39,9 @@ pub enum SensorType {
     Ky023Sw   = 26, 
     Esp       = 27, 
     Pong      = 28,
+    Motor     = 29,
     
-    Max       = 29,
+    Max       = 30,
 }
 
 impl TryFrom<u8> for SensorType {
@@ -77,7 +78,8 @@ impl TryFrom<u8> for SensorType {
             26 => Ok(SensorType::Ky023Sw),
             27 => Ok(SensorType::Esp),
             28 => Ok(SensorType::Pong),
-            29 => Ok(SensorType::Max),
+            29 => Ok(SensorType::Motor),
+            30 => Ok(SensorType::Max),
             _ => Err("Sensor code not valid"),
         }
     }
@@ -284,7 +286,7 @@ pub struct PacketRcwl0515 {
 pub struct PacketKy033 {
     //careful: if nb pulses > 255 (255/100ms) -> go with u16
     pub pulses : u8, //number of pulses during 100ms (ky033 task period in esp32)
-    pub motor : i8,
+    pub motor : i16,
 }
 
 impl PacketKy033 {
@@ -314,6 +316,15 @@ pub struct PacketPong {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PacketMotor {
+    pub curve_type: CurveType,
+    pub accel_param: u8,
+    pub decel_param: u8,
+    pub current_motor: i16,
+    pub target_motor: i16,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum TelemetryEnum {
     HCSR04(PacketUltrasonic),
     ESP(EspPacket),
@@ -325,6 +336,7 @@ pub enum TelemetryEnum {
     RCWL0515(PacketRcwl0515),
     KY033(PacketKy033),
     PONG(PacketPong),
+    MOTOR(PacketMotor),
 }
 
 //Buffer from ESP
@@ -427,7 +439,7 @@ impl DriveMode {
     /// Renvoie le texte propre pour ton HUD egui
     pub fn as_str(&self) -> &'static str {
         match self {
-            Self::Default => "ECO (20%)",
+            Self::Default => "ECO (25%)",
             Self::Middle => "NORMAL (40%)",
             Self::Advanced => "SPORT (70%)",
             Self::Expert => "EXPERT (100%)",
@@ -445,7 +457,7 @@ pub struct EspPacket {
     pub free_psram: u32,
     pub free_psram_block: u32,
     pub angle: u8,
-    pub motor: i8,
+    pub motor: i16,
     pub nb_packets: u32,
     pub core0: f32,
     pub core1: f32,

@@ -1,4 +1,4 @@
-use std::{fs::File, io::{BufRead, BufReader, BufWriter, Write}, sync::mpsc::{Receiver, Sender}, thread, time::Duration};
+use std::{fs::File, io::{BufRead, BufReader, BufWriter, Write}, sync::{Arc, atomic::{AtomicBool, Ordering}, mpsc::{Receiver, Sender}}, thread, time::Duration};
 use crate::{config::AppConfig, sensors::TelemetryPacket};
 
 pub fn recorder_init(rx: Receiver<(TelemetryPacket, f64)>, config_recorder: AppConfig) -> thread::JoinHandle<()> {
@@ -22,12 +22,13 @@ pub fn load_recording(path: &str) -> Vec<(f64, TelemetryPacket)> {
         .collect()
 }
 
-pub fn replay_recording(tx: Sender<TelemetryPacket>, config_replay: AppConfig) {
+pub fn replay_recording(tx: Sender<TelemetryPacket>, config_replay: AppConfig, sensors_connected: Arc<AtomicBool>) {
     thread::spawn(move || {
         let frames = load_recording(&config_replay.replay_file);
         let mut last_ts: Option<f64> = None;
 
         for (ts, packet) in frames {
+            sensors_connected.store(true, Ordering::Relaxed);
             if let Some(lt) = last_ts {
                 let delta = ((ts - lt) / config_replay.replay_speed).max(0.0);
                 thread::sleep(Duration::from_secs_f64(delta));

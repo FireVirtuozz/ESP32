@@ -4,7 +4,7 @@ use egui::Vec2b;
 use egui_plot::{Line, Plot, PlotBounds, PlotPoints};
 use log::debug;
 
-use crate::{config::AppConfig, controller::ControllerPacket, gui::screens::{camera::CameraScreen, car::CarScreen, commands::CommandsScreen, dump::{DumpEntry, DumpScreen}, home::HomeScreen, logs::{LogPacket, LogsScreen}, main::MainScreen, sensors::SensorsScreen}, sensors::TelemetryPacket};
+use crate::{config::AppConfig, controller::ControllerPacket, gui::screens::{camera::CameraScreen, car::CarScreen, commands::CommandsScreen, dump::{DumpEntry, DumpScreen}, home::HomeScreen, logs::{LogPacket, LogsScreen}, main::MainScreen, ota_control::OtaScreen, sensors::SensorsScreen, tuning::TuningScreen}, sensors::TelemetryPacket};
 
 pub mod screens;
 
@@ -20,6 +20,8 @@ pub enum ScreensTypes {
     Camera,
     Dump,
     Car,
+    Tuning,
+    Ota,
 }
 
 #[derive(Default)]
@@ -32,6 +34,8 @@ pub struct Screens {
     pub camera_screen: CameraScreen,
     pub dump_screen: DumpScreen,
     pub car_screen: CarScreen,
+    pub tuning_screen: TuningScreen,
+    pub ota_screen: OtaScreen,
 }
 
 pub struct MyApp {
@@ -107,6 +111,8 @@ impl eframe::App for MyApp {
             ScreensTypes::Dump => self.screens.dump_screen.show(&ctx, &self.dumps),
             ScreensTypes::Car => self.screens.car_screen.show(&ctx, &mut self.screen, &self.data,
                 &self.controller_connected, &self.rx_ctrl, &self.start),
+            ScreensTypes::Tuning => self.screens.tuning_screen.show(&ctx, &self.data),
+            ScreensTypes::Ota => self.screens.ota_screen.show(&ctx, &mut self.screen),
         }
 
         ctx.request_repaint();

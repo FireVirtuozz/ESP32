@@ -6,3 +6,5 @@ pub mod main;
 pub mod camera;
 pub mod dump;
 pub mod car;
+pub mod tuning;
+pub mod ota_control;

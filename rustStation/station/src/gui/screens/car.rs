@@ -98,7 +98,6 @@ impl CarScreen {
                 // signe selon le sens moteur si dispo (évite de tracer "en avant" en marche arrière)
                 
                 let dir = latest_ky.map(|e| {
-                    println!("motor: {}", e.motor);
                     if e.motor < -15 { -1.0 } 
                     else if e.motor > 15 { 1.0 } 
                     else { self.last_dir } }
@@ -275,15 +274,17 @@ impl CarScreen {
                         painter.text(egui::pos2(center.x, bar_back_y + 12.0), egui::Align2::CENTER_CENTER, format!("{:.1} cm", latest_hc1), egui::FontId::proportional(12.0), egui::Color32::WHITE);
 
                         // --- INTEGRATION MOTEUR & ANGLE SERVO ---
-                        if let Some(esp) = latest_esp {
-                            ui.add_space(15.0);
-                            ui.group(|ui| {
-                                ui.columns(3, |actuator_cols| {
-                                    // Puissance Moteur Actuelle reçu en retour de l'ESP
+                        ui.add_space(15.0);
+                        ui.group(|ui| {
+                            ui.columns(3, |actuator_cols| {
+                                // Puissance Moteur Actuelle reçu en retour de l'ESP
+                                if let Some(ky) = latest_ky {
                                     actuator_cols[0].vertical_centered(|ui| {
                                         ui.label(egui::RichText::new("⚙️ MOTOR OUTPUT").small().weak());
-                                        ui.heading(format!("{}", esp.motor));
+                                        ui.heading(format!("{}", ky.motor));
                                     });
+                                }
+                                if let Some(esp) = latest_esp {
                                     // Angle physique de braquage calculé/appliqué par l'ESP
                                     actuator_cols[1].vertical_centered(|ui| {
                                         ui.label(egui::RichText::new("📐 SERVO ANGLE").small().weak());
@@ -293,9 +294,10 @@ impl CarScreen {
                                         ui.label(egui::RichText::new("DRIVE MODE").small().weak());
                                         ui.heading(format!("{}", esp.drive_mode.as_str()));
                                     });
-                                });
+                                }
                             });
-                        }
+                        });
+                        
                     } else {
                         // Remplacement si pas de télémétrie complète
                         ui.add_space(40.0);

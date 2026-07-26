@@ -54,6 +54,8 @@ pub struct AppConfig {
     pub replay: bool,
     pub replay_file: String,
     pub replay_speed: f64,
+    pub is_relay_tailscale: bool,
+    pub tailscale_addresses: Vec<String>,
 }
 
 impl AppConfig {
@@ -74,6 +76,8 @@ impl AppConfig {
                 replay: false,
                 replay_file: String::new(),
                 replay_speed: 1.0,
+                is_relay_tailscale: false,
+                tailscale_addresses: Vec::new(),
             }
         }
 

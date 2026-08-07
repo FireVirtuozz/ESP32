@@ -1,0 +1,8 @@
+{
+	"folders": [
+		{ "path": "station" },
+		{ "path": "train_ia" },
+		{ "path": "ai_core" }
+	],
+	"settings": {}
+}

@@ -36,7 +36,7 @@ fn udp_server_dump(
     // the message, it will be cut off.
     let mut buf = [0; BUFFER_MAX_UDP_SIZE];
         
-    // Initialisation du réassembleur en mode STRICT 🛡️
+    // Strict reassembly (Avoids too late packets)
     let mut reassembler = FragmentReassembler::new(ReassemblyMode::Strict);
 
     loop {
@@ -53,7 +53,6 @@ fn udp_server_dump(
             }
         }
 
-    // Extraction du header de la vidéo
         let header = match HeaderUdpFragment::header_fragment_parse(&buf[..amt]) {
             Ok(h) => h,
             Err(_) => continue,
@@ -61,13 +60,11 @@ fn udp_server_dump(
 
         let payload = buf[HEADER_FRAGMENT_SIZE..amt].to_vec();
 
-        // On pousse dans la machine générique
         if let Some(full_dump_bytes) = reassembler.push_fragment(header, payload) {
-            // Le puzzle est complet ! On a TOUS les octets du dump.
-            // On les passe au parseur pour fabriquer notre belle struct pleine de Strings
+            // If fragment are all here
             //debug!("dump raw received : {:?}", full_dump_bytes);
             if let Some(dump_entry) = DumpEntry::parse_from_buf(&full_dump_bytes) {
-                // On envoie la struct finale bien propre à Egui
+                // Send to egui
                 debug!("dump raw received : {:?}", dump_entry);
                 let _ = tx_dump.send(dump_entry);
             }

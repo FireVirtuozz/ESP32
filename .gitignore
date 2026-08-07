@@ -2,6 +2,8 @@
 **/target/
 **/dist/
 
+*.lock
+
 3dPrinting/
 
 controller_win/
@@ -10,5 +12,7 @@ mqtt_paho/
 android_project/
 windowscontrols/
 rustStation/learnBasics/
+rustStation/tests/
+pdf_docs/
 
 !esp_project/build/esp_project.bin

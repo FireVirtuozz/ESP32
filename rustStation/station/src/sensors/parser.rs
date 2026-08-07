@@ -4,7 +4,7 @@ use std::{error::Error, time::Instant};
 use eframe::Frame;
 use serde::{Deserialize, Serialize};
 
-use crate::{error::AppError, gui::screens::tuning::CurveType, sensors::{DriveMode, EspPacket, EspResetReason, PacketImu, PacketMotor, PacketPong, PacketTemperature, PacketUltrasonic, SensorType}};
+use crate::{error::AppError, gui::screens::tuning::CurveType, sensors::{BreakPacket, DriveMode, EspPacket, EspResetReason, PacketBmp, PacketDht11, PacketImu, PacketMotor, PacketPhotosensor, PacketPong, PacketTemperature, PacketUltrasonic, SensorType}};
 
 pub fn parse_buffer_ina(buffer : &[u8]) -> Result<super::PacketIna, AppError> {
     let bus_voltage       = i16::from_le_bytes(buffer[0..2].try_into()?);
@@ -20,13 +20,15 @@ pub fn parse_buffer_ina(buffer : &[u8]) -> Result<super::PacketIna, AppError> {
     })
 }
 
-pub fn parse_buffer_ultrasonic(buffer : &[u8]) -> Result<super::PacketUltrasonic, AppError> {
+pub fn parse_buffer_ultrasonic(buffer : &[u8]) -> Result<PacketUltrasonic, AppError> {
     let hc_id = buffer[0];
     let duration = i64::from_le_bytes(buffer[1..9].try_into()?);
+    let blocked = match buffer[9] {1 => true, _ => false};
 
-    Ok(super::PacketUltrasonic {
+    Ok(PacketUltrasonic {
         hc_id,
         duration,
+        blocked
     })
 }
 
@@ -40,6 +42,16 @@ pub fn parse_buffer_hall(buffer : &[u8]) -> Result<super::PacketHall, AppError> 
     })
 }
 
+pub fn parse_buffer_bmp(buffer : &[u8]) -> Result<PacketBmp, AppError> {
+    let pressure = i32::from_le_bytes(buffer[0 .. 4].try_into()?);
+    let temperature = i32::from_le_bytes(buffer[4 .. 8].try_into()?);
+
+    Ok(PacketBmp {
+        pressure,
+        temperature,
+    })
+}
+
 
 pub fn parse_buffer_mpu(buffer : &[u8]) -> Result<super::PacketImu, AppError> {
     let accel_x       = i16::from_le_bytes(buffer[0 .. 2].try_into()?);
@@ -49,8 +61,6 @@ pub fn parse_buffer_mpu(buffer : &[u8]) -> Result<super::PacketImu, AppError> {
     let gyro_y         = i16::from_le_bytes(buffer[8 .. 10].try_into()?);
     let gyro_z   = i16::from_le_bytes(buffer[10 .. 12].try_into()?);
     let temperature_chip= i16::from_le_bytes(buffer[12 .. 14].try_into()?);
-    let pressure = i32::from_le_bytes(buffer[14 .. 18].try_into()?);
-    let temperature = i32::from_le_bytes(buffer[18 .. 22].try_into()?);
 
     Ok(super::PacketImu {
         accel_x,
@@ -59,8 +69,6 @@ pub fn parse_buffer_mpu(buffer : &[u8]) -> Result<super::PacketImu, AppError> {
         gyro_x,
         gyro_y,
         gyro_z,
-        pressure,
-        temperature,
         temperature_chip,
     })
 }
@@ -146,6 +154,7 @@ pub fn parse_buffer_motor(buf: &[u8]) -> Result<PacketMotor, AppError> {
     let decel_param = buf[2];
     let current_motor = i16::from_le_bytes(buf[3 .. 5].try_into()?);
     let target_motor = i16::from_le_bytes(buf[5 .. 7].try_into()?);
+    let hc_block_activated = match buf[7] {1 => true, _ => false};
 
     Ok(PacketMotor {
         accel_param,
@@ -153,5 +162,40 @@ pub fn parse_buffer_motor(buf: &[u8]) -> Result<PacketMotor, AppError> {
         curve_type,
         current_motor,
         target_motor,
+        hc_block_activated,
+    })
+}
+
+pub fn parse_buffer_break(buf: &[u8]) -> Result<BreakPacket, AppError> {
+    let breaking = match buf[0] {1 => true, 0 => false, _ => false};
+    let timeout_breaking = u32::from_le_bytes(buf[1 .. 5].try_into()?);
+    let pulses_100ms = u16::from_le_bytes(buf[5 .. 7].try_into()?);
+    let pulses_20ms = u16::from_le_bytes(buf[7 .. 9].try_into()?);
+    let current_motor = i16::from_le_bytes(buf[9 .. 11].try_into()?);
+
+    Ok(BreakPacket {
+        breaking,
+        current_motor,
+        pulses_100ms,
+        pulses_20ms,
+        timeout_breaking,
+    })
+}
+
+pub fn parse_buffer_dht11(buf: &[u8]) -> Result<PacketDht11, AppError> {
+    let humidity = buf[0];
+    let temperature = buf[1];
+
+    Ok(PacketDht11 {
+        humidity,
+        temperature,
+    })
+}
+
+pub fn parse_buffer_photosensor(buf: &[u8]) -> Result<PacketPhotosensor, AppError> {
+    let raw_value = i32::from_le_bytes(buf[0 .. 4].try_into()?);
+
+    Ok(PacketPhotosensor {
+        raw_value,
     })
 }

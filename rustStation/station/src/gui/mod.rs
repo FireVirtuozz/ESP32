@@ -112,7 +112,7 @@ impl eframe::App for MyApp {
             ScreensTypes::Car => self.screens.car_screen.show(&ctx, &mut self.screen, &self.data,
                 &self.controller_connected, &self.rx_ctrl, &self.start),
             ScreensTypes::Tuning => self.screens.tuning_screen.show(&ctx, &self.data),
-            ScreensTypes::Ota => self.screens.ota_screen.show(&ctx, &mut self.screen),
+            ScreensTypes::Ota => self.screens.ota_screen.show(&ctx, &mut self.screen, &self.config_egui),
         }
 
         ctx.request_repaint();

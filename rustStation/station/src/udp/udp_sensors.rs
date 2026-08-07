@@ -2,7 +2,7 @@ use std::{collections::VecDeque, net::UdpSocket, sync::{Arc, atomic::{AtomicBool
 
 use log::{debug, error, info, warn};
 
-use crate::{config::{self, AppConfig}, error::AppError, gui::screens::logs::LogPacket, sensors::{EspPacket, PacketKy033, PacketRcwl0515, PacketRfidRc522, SensorType, TelemetryEnum, TelemetryPacket, parser::{SENSORS_HEADER_SIZE, SensorsUdpHeader, parse_buffer_esp, parse_buffer_hall, parse_buffer_ina, parse_buffer_motor, parse_buffer_mpu, parse_buffer_pong, parse_buffer_ultrasonic}}};
+use crate::{config::{self, AppConfig}, error::AppError, gui::screens::logs::LogPacket, sensors::{EspPacket, PacketKy033, PacketRcwl0515, PacketRfidRc522, SensorType, TelemetryEnum, TelemetryPacket, parser::{SENSORS_HEADER_SIZE, SensorsUdpHeader, parse_buffer_bmp, parse_buffer_break, parse_buffer_dht11, parse_buffer_esp, parse_buffer_hall, parse_buffer_ina, parse_buffer_motor, parse_buffer_mpu, parse_buffer_photosensor, parse_buffer_pong, parse_buffer_ultrasonic}}};
 
 const MAX_SIZE_TELEMETRY_BUF: usize = 256;
 
@@ -148,8 +148,9 @@ fn udp_sensors_loop(
                     hd_info: frame_udp_header,
                     packet: TelemetryEnum::KY033(
                         PacketKy033 {
-                            pulses: buf[amt - 3],
-                            motor: i16::from_le_bytes(buf[amt - 2 .. amt].try_into().expect("ky033 motor")),
+                            pulses: buf[amt - 4],
+                            motor: i16::from_le_bytes(buf[amt - 3 .. amt - 1].try_into().expect("ky033 motor")),
+                            sign_motor_positive : match buf[amt - 1] {0 => false, 1 => true, _ => false},
                         }
                     )
                 };
@@ -188,6 +189,54 @@ fn udp_sensors_loop(
                 let packet = TelemetryPacket {
                     hd_info: frame_udp_header,
                     packet: TelemetryEnum::MOTOR(parse_buffer_motor(&buf[SENSORS_HEADER_SIZE .. amt])?)
+                };
+                debug!("{:?}", packet);
+                if config_udp_recv.recording {
+                    let _ = tx_record.send((packet.clone(), ts));
+                }
+                tx.send(packet)?;
+            },
+            SensorType::Break => {
+                sensors_connected.store(true, Ordering::Relaxed);
+                let packet = TelemetryPacket {
+                    hd_info: frame_udp_header,
+                    packet: TelemetryEnum::BREAK(parse_buffer_break(&buf[SENSORS_HEADER_SIZE .. amt])?)
+                };
+                debug!("{:?}", packet);
+                if config_udp_recv.recording {
+                    let _ = tx_record.send((packet.clone(), ts));
+                }
+                tx.send(packet)?;
+            },
+            SensorType::Bmp280 => {
+                sensors_connected.store(true, Ordering::Relaxed);
+                let packet = TelemetryPacket {
+                    hd_info: frame_udp_header,
+                    packet: TelemetryEnum::BMP(parse_buffer_bmp(&buf[SENSORS_HEADER_SIZE .. amt])?),
+                };
+                debug!("{:?}", packet);
+                if config_udp_recv.recording {
+                    let _ = tx_record.send((packet.clone(), ts));
+                }
+                tx.send(packet)?;
+            },
+            SensorType::Dht11 => {
+                sensors_connected.store(true, Ordering::Relaxed);
+                let packet = TelemetryPacket {
+                    hd_info: frame_udp_header,
+                    packet: TelemetryEnum::DHT11(parse_buffer_dht11(&buf[SENSORS_HEADER_SIZE .. amt])?),
+                };
+                debug!("{:?}", packet);
+                if config_udp_recv.recording {
+                    let _ = tx_record.send((packet.clone(), ts));
+                }
+                tx.send(packet)?;
+            },
+            SensorType::Ky018 => {
+                sensors_connected.store(true, Ordering::Relaxed);
+                let packet = TelemetryPacket {
+                    hd_info: frame_udp_header,
+                    packet: TelemetryEnum::PHOTOSENSOR(parse_buffer_photosensor(&buf[SENSORS_HEADER_SIZE .. amt])?),
                 };
                 debug!("{:?}", packet);
                 if config_udp_recv.recording {

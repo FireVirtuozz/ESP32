@@ -13,6 +13,7 @@ name = "station_bin"
 path = "src/main.rs"
 
 [dependencies]
+burn = { version = "0.21.0", features = ["ndarray"] }
 eframe = { version = "=0.34.0", default-features = false, features = ["glow", "default_fonts", "android-native-activity"] }
 egui = "=0.34.0"
 egui_plot = "=0.35.0"
@@ -26,6 +27,7 @@ serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.151"
 tiny_http = "0.12.0"
 toml = "1.1.2"
+ai_core = { path = "../ai_core"}
 
 [target.'cfg(target_os = "android")'.dependencies]
 android_logger = "0.14"

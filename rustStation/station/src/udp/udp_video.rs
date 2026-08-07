@@ -54,21 +54,15 @@ fn udp_video_loop(
             }
         }
         
-        // Extraction du header de la vidéo
         let header = match HeaderUdpFragment::header_fragment_parse(&buf[..amt]) {
             Ok(h) => h,
             Err(_) => continue,
         };
 
-        // Extraction du payload (on vire le header)
         let payload = buf[HEADER_FRAGMENT_SIZE..amt].to_vec();
 
-        // On nourrit le réassembleur
-        if let Some(full_image) = reassembler.push_fragment(
-            header,
-            payload,
-        ) {
-            // Le puzzle est complet ! On envoie l'image au GUI
+        if let Some(full_image) = reassembler.push_fragment(header,payload) {
+            // Send image to egui if all fragments here
             if tx_img.send(full_image).is_ok() {
                 camera_connected.store(true, Ordering::Relaxed);
             }

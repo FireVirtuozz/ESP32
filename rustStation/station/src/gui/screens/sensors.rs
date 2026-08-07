@@ -47,14 +47,14 @@ impl SensorsScreen {
                 if ui.button("Back").clicked() { *screen = ScreensTypes::Main; }
                 ui.label("Active sensor :"); 
 
-                // Un bouton d'accueil pour tout désactiver / vue d'ensemble vide au choix
+                // None button
                 if ui.selectable_label(self.sensor_selected.is_none(), "None").clicked() {
                     self.sensor_selected = None;
                 }
 
                 ui.separator();
 
-                // Piège à clignotement/comparaison : On utilise des variantes factices ou discriminants pour le bouton radio
+                // Sensors button
                 if ui.selectable_label(matches!(self.sensor_selected, Some(SensorTab::HCSR04)), "HC-SR04").clicked() {
                     self.sensor_selected = Some(SensorTab::HCSR04);
                 }
@@ -64,7 +64,6 @@ impl SensorsScreen {
                 if ui.selectable_label(matches!(self.sensor_selected, Some(SensorTab::MPU)), "MPU").clicked() {
                     self.sensor_selected = Some(SensorTab::MPU);
                 }
-                // Si ton BMP utilise la variante MPU dans ton enum actuel (comme mentionné dans tes commentaires)
                 if ui.selectable_label(matches!(self.sensor_selected, Some(SensorTab::BMP280)), "BMP280").clicked() {
                     self.sensor_selected = Some(SensorTab::BMP280);
                 }
@@ -95,7 +94,8 @@ impl SensorsScreen {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 let min_t = (latest_t - TIME_WINDOW).max(0.0);
 
-                let mut make_plot = |ui: &mut egui::Ui,
+                // Same plot type for all sensors
+                let make_plot = |ui: &mut egui::Ui,
                                     name: &str,
                                     y_label: &str,
                                     y_range: Option<(f64, f64)>,
@@ -117,10 +117,10 @@ impl SensorsScreen {
                             plot_ui.line(Line::new(name, points).width(2.5));
 
                             let (y_min, y_max) = y_range.unwrap_or((0.0, 0.0));
-                            // On récupère le timestamp du tout premier point qui existe dans ton historique
+                            // First timestamp
                             let first_t = data.front().map(|(_, t)| *t).unwrap_or(min_t);
 
-                            // On interdit à la borne gauche d'aller plus loin que le premier point réel ou sous 0
+                            // Min view cap
                             let view_min = f64::max(min_t, first_t).max(0.0);
 
                             plot_ui.set_plot_bounds(PlotBounds::from_min_max(
@@ -254,9 +254,11 @@ impl SensorsScreen {
                         });
                     },
                     Some(SensorTab::MPU) => {
-                        const LOWPASS_ALPHA: f64 = 0.2;
-                        const ZUPT_ACCEL_THRESHOLD: f64 = 0.05; // g, post-filtre
-                        const ZUPT_GYRO_THRESHOLD: f64 = 3.0;   // deg/s
+                        //LOW PASS FILTER for MPU noise
+                        const LOWPASS_ALPHA: f64 = 0.4;
+                        //const LOWPASS_ALPHA: f64 = 1.0;
+                        const ZUPT_ACCEL_THRESHOLD: f64 = 0.05; 
+                        const ZUPT_GYRO_THRESHOLD: f64 = 3.0;
                         const VEL_DECAY: f64 = 0.98;
                         const BIAS_Y: f64 = 0.0;
                         const BIAS_X: f64 = 0.0;
@@ -280,7 +282,7 @@ impl SensorsScreen {
 
                         match self.mpu_sub_tab {
                             MpuSubTab::Acceleration => {
-                                make_plot(ui, "MPU_VEL_X", "Vitesse X (m/s)", Some((-3.0, 3.0)), |data, min_t| {
+                                make_plot(ui, "MPU_VEL_X", "Speed X (m/s)", Some((-3.0, 3.0)), |data, min_t| {
                                     let mut accel_filt: Option<f64> = None;
                                     let mut vel: f64 = 0.0;
                                     let mut last_t: Option<f64> = None;
@@ -302,11 +304,13 @@ impl SensorsScreen {
                                                     let dt = (*t - lt).max(0.0);
                                                     vel += ax_filt * 9.81 * dt;
 
+                                                    //Return to 0 instead of staying non-zero constant
                                                     if ax_filt.abs() < ZUPT_ACCEL_THRESHOLD && gyro_z.abs() < ZUPT_GYRO_THRESHOLD {
                                                         still_count_x += 1;
                                                     } else {
                                                         still_count_x = 0;
                                                     }
+
                                                     if still_count_x >= ZUPT_DEBOUNCE_SAMPLES {
                                                         vel = 0.0;
                                                     } else {
@@ -321,7 +325,7 @@ impl SensorsScreen {
                                         .collect()
                                 });
 
-                                make_plot(ui, "MPU_VEL_Y", "Vitesse Y (m/s)", Some((-3.0, 3.0)), |data, min_t| {
+                                make_plot(ui, "MPU_VEL_Y", "Speed Y (m/s)", Some((-3.0, 3.0)), |data, min_t| {
                                     let mut accel_filt: Option<f64> = None;
                                     let mut vel: f64 = 0.0;
                                     let mut last_t: Option<f64> = None;
@@ -469,9 +473,7 @@ impl SensorsScreen {
                             data.iter()
                                 .skip_while(|(_, t)| *t < min_t)
                                 .filter_map(|(p, t)| {
-                                    // Note : Ton ancien code cherchait la température du BMP dans p.imu, 
-                                    // donc j'ai mappé sur TelemetryEnum::MPU comme pour le MPU au-dessus.
-                                    if let TelemetryEnum::MPU(pck) = &p.packet {
+                                    if let TelemetryEnum::BMP(pck) = &p.packet {
                                         Some([*t, pck.get_temperature_deg()])
                                     } else {
                                         None
@@ -484,7 +486,7 @@ impl SensorsScreen {
                             data.iter()
                                 .skip_while(|(_, t)| *t < min_t)
                                 .filter_map(|(p, t)| {
-                                    if let TelemetryEnum::MPU(pck) = &p.packet {
+                                    if let TelemetryEnum::BMP(pck) = &p.packet {
                                         Some([*t, pck.get_pressure_bar()])
                                     } else {
                                         None
@@ -549,21 +551,20 @@ impl SensorsScreen {
                         let mut currently_detected = false;
                         let mut history: Vec<(f64, bool)> = Vec::new();
 
-                        // 💡 1. On extrait l'état actuel ET on construit l'historique des événements
+                        // Event history build
                         for (p, t) in data.iter() {
                             if let TelemetryEnum::RCWL0515(motion) = &p.packet {
                                 currently_detected = motion.detection;
                                 
-                                // On enregistre chaque changement d'état dans notre historique
                                 history.push((*t, motion.detection));
                             }
                         }
 
-                        // 💡 2. Affichage du gros widget d'état actuel (Rouge/Vert)
+                        // Current state
                         ui.group(|ui| {
                             ui.vertical_centered_justified(|ui| {
                                 if currently_detected {
-                                    let text = egui::RichText::new(" 🚨 MOVEMENT DETECTED ").size(24.0).strong().color(egui::Color32::WHITE);
+                                    let text = egui::RichText::new(" MOVEMENT DETECTED ").size(24.0).strong().color(egui::Color32::WHITE);
                                     ui.colored_label(egui::Color32::from_rgb(200, 30, 30), text);
                                 } else {
                                     let text = egui::RichText::new("  RAS - No movement ").size(24.0).strong().color(egui::Color32::WHITE);
@@ -574,12 +575,12 @@ impl SensorsScreen {
 
                         ui.add_space(15.0);
 
-                        // 💡 3. SECTION HISTORIQUE
-                        ui.collapsing("📋 Record of events", |ui| {
+                        // Event history panel
+                        ui.collapsing("Record of events", |ui| {
                             if history.is_empty() {
                                 ui.weak("No event stored");
                             } else {
-                                // On inverse l'historique pour afficher le plus RÉCENT en premier
+                                // Most recent first
                                 history.reverse();
 
                                 egui::Grid::new("rcwl_history_table")
@@ -590,14 +591,14 @@ impl SensorsScreen {
                                         ui.label(egui::RichText::new("Event").strong());
                                         ui.end_row();
 
-                                        // On affiche seulement les 10 derniers événements pour pas flooder l'écran
+                                        // Printing only 10 last events
                                         for (t, motion) in history.iter().take(10) {
                                             ui.label(format!("{:.2}s", t));
 
                                             if *motion {
-                                                ui.colored_label(egui::Color32::LIGHT_RED, "🔴 Movement start");
+                                                ui.colored_label(egui::Color32::LIGHT_RED, "Movement start");
                                             } else {
-                                                ui.colored_label(egui::Color32::LIGHT_GREEN, "🟢 Movement ending");
+                                                ui.colored_label(egui::Color32::LIGHT_GREEN, "Movement ending");
                                             }
                                             ui.end_row();
                                         }
@@ -623,49 +624,47 @@ impl SensorsScreen {
                     Some(SensorTab::ESP) => {
                         ui.heading("ESP32-S3 - System & Hardware Monitoring");
 
-                        // --- 1. AFFICHAGE DES VALEURS LUES EN DIRECT (Dernier paquet reçu) ---
-                        // On cherche le dernier point dans l'historique qui contient un paquet ESP
                         if let Some(last_pck) = data.iter().rev().find_map(|(p, _)| {
                             if let TelemetryEnum::ESP(pck) = &p.packet { Some(pck) } else { None }
                         }) {
                             ui.group(|ui| {
                                 ui.horizontal(|ui| {
-                                    ui.label(format!("🔄 Dernier Reset : {}", last_pck.reset_reason.as_str()));
+                                    ui.label(format!("Last reset : {}", last_pck.reset_reason.as_str()));
                                     ui.separator();
-                                    ui.label(format!("📦 Paquets reçus : {}", last_pck.nb_packets));
+                                    ui.label(format!("Received packets : {}", last_pck.nb_packets));
                                     ui.separator();
-                                    ui.label(format!("📐 Angle : {}°", last_pck.angle));
+                                    ui.label(format!("Angle : {}°", last_pck.angle));
                                     ui.separator();
-                                    ui.label(format!("⚙️ Moteur : {}", last_pck.motor));
+                                    ui.label(format!("Motor : {}", last_pck.motor));
                                 });
                                 
                                 ui.add_space(5.0);
                                 
-                                // Barres de progression pour la RAM (Basé sur le max dispo de ton N16R8)
+                                // RAM bars based on N16R8
                                 let dram_total = 320 * 1024;
                                 let dram_used = dram_total - last_pck.free_dram;
                                 ui.horizontal(|ui| {
-                                    ui.label("DRAM Interne :");
+                                    ui.label("DRAM:");
                                     ui.add(egui::ProgressBar::new(dram_used as f32 / dram_total as f32)
-                                        .text(format!("{:.1} KB libres", last_pck.free_dram as f32 / 1024.0)));
+                                        .text(format!("{:.1} KB free", last_pck.free_dram as f32 / 1024.0)));
                                 });
 
                                 let psram_total = 8 * 1024 * 1024;
                                 let psram_used = psram_total - last_pck.free_psram;
                                 ui.horizontal(|ui| {
-                                    ui.label("PSRAM Externe :");
+                                    ui.label("PSRAM:");
                                     ui.add(egui::ProgressBar::new(psram_used as f32 / psram_total as f32)
-                                        .text(format!("{:.2} MB libres", last_pck.free_psram as f32 / (1024.0 * 1024.0))));
+                                        .text(format!("{:.2} MB free", last_pck.free_psram as f32 / (1024.0 * 1024.0))));
                                 });
                             });
                         }
 
                         ui.add_space(10.0);
 
-                        // --- 2. GRAPHIQUES TEMPORELS (Historique) ---
+                        // --- PLOTS ---
                         
-                        // Température de la puce
-                        make_plot(ui, "ESP_TEMPERATURE", "Température (°C)", Some((0.0, 80.0)), |data, min_t| {
+                        // SOC Temperature 
+                        make_plot(ui, "ESP_TEMPERATURE", "Temperature (°C)", Some((0.0, 80.0)), |data, min_t| {
                             data.iter()
                                 .skip_while(|(_, t)| *t < min_t)
                                 .filter_map(|(p, t)| {
@@ -678,8 +677,8 @@ impl SensorsScreen {
                                 .collect()
                         });
 
-                        // Puissance du signal Wi-Fi
-                        make_plot(ui, "ESP_WIFI_RSSI", "Signal RSSI (dBm)", Some((-100.0, 0.0)), |data, min_t| {
+                        // RSSI
+                        make_plot(ui, "ESP_WIFI_RSSI", "RSSI signal  (dBm)", Some((-100.0, 0.0)), |data, min_t| {
                             data.iter()
                                 .skip_while(|(_, t)| *t < min_t)
                                 .filter_map(|(p, t)| {
@@ -692,7 +691,7 @@ impl SensorsScreen {
                                 .collect()
                         });
 
-                        // Charge CPU du Core 0 (Réseau / Wi-Fi)
+                        // Core 0
                         make_plot(ui, "ESP_CPU_CORE_0", "CPU Core 0 (%)", Some((0.0, 100.0)), |data, min_t| {
                             data.iter()
                                 .skip_while(|(_, t)| *t < min_t)
@@ -706,7 +705,7 @@ impl SensorsScreen {
                                 .collect()
                         });
 
-                        // Charge CPU du Core 1 (Ton application / Moteurs / Capteurs)
+                        // Core 1
                         make_plot(ui, "ESP_CPU_CORE_1", "CPU Core 1 (%)", Some((0.0, 100.0)), |data, min_t| {
                             data.iter()
                                 .skip_while(|(_, t)| *t < min_t)

@@ -1,0 +1,12 @@
+[package]
+name = "train_ia"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+burn = { version = "0.21.0", features = ["ndarray", "autodiff", "train"] }
+eframe = { version = "=0.34.0", features = ["glow"] }
+egui = "=0.34.0"
+egui_plot = "=0.35.0"
+rand = "0.10.2"
+ai_core = { path = "../ai_core"}

@@ -45,7 +45,7 @@ impl Puzzle {
         }
     }
 
-    /// Tente d'insérer un fragment. Renvoie true s'il venait d'être ajouté.
+    /// Insert fragment. Returns false if already added
     pub fn insert(&mut self, idx: usize, payload: Vec<u8>) -> bool {
         if idx >= self.slots.len() { return false; }
         
@@ -54,7 +54,7 @@ impl Puzzle {
             self.filled_count += 1;
             true
         } else {
-            false // Fragment déjà reçu (doublon UDP)
+            false // Fragment already received
         }
     }
 
@@ -62,7 +62,7 @@ impl Puzzle {
         self.filled_count == self.slots.len()
     }
 
-    /// Consomme le puzzle et fusionne tous les morceaux en un seul vecteur
+    /// Fusion chunks in one vector
     pub fn rebuild(self) -> Vec<u8> {
         let mut full_data = Vec::new();
         for chunk in self.slots {
@@ -95,10 +95,8 @@ impl FragmentReassembler {
         }
     }
 
-    /// Injecte un fragment et renvoie le vecteur complet si le puzzle est terminé
-    // Dans ton fichier de gestion UDP
     pub fn push_fragment(&mut self, header: HeaderUdpFragment, payload: Vec<u8>) -> Option<Vec<u8>> {
-        // Stratégie Volatile : On ignore les paquets en retard
+        // Volatile: ignore late packets
         if self.mode == ReassemblyMode::Volatile {
             if let Some(&last_id) = self.last_completed_ids.get(&header.esp_id) {
                 if header.frag_id < last_id {
@@ -107,19 +105,18 @@ impl FragmentReassembler {
             }
         }
 
-        // NETTOYAGE SÉCURISÉ ANTI-FUITE MÉMOIRE
+        // cleanup
         if self.puzzles.len() > 10 {
             if self.mode == ReassemblyMode::Volatile {
                 self.puzzles.retain(|&(e_id, p_id), _| e_id != header.esp_id || p_id >= header.frag_id);
             } else {
-                // Mode Strict : Si on a trop de puzzles en cours, on vire ceux qui ont un retard 
-                // de plus de 5 IDs par rapport au frag_id qu'on vient de recevoir pour cet ESP.
+                // Strict mode: if frag is late more than 5 IDs, avoid it
                 self.puzzles.retain(|&(e_id, p_id), _| {
                     if e_id == header.esp_id {
-                        // Évite l'overflow si frag_id est proche de 0 lors d'un reboot de l'ESP
+                        // Avoids overflow if ESP rebooted
                         header.frag_id.saturating_sub(p_id) <= 5 
                     } else {
-                        true // On ne touche pas aux puzzles des autres ESP
+                        true
                     }
                 });
             }

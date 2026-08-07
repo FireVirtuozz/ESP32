@@ -1,4 +1,4 @@
-use std::{error::Error, f64::consts::PI, io, string::FromUtf8Error};
+use std::{error::Error, f64::consts::PI, io, println, string::FromUtf8Error};
 
 use log::error;
 use serde::{Deserialize, Serialize};
@@ -40,8 +40,11 @@ pub enum SensorType {
     Esp       = 27, 
     Pong      = 28,
     Motor     = 29,
-    
-    Max       = 30,
+    Break     = 30,
+    Bmp280    = 31,
+    Ds18b20   = 32,
+
+    Max       = 33,
 }
 
 impl TryFrom<u8> for SensorType {
@@ -79,7 +82,10 @@ impl TryFrom<u8> for SensorType {
             27 => Ok(SensorType::Esp),
             28 => Ok(SensorType::Pong),
             29 => Ok(SensorType::Motor),
-            30 => Ok(SensorType::Max),
+            30 => Ok(SensorType::Break),
+            31 => Ok(SensorType::Bmp280),
+            32 => Ok(SensorType::Ds18b20),
+            33 => Ok(SensorType::Max),
             _ => Err("Sensor code not valid"),
         }
     }
@@ -178,7 +184,28 @@ impl PacketIna {
     }
 }
 
-pub const MPU_SIZE: usize = 22;
+pub const BMP_SIZE: usize = 8;
+
+//BMP280
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PacketBmp { 
+    pressure: i32,
+    temperature: i32,
+} 
+
+impl PacketBmp {
+    pub fn get_pressure_bar(&self) -> f64 {
+        let press = self.pressure as f64;
+        press * 1e-5
+    }
+
+    pub fn get_temperature_deg(&self) -> f64 {
+        let temp =  self.temperature as f64;
+        temp / 100.0
+    }
+}
+
+pub const MPU_SIZE: usize = 14;
 
 //MPU9250+BMP280
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -190,20 +217,9 @@ pub struct PacketImu {
     gyro_y: i16,
     gyro_z: i16,
     temperature_chip: i16,
-    pressure: i32,
-    temperature: i32,
 }
 
 impl PacketImu {
-    pub fn get_pressure_bar(&self) -> f64 {
-        let press = self.pressure as f64;
-        press * 1e-5
-    }
-
-    pub fn get_temperature_deg(&self) -> f64 {
-        let temp =  self.temperature as f64;
-        temp / 100.0
-    }
 
     pub fn get_temperature_chip_deg(&self) -> f64 {
         let temp = self.temperature_chip as f64;
@@ -229,11 +245,10 @@ impl PacketImu {
         let (ax, ay, az) = self.get_accel_g();
         let (gx, gy, gz) = self.get_gyro_deg_s();
         println!("PacketImu [accel_x: {:.2}g, accel_y: {:.2}g, accel_z: {:.2}g, \
-            gyro_x: {:.2}°/s, gyro_y: {:.2}°/s, gyro_z: {:.2}°/s, temperature_chip: {:.2}°C, \
-            pressure: {:.3}bar, temperature: {:.2}°C]",
+            gyro_x: {:.2}°/s, gyro_y: {:.2}°/s, gyro_z: {:.2}°/s, temperature_chip: {:.2}°C",
             ax, ay, az,
             gx, gy, gz,
-            self.get_temperature_chip_deg(), self.get_pressure_bar(), self.get_temperature_deg());
+            self.get_temperature_chip_deg());
     }
 }
 
@@ -250,6 +265,7 @@ pub const HC_SIZE: usize = 8;
 pub struct PacketUltrasonic {
     pub hc_id: u8,
     duration: i64,
+    pub blocked: bool,
 }
 
 impl PacketUltrasonic {
@@ -287,13 +303,15 @@ pub struct PacketKy033 {
     //careful: if nb pulses > 255 (255/100ms) -> go with u16
     pub pulses : u8, //number of pulses during 100ms (ky033 task period in esp32)
     pub motor : i16,
+    pub sign_motor_positive : bool,
 }
 
 impl PacketKy033 {
     pub fn get_speed_m_s(&self) -> f64 {
         let dt = 0.1; //100ms period
         let diam = TIRE_DIAMETER as f64;
-        let nb_rounds = self.pulses as f64 / 1.0;
+        let nb_rounds = self.pulses as f64 / 12.0;
+        //println!("{}", self.pulses);
         nb_rounds / dt * PI * diam * 1.0e-3 //1 revolution per dt
     }
 
@@ -304,7 +322,7 @@ impl PacketKy033 {
 
     pub fn get_distance_m(&self) -> f64 {
         let diam = TIRE_DIAMETER as f64;
-        let nb_rounds = self.pulses as f64 / 1.0;
+        let nb_rounds = self.pulses as f64 / 12.0;
         nb_rounds * PI * diam * 1.0e-3
     }
 
@@ -322,6 +340,7 @@ pub struct PacketMotor {
     pub decel_param: u8,
     pub current_motor: i16,
     pub target_motor: i16,
+    pub hc_block_activated: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -337,6 +356,10 @@ pub enum TelemetryEnum {
     KY033(PacketKy033),
     PONG(PacketPong),
     MOTOR(PacketMotor),
+    BREAK(BreakPacket),
+    BMP(PacketBmp),
+    DHT11(PacketDht11),
+    PHOTOSENSOR(PacketPhotosensor),
 }
 
 //Buffer from ESP
@@ -369,7 +392,6 @@ pub enum EspResetReason {
 }
 
 impl EspResetReason {
-    /// Convertit le u8 reçu de l'ESP32 en Enum Rust sécurisé
     pub fn from_u8(val: u8) -> Self {
         match val {
             1 => Self::PowerOn,
@@ -387,29 +409,28 @@ impl EspResetReason {
             13 => Self::Efuse,
             14 => Self::PowerGlitch,
             15 => Self::CpuLockup,
-            _ => Self::Unknown, // Fallback si valeur inconnue
+            _ => Self::Unknown,
         }
     }
 
-    /// Renvoie le texte propre pour ton HUD egui
     pub fn as_str(&self) -> &'static str {
         match self {
-            Self::Unknown => "Inconnu",
-            Self::PowerOn => "Démarrage Électrique (Power On)",
-            Self::ExternalPin => "Bouton Reset / Pin Externe",
-            Self::Software => "Redémarrage Logiciel (esp_restart)",
-            Self::Panic => "Crash Logiciel (Panic/Exception)",
-            Self::InterruptWdt => "Watchdog Interruption (Bloqué)",
-            Self::TaskWdt => "Watchdog Tâche (Boucle infinie)",
-            Self::OtherWdt => "Watchdog Système",
-            Self::DeepSleep => "Sortie de Veille (Deep Sleep)",
-            Self::Brownout => "Chute de Tension (Brownout)",
-            Self::Sdio => "Reset via SDIO",
-            Self::Usb => "Reset via USB",
-            Self::Jtag => "Reset via JTAG",
-            Self::Efuse => "Erreur eFuse",
-            Self::PowerGlitch => "Micro-coupure Électrique (Glitch)",
-            Self::CpuLockup => "CPU Bloqué (Double Exception)",
+            Self::Unknown => "Unknown",
+            Self::PowerOn => "Power on",
+            Self::ExternalPin => "Reset button",
+            Self::Software => "esp_restart",
+            Self::Panic => "Panic",
+            Self::InterruptWdt => "Interruption watchdog (deadlock)",
+            Self::TaskWdt => "Task watchdog (infinite loop)",
+            Self::OtherWdt => "System watchdog",
+            Self::DeepSleep => "Deep Sleep",
+            Self::Brownout => "Brownout",
+            Self::Sdio => "SDIO Reset",
+            Self::Usb => "USB Reset",
+            Self::Jtag => "JTAG Reset",
+            Self::Efuse => "eFuse error",
+            Self::PowerGlitch => "Electrical glitch",
+            Self::CpuLockup => "CPU locked",
         }
     }
 }
@@ -425,18 +446,16 @@ pub enum DriveMode {
 }
 
 impl DriveMode {
-    /// Convertit le u8 reçu/envoyé de l'ESP32 en Enum Rust sécurisé
     pub fn from_u8(val: u8) -> Self {
         match val {
             0 => Self::Default,
             1 => Self::Middle,
             2 => Self::Advanced,
             3 => Self::Expert,
-            _ => Self::Default, // Fallback sécurisé en mode Éco si valeur corrompue
+            _ => Self::Default,
         }
     }
 
-    /// Renvoie le texte propre pour ton HUD egui
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Default => "ECO (25%)",
@@ -464,5 +483,24 @@ pub struct EspPacket {
     pub drive_mode: DriveMode,
 }
 
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct BreakPacket {
+    pub breaking: bool,
+    pub timeout_breaking: u32,
+    pub pulses_100ms: u16,
+    pub pulses_20ms: u16,
+    pub current_motor: i16,
+}
 
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct PacketPhotosensor {
+    pub raw_value: i32,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct PacketDht11 {
+    pub humidity: u8,
+    pub temperature: u8,
+}
 

@@ -133,7 +133,7 @@ pub struct CameraConfigUi {
 impl Default for CameraConfigUi {
     fn default() -> Self {
         Self {
-            framesize: 10, // QVGA -- vérifie l'ordre exact de framesize_t dans TON sensor.h
+            framesize: 10, 
             brightness: 0, contrast: 0, saturation: 0, sharpness: 0,
             denoise: 0, quality: 12, gainceiling: 0,
             colorbar: false, whitebal: true, awb_gain: true, wb_mode: 0,
@@ -146,7 +146,6 @@ impl Default for CameraConfigUi {
 }
 
 impl CameraConfigUi {
-    // Envoie TOUS les champs à chaque appel -> état ESP toujours cohérent, pas de tracking de "dirty fields"
     pub fn to_full_config(&self) -> CameraConfig {
         CameraConfig {
             framesize: Some(self.framesize), brightness: Some(self.brightness),
@@ -222,10 +221,11 @@ impl Default for CameraScreen {
 
 impl CameraScreen {
     pub fn show(&mut self, ctx: &egui::Context, frame: &mut Option<Vec<u8>>, config_egui: &AppConfig) {
-        let mut new_frame_decoded = false; // Flag pour savoir si on a reçu une frame valide
+        let mut new_frame_decoded = false;
 
         if let Some(binary_data) = frame.take() {
 
+            // -- PRINT IMAGE ---
             match config_egui.cam_format {
                 CamFormat::JPEG => {
                         debug!("image received ({}) header: {:02X}{:02X} footer: {:02X}{:02X}", 
@@ -302,12 +302,12 @@ impl CameraScreen {
             }
         }
 
-        // --- CALCUL DES FPS ---
+        // --- FPS COMPUTATION ---
         if new_frame_decoded {
             self.frame_count += 1;
             let elapsed = self.last_fps_time.elapsed();
             
-            // On met à jour le calcul toutes les secondes pour éviter que ça clignote trop vite
+            // Update every seconds
             if elapsed.as_secs_f32() >= 1.0 {
                 self.fps = self.frame_count as f32 / elapsed.as_secs_f32();
                 self.frame_count = 0;
@@ -315,7 +315,7 @@ impl CameraScreen {
             }
         }
             
-
+        // -- PICTURE & FPS PANEL --
         egui::CentralPanel::default().show(ctx, |ui| {
             if let Some(texture) = &self.texture {
                 let img = egui::Image::from_texture(texture)
@@ -324,14 +324,14 @@ impl CameraScreen {
 
                 let response = ui.add(img);
 
-                // On dessine le texte des FPS par-dessus l'image
+                // FPS left top of image
                 let painter = ui.painter_at(response.rect);
                 painter.text(
-                    response.rect.left_top() + egui::vec2(10.0, 10.0), // Position (10px du bord haut/gauche)
+                    response.rect.left_top() + egui::vec2(10.0, 10.0),
                     egui::Align2::LEFT_TOP,
                     format!("{:.1} FPS", self.fps),
                     egui::FontId::proportional(16.0),
-                    if self.fps < 15.0 { egui::Color32::RED } else { egui::Color32::GREEN } // Rouge si ça rame, Vert si c'est fluide
+                    if self.fps < 15.0 { egui::Color32::RED } else { egui::Color32::GREEN }
                 );
             } else {
                 ui.centered_and_justified(|ui| {
@@ -342,6 +342,7 @@ impl CameraScreen {
 
         let mut changed = false;
 
+        // -- CAM CONFIG --
         egui::SidePanel::right("camera_config_panel").min_width(260.0).show(ctx, |ui| {
             ui.heading("📷 Camera Config");
             ui.separator();
@@ -379,7 +380,7 @@ impl CameraScreen {
             changed |= ui.add(egui::Slider::new(&mut self.cfg.quality, 0..=63).text("JPEG quality")).changed();
 
             ui.separator();
-            ui.label("Balance des blancs");
+            ui.label("White balance");
             changed |= ui.checkbox(&mut self.cfg.whitebal, "Auto white balance").changed();
             changed |= ui.checkbox(&mut self.cfg.awb_gain, "AWB gain").changed();
             changed |= ui.add(egui::Slider::new(&mut self.cfg.wb_mode, 0..=4).text("WB mode")).changed();
@@ -400,7 +401,7 @@ impl CameraScreen {
             changed |= ui.add(egui::Slider::new(&mut self.cfg.special_effect, 0..=6).text("Effet")).changed();
 
             ui.separator();
-            if ui.button("↺ Reset défaut").clicked() {
+            if ui.button("Reset default").clicked() {
                 self.cfg = CameraConfigUi::default();
                 changed = true;
             }

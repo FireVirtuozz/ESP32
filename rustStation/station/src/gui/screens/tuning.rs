@@ -47,7 +47,7 @@ impl TuningScreen {
     fn simulate_ramp(curve: CurveType, param: u8, target: i32, steps: usize) -> Vec<[f64; 2]> {
         let mut current: i32 = 0;
         let mut ramp_tick: u32 = 0;
-        let ramp_start_motor: i32 = 0; // current au début de la rampe
+        let ramp_start_motor: i32 = 0;
 
         (0..steps).map(|i| {
             let delta = target - current;
@@ -71,7 +71,7 @@ impl TuningScreen {
                     }
                 };
             }
-            [i as f64 * 0.02, current as f64] // dt = 20ms, aligné MOTOR_CTRL_PERIOD
+            [i as f64 * 0.02, current as f64] // dt = 20ms, like MOTOR_CTRL_PERIOD in ESP
         }).collect()
     }
 
@@ -105,7 +105,7 @@ impl TuningScreen {
                         .height(300.0)
                         .width(400.0)
                         .show(ui, |plot_ui| {
-                        plot_ui.line(Line::new("simulé", PlotPoints::from(sim_accel)).color(egui::Color32::GRAY));
+                        plot_ui.line(Line::new("simulated", PlotPoints::from(sim_accel)).color(egui::Color32::GRAY));
                     });
                     ui.label("Simulated deceleration");
                     let sim_decel = Self::simulate_ramp(self.curve_type, self.decel_param, -1000, 200);
@@ -113,12 +113,12 @@ impl TuningScreen {
                         .height(300.0)
                         .width(400.0)
                         .show(ui, |plot_ui| {
-                        plot_ui.line(Line::new("simulé", PlotPoints::from(sim_decel)).color(egui::Color32::GRAY));
+                        plot_ui.line(Line::new("simulated", PlotPoints::from(sim_decel)).color(egui::Color32::GRAY));
                     });
                 });
 
                 ui.vertical(|ui| {
-                    ui.label("Télémétrie réelle (5s)");
+                    ui.label("Real telemetry (5s window");
                     
                     let now_ts = data.back().map(|(_, t)| *t).unwrap_or(0.0);
                     let window_start = now_ts - 5.0;
@@ -126,7 +126,7 @@ impl TuningScreen {
                     let (real_current, real_target): (Vec<[f64; 2]>, Vec<[f64; 2]>) = data.iter()
                         .filter(|(_, t)| *t >= window_start)
                         .filter_map(|(p, t)| if let TelemetryEnum::MOTOR(m) = &p.packet {
-                            // Temps relatif à "maintenant" (-5.0s -> 0.0s)
+                            // Time window
                             let rel_t = *t - now_ts;
                             Some(([rel_t, m.current_motor as f64], [rel_t, m.target_motor as f64]))
                         } else { None })
@@ -135,8 +135,8 @@ impl TuningScreen {
                     Plot::new("real_ramp")
                         .height(600.0)
                         .width(900.0)
-                        .include_x(-5.0) // Force la vue de -5s
-                        .include_x(0.0)  // jusqu'à maintenant (0s)
+                        .include_x(-5.0) 
+                        .include_x(0.0)  
                         .show(ui, |plot_ui| {
                             plot_ui.line(
                                 Line::new("current", PlotPoints::from(real_current))
@@ -151,7 +151,7 @@ impl TuningScreen {
                 });
             });
 
-            if ui.button("Envoyer config à l'ESP").clicked() {
+            if ui.button("Send motor config to ESP").clicked() {
                 self.socket_udp_config.send_to(&self.serialise_to_buf(), "192.168.1.58:3334")
                     .expect("couldn't bind to address");
             }

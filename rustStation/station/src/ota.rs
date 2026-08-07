@@ -8,18 +8,18 @@ pub struct OtaServerStatus {
     pub bytes_served: u64,
 }
 
-pub fn fetch_latest_bin() -> Result<(), Box<dyn std::error::Error>> {
-    println!("Récupération du dernier .bin depuis Xubuntu...");
+pub fn fetch_latest_bin(server_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+    println!("Getting latest bin from server...");
 
     let status = Command::new("scp")
-        .arg("azoxvirtuozz@192.168.1.48:~/projects/ESP32/esp_project/build/esp_project.bin")
+        .arg(server_path)
         .arg("./firmware.bin")
         .status()?;
 
     if status.success() {
-        println!("Fichier binaire récupéré avec succès !");
+        println!("SCP success");
     } else {
-        eprintln!("Échec du transfert SCP.");
+        eprintln!("SCP failed");
     }
 
     Ok(())

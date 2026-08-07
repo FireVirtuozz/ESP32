@@ -106,7 +106,7 @@ impl LogsScreen {
         ui.horizontal(|ui| {
             if ui.button("Back").clicked() { *screen = ScreensTypes::Main; }
             ui.label(
-                RichText::new("▌ SYSTEM LOGS")
+                RichText::new("SYSTEM LOGS")
                     .font(FontId::monospace(13.0))
                     .color(Color32::from_rgb(80, 200, 120)),
             );
@@ -119,21 +119,21 @@ impl LogsScreen {
 
             ui.add_space(12.0);
 
-            // Filtre de recherche global
+            // Search filter
             ui.add(
                 TextEdit::singleline(&mut self.search)
-                    .hint_text("🔍 Filter by msg, tag, level...")
+                    .hint_text("Filter by msg, tag, level...")
                     .font(FontId::monospace(11.0))
                     .text_color(Color32::from_gray(200))
                     .desired_width(220.0),
             );
 
-            // Bouton auto-scroll aligné à droite
+            // Auto scroll
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let (label, color) = if self.auto_scroll {
-                    ("⬇ AUTO SCROLL", Color32::from_rgb(80, 200, 120))
+                    ("AUTO SCROLL", Color32::from_rgb(80, 200, 120))
                 } else {
-                    ("⏸ MANUAL", Color32::from_gray(120))
+                    ("MANUAL", Color32::from_gray(120))
                 };
                 
                 if ui.add(
@@ -159,7 +159,7 @@ impl LogsScreen {
                 let search_lower = self.search.to_lowercase();
 
                 for (i, packet) in logs.iter().enumerate() {
-                    // Match de recherche intelligent (Cherche dans le message, le tag ou le nom du level)
+                    // Search match
                     if !self.search.is_empty() 
                         && !packet.msg.to_lowercase().contains(&search_lower)
                         && !packet.tag.to_lowercase().contains(&search_lower)
@@ -168,13 +168,14 @@ impl LogsScreen {
                         continue;
                     }
 
-                    // Alternance background
+                    // Background alternance between lines
                     let bg = if i % 2 == 0 {
                         Color32::from_rgb(14, 16, 22)
                     } else {
                         Color32::from_rgb(8, 10, 14)
                     };
 
+                    // LOG MSG
                     egui::Frame::new()
                         .fill(bg)
                         .inner_margin(egui::Margin::symmetric(8, 3))
@@ -182,27 +183,28 @@ impl LogsScreen {
                             ui.set_min_width(ui.available_width());
                             ui.horizontal(|ui| {
                                 
-                                // 1. Index de ligne
+                                // Line index
                                 ui.label(
                                     RichText::new(format!("{:>4}", i + 1))
                                         .font(FontId::monospace(10.0))
                                         .color(Color32::from_gray(50)),
                                 );
 
+                                // ESP ID
                                 ui.label(
                                     RichText::new(format!("[ESP #{}]", packet.esp_id))
                                         .font(FontId::monospace(11.0))
                                         .color(Color32::from_rgb(130, 140, 150)),
                                 );
 
-                                // 2. Timestamp formaté de l'ESP32 [MM:SS.mmm]
+                                // Timestamp
                                 ui.label(
                                     RichText::new(packet.formatted_time())
                                         .font(FontId::monospace(11.0))
                                         .color(Color32::from_rgb(130, 140, 150)),
                                 );
 
-                                // 3. Badge du niveau de log [INF], [WRN], etc.
+                                // LEVEL
                                 let lvl_color = packet.level.to_color();
                                 ui.label(
                                     RichText::new(format!("[{}]", packet.level.as_str()))
@@ -210,14 +212,14 @@ impl LogsScreen {
                                         .color(lvl_color),
                                 );
 
-                                // 4. Le Tag (ex: CAMERA, WIFI) en jaune/orange discret pour bien le dissocier
+                                // TAG
                                 ui.label(
                                     RichText::new(format!("{}:", packet.tag))
                                         .font(FontId::new(11.0, egui::FontFamily::Monospace))
                                         .color(Color32::from_rgb(220, 160, 100)),
                                 );
 
-                                // 5. Le message de log textuel
+                                // LOG
                                 ui.label(
                                     RichText::new(&packet.msg)
                                         .font(FontId::monospace(11.0))

@@ -8,6 +8,7 @@ pub mod sensors;
 pub mod udp;
 pub mod recorder;
 pub mod ota;
+pub mod ai;
 
 use config::AppConfig;
 use error::AppError;
@@ -17,12 +18,6 @@ use udp::{
     udp_sensors::udp_sensors_server_init, udp_video::udp_server_video_init,
 };
 
-/// Construit l'état initial de MyApp + lance tous les threads d'arrière-plan
-/// (UDP sensors/logs/dump/vidéo + manette).
-///
-/// Commun à main.rs (desktop) et android_main (lib.rs côté Android) :
-/// c'est exactement la logique qui était dans le main() d'origine, sortie
-/// d'ici pour être appelable des deux côtés.
 pub fn build_app(config: AppConfig) -> MyApp {
     let (tx_sensors, rx_sensors) = mpsc::channel();
     let (tx_logs, rx_logs) = mpsc::channel();
@@ -38,10 +33,7 @@ pub fn build_app(config: AppConfig) -> MyApp {
 
     let start_instant = Instant::now();
 
-    // Sur Android on ne lance pas le thread manette : pas de backend gilrs
-    // standard (X11/winit-gamepad) dispo, et gilrs::Gilrs::new() paniquerait.
-    // À remplacer plus tard par les API InputDevice d'Android si tu veux
-    // gérer une manette Bluetooth sur tel/tablette.
+    // No controller for Android
     #[cfg(not(target_os = "android"))]
     {
         if !config.is_relay_tailscale {
@@ -54,7 +46,7 @@ pub fn build_app(config: AppConfig) -> MyApp {
     }
     #[cfg(target_os = "android")]
     {
-        let _ = tx_ctrl; // évite le unused, le sender est juste droppé
+        let _ = tx_ctrl; // sender dropped as no controller
     }
 
     if config.replay {
@@ -115,7 +107,7 @@ pub fn build_app(config: AppConfig) -> MyApp {
     }
 }
 
-/// Lance eframe avec les options fournies (desktop ou android_app: Some(..)).
+/// Launch eframe app 
 pub fn run_app(options: eframe::NativeOptions) -> Result<(), AppError> {
     let config = AppConfig::load();
 
@@ -132,18 +124,7 @@ pub fn run_app(options: eframe::NativeOptions) -> Result<(), AppError> {
     }
 }
 
-// IMPORTANT : `winit` est désormais déclaré explicitement dans Cargo.toml
-// (même version que celle résolue par eframe/egui-winit, cf. `cargo tree -i winit`),
-// avec la feature "android-native-activity" activée. Cela garantit qu'il
-// n'existe qu'UNE seule instance de winit dans tout l'arbre de compilation,
-// partagée par eframe et par notre propre code.
-//
-// À partir d'eframe 0.34, l'API a changé par rapport à 0.27 : NativeOptions
-// expose désormais directement un champ `android_app: Option<AndroidApp>`,
-// lu en interne par eframe (native/run.rs::create_event_loop) qui appelle
-// lui-même `.with_android_app(...)` sur l'EventLoopBuilder. Il ne faut donc
-// PLUS passer par `event_loop_builder` pour ça (c'était l'API 0.27) : il
-// suffit de renseigner `android_app: Some(app)`.
+// IMPORTANT : `winit` as to match versions in every crate (egui) [cargo tree -i winit]
 #[cfg(target_os = "android")]
 use winit::platform::android::activity::AndroidApp;
 

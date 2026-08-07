@@ -1,59 +1,59 @@
 #include <stdio.h>
 
 #if CONFIG_USE_WIFI
-#include "wifiLib.h"
+#include "wifi_lib.h"
 #endif
 
 #if CONFIG_USE_WSLIB
-#include "wsLib.h"
+#include "ws_lib.h"
 #endif
 
 #if CONFIG_USE_UDPLIB
-#include "udpLib.h"
+#include "udp_lib.h"
 #endif
 
 #if CONFIG_USE_LEDLIB
-#include "ledLib.h"
+#include "actuators_lib.h"
 #endif
 
-#include "nvsLib.h"
+#include "nvs_lib.h"
 
 #if CONFIG_USE_MQTTLIB
 #include "mqttLib.h"
 #endif
 
-#include "logLib.h"
+#include "log_lib.h"
 #include <stdarg.h>
 
 #if CONFIG_USE_LVGL_SCREEN
-#include "lcdLib.h"
+#include "lcd_lvgl_lib.h"
 #endif
 
 #if CONFIG_USE_SCREENLIB
-#include "screenLib.h"
+#include "screen_lib.h"
 #endif
 
 #if CONFIG_USE_SENSORS
-#include "sensorsLib.h"
+#include "sensors_lib.h"
 #endif
 
 #if CONFIG_USE_ESPNOW
-#include "espnowLib.h"
+#include "espnow_lib.h"
 #endif
 
 #if CONFIG_USE_CAMERA
-#include "cameraLib.h"
+#include "camera_lib.h"
 #endif
 
 #if CONFIG_USE_ZIGBEE
-#include "zigbeeLib.h"
+#include "zigbee_lib.h"
 #endif
 
-#include "systemLib.h"
+#include "system_lib.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#include "otaLib.h"
+#include "ota_lib.h"
 
 static const char * TAG = "main";
 
@@ -79,7 +79,7 @@ void app_main()
 
 #if CONFIG_USE_ZIGBEE
     init_zigbee();
-    vTaskDelay(pdMS_TO_TICKS(8000));
+    vTaskDelay(pdMS_TO_TICKS(3000));
 #endif
 
 #if CONFIG_USE_WIFI
@@ -130,7 +130,7 @@ void app_main()
     vTaskDelay(pdMS_TO_TICKS(10000));
     camera_init();
 #endif
-    log_msg(TAG, "yo");
+    log_msg(TAG, "MAIN ENDING");
 /*
     int16_t percent = 0;
     while(1) {

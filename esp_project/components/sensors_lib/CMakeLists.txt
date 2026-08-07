@@ -1,0 +1,22 @@
+idf_component_register(
+    SRCS 
+        "sensors_lib.c"
+    INCLUDE_DIRS 
+        "."
+        "include"
+    PRIV_REQUIRES 
+        esp_driver_gpio 
+        log_lib 
+        esp_timer 
+        esp_driver_i2c 
+        esp_adc 
+        udp_lib 
+        espnow_lib
+        esp_driver_spi 
+        esp_driver_pcnt 
+        esp_driver_rmt 
+        esp_driver_tsens
+        actuators_lib
+        cmd_lib
+        wifi_lib
+)

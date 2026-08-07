@@ -1,0 +1,28 @@
+idf_component_register(
+    SRCS
+        "actuators_lib.c"            
+        "src/addr_rgb_led.c"
+        "src/buzzer.c"
+        "src/debug_helper.c"
+        "src/h_bridge.c"
+        "src/rgb_led.c"
+        "src/servo.c"
+        "src/simple_led.c"
+        "src/two_color_led.c"
+    INCLUDE_DIRS
+        "."                         
+        "include"   
+    REQUIRES       
+        esp_driver_ledc
+    PRIV_REQUIRES
+        esp_driver_gpio
+        esp_driver_rmt
+        esp_timer
+        freertos
+        lcd_lvgl_lib                     
+        log_lib
+        nvs_lib
+        udp_lib
+        screen_lib
+        sensors_lib
+)

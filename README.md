@@ -1,6 +1,83 @@
-# Useful
+# Projects around ESP32
 
-Docker
+## esp_project
+
+This is the ESP-IDF repo. Features:
+- zigbee library using [esp-zigbee-sdk](https://docs.espressif.com/projects/esp-zigbee-sdk/en/latest/esp32/introduction.html) & [esp-zigbee-lib](https://components.espressif.com/components/espressif/esp-zigbee-lib/versions/2.0.3/readme) component
+  * simple on/off led
+- nvs library 
+- - sensors lib
+ * Get the data of sensors using peripherals such as:
+   * I2C: complex sensors such as IMU (MPU6050, BNO085), TOF (VL53L1X), Voltage monitoring (INA226)
+   * GPIO: digital signal - ISR related [Ultrasonic (HCSR04), "Slow" Rotation Encoder, Reed, Buttons..]
+   * PCNT: couting GPIO ["fast" encoder such as on the power-axis of a car]
+       * Use this instead of ISRs when there is a very frequent event to avoid starving CPU, as it is a module on is own that puts its counter to a shared memory. We just have to read it at some period.
+       * Also it can be used to have a clear event and filter events (ex: remove bounces)
+   * RMT: handles sensors that needs specific timings, such as one-wire sensors (DHT11), or infrared receiver using NEC protocol.
+   * ADC: sensors delivering analogic signals [Potentiometers (Joystick), Photosensors, Linear Hall, Vibration..]
+   * SPI: sensors delivering fast data (compared to I2C) [RFID car reader]
+- wifi library [TODO: seperate AP / STA, debug helper]
+    * AP/STA/APSTA configs
+    * auto connect to known networks stored in encrypted-NVS
+- actuators library
+  * addressable rgb led using RMT
+  * passive buzzer control using LEDC (PWM)
+  * h bridge control using LEDC [MCPWM todo] & custom motor curves
+  * servo control using LEDC
+  * simple led using GPIO
+  * two color led using LEDC
+  * RGB led using LEDC
+- camera lib [using [esp32-camera](https://components.espressif.com/components/espressif/esp32-camera/versions/2.1.6/readme?language=en) component]
+- ws lib
+  * simple websocket server
+- udp lib
+  * emits messages through a queue safely, fragmentation can be used
+  * receives messages
+- system lib
+  * get all the useful info on the ESP chip (eFuse blocks, CPU, DRAM, PSRAM, APP, BOOTLOADER)
+- screen lib
+  * minimalist screen library for tiny screens like SSD1306
+- lcd lvgl lib
+    * screen libraries for large screens (animations..) using [LCD](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/lcd/index.html) & [lvgl](https://components.espressif.com/components/lvgl/lvgl/versions/9.5.0/readme) component
+- cmd lib
+  * Parse messages received by the controller and apply it to motor through h_bridge
+- espnow lib
+  * send messages to ESP safely using a queue & [ESP-NOW](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/network/esp_now.html). Fragmentation can be used and useful as max size is 250 bytes.
+  * receives messages from other ESPs
+- log lib
+  * custom log system that allows to redirect logs through UDP or ESP-NOW 
+- mqtt lib
+  * receives MQTT commands from https using [mqtt](https://components.espressif.com/components/espressif/mqtt/versions/1.1.0/readme) component and [espressif certificate](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/protocols/esp_crt_bundle.html)
+- ota lib
+  * flash the ESP "over the air" using HTTP server 
+
+## rust_station
+
+- udp
+  * receives udp frames from ESPs
+- controller
+  * emits udp commands with a controller (ex: PS4/XBOX)
+- egui: HMI
+  * sensors: plots for some sensors (IMU, INA, BMP, ESP, Encoder, RFID car reader)
+  * ota: choose and flash the ESP over the air
+  * logs: print logs from ESPs
+  * dump: print dumps from ESPs
+  * tuning: tune and monitor the motor curve
+  * commands: controller panel
+  * camera: show camera image & edit its config
+  * car: Car control panel with sensors info, estimated trajectory
+- recorder
+  *  record data from sensors to replay it later
+- ai
+  * inference: load weights from a pre-trained model and apply decisions like turn, forward
+- train_ia
+  * ia training with a simulator (random room with obstacles and estimated data from sensors) using burn crate
+  * gui to monitor steps
+
+## Docker
+
+You can use this minimal Dockefile [windows-friendly] or the one from [espressif](https://github.com/espressif/esp-idf/blob/master/tools/docker/Dockerfile).
+
 ```bash
 docker build -t esp32-idf .
 docker run -it --rm --network host --device=/dev/ttyUSB0 -v $(pwd):/workspace esp32-idf
@@ -27,102 +104,4 @@ docker run -it --rm --network host --device=/dev/ttyUSB0 -v $(pwd):/workspace es
 wsl
 cd ~/projects/ESP32
 docker run -it --rm --network host -v $(pwd):/workspace esp32-idf:latest
-```
-
-Launch esp-idf environment
-```bash
-. $IDF_PATH/export.sh
-```
-
-# esp32
-
-https://documentation.espressif.com/esp32_technical_reference_manual_en.pdf
-
-## Commands
-
-```bash
-idf.py create-project my_project
-idf.py set-target esp32
-idf.py menuconfig
-idf.py build
-idf.py flash
-idf.py monitor
-esptool chip-id
-esptool flash-id
-```
-
-## oled ssd1306 screen display
-
-https://cdn-shop.adafruit.com/datasheets/SSD1306.pdf
-
-## H-Bridge BTS7960
-
-https://www.handsontec.com/dataspecs/module/BTS7960%20Motor%20Driver.pdf
-
-## Servo MG996R
-
-https://www.handsontec.com/dataspecs/motor_fan/MG996R.pdf
-
-## ESP-IDF Components
-
-### System
-
-Bootloader
-- BIOS-like, initializes clocks, flash, and memory  
-- Loads the application from flash 
-
-Useful commands
-```bash
-esptool --chip esp32 image-info build/app.bin
-esptool --chip esp32 image-info ./build/bootloader/bootloader.bin
-idf.py size
-idf.py size-components
-```
-
-App Level Tracing
-- Lightweight tracing for fine-grained debugging
-- Less costly than full logging
-- Can be enabled via menuconfig
-
-External stack:
-- Uses PSRAM instead of internal DRAM for function stack (but slower)
-- Useful when internal DRAM is close to full
-- Helps avoid stack overflows for heavy functions (JSON, TLS, logs)
-- Not suitable for ISR or timing-critical code
-
-Memory overview
-- IRAM: fast code (interrupts, critical paths)
-- DRAM: data and task stacks
-- PSRAM: large buffers and temporary stacks
-- Use idf.py size and idf.py size-components to check usage
-
-# Java windows controller & wss mqtt
-
-**Workflow** : Get inputs with LWJGL, stack into bytes and publish them to HiveMQ WSS MQTT brocker. Using bytes for better performance than JSON with **jackson** (rate reduced by ~10).
-
-## Controller input : LWJGL
-
-## MQTT client : HiveMQ
-
-## Websocket : Netty
-
-# Backend to hid credential
-
-.properties maybe
-
-## Node.js 
-
-Maybe useful to hid credentials.
-
-# Git
-
-```bash
-git init
-git remote add origin https://github.com/FireVirtuozz/ESP32.git
-git branch -M main
-git add .
-git status
-git commit -m "new"
-git push -u origin main
-git add -A
 ```

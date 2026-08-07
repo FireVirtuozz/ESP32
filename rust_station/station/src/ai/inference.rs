@@ -3,16 +3,14 @@ use std::sync::mpsc::{Receiver, Sender};
 use ai_core::{AgentState, PolicyNet};
 use burn::{Tensor, backend::NdArray, module::Module, nn::{Linear, LinearConfig, Relu}, record::{CompactRecorder, Recorder}, tensor::{Device, backend::{Backend, BackendTypes}}};
 
-// Type concret pour l'inférence — pas besoin de generic ici,
-// tu sais exactement quel backend tourne sur ton PC (CPU via ndarray)
 pub type InferenceBackend = burn::backend::NdArray<f32>;
 
 fn action_to_command(action_idx: usize) -> (i8, i8) {
     match action_idx {
-        0 => (100, 0),    // avancer tout droit
-        1 => (100, -100), // tourner gauche
-        2 => (100, 100),  // tourner droite
-        _ => (0, 0),      // fallback sécurité
+        0 => (100, 0),    // forward
+        1 => (100, -100), // turn left
+        2 => (100, 100),  // turn right
+        _ => (0, 0),  
     }
 }
 

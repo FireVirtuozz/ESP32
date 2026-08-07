@@ -217,3 +217,61 @@ Encryption enabled
 Mac : 
 
 ESP controlling the car. Receiving ESP-NOW frames from others ESPs and dispatch UDP to PC, commands UDP from PC, sending UDP things to PC.
+
+
+## ESP-IDF Components
+
+### System
+
+Bootloader
+- BIOS-like, initializes clocks, flash, and memory  
+- Loads the application from flash 
+
+Useful commands
+```bash
+esptool --chip esp32 image-info build/app.bin
+esptool --chip esp32 image-info ./build/bootloader/bootloader.bin
+idf.py size
+idf.py size-components
+```
+
+App Level Tracing
+- Lightweight tracing for fine-grained debugging
+- Less costly than full logging
+- Can be enabled via menuconfig
+
+External stack:
+- Uses PSRAM instead of internal DRAM for function stack (but slower)
+- Useful when internal DRAM is close to full
+- Helps avoid stack overflows for heavy functions (JSON, TLS, logs)
+- Not suitable for ISR or timing-critical code
+
+Memory overview
+- IRAM: fast code (interrupts, critical paths)
+- DRAM: data and task stacks
+- PSRAM: large buffers and temporary stacks
+- Use idf.py size and idf.py size-components to check usage
+
+
+
+Launch esp-idf environment
+```bash
+. $IDF_PATH/export.sh
+```
+
+# esp32
+
+https://documentation.espressif.com/esp32_technical_reference_manual_en.pdf
+
+## Commands
+
+```bash
+idf.py create-project my_project
+idf.py set-target esp32
+idf.py menuconfig
+idf.py build
+idf.py flash
+idf.py monitor
+esptool chip-id
+esptool flash-id
+```

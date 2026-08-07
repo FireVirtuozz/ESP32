@@ -1,6 +1,6 @@
 idf_component_register(
     SRCS
-        "actuators_lib.c"            
+        "actuators_lib.c"         
         "src/addr_rgb_led.c"
         "src/buzzer.c"
         "src/debug_helper.c"

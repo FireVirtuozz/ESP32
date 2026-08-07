@@ -60,14 +60,13 @@ fn bench_buffer(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("Remove 300/3000 elements");
 
-    // indices à supprimer : un échantillon fixe, espacé régulièrement
-    let indices_to_remove: Vec<usize> = (0..3000).step_by(10).collect(); // 300 indices
+    let ids_to_remove: Vec<usize> = (0..3000).step_by(10).collect(); // 300 ids
 
     group.bench_function("retain", |b| {
         b.iter_batched(
             || {
                 let v: Vec<u32> = (0..3000).collect();
-                let to_remove = indices_to_remove.clone();
+                let to_remove = ids_to_remove.clone();
                 (v, to_remove)
             },
             |(mut v, to_remove)| {
@@ -88,8 +87,8 @@ fn bench_buffer(c: &mut Criterion) {
         b.iter_batched(
             || {
                 let v: Vec<u32> = (0..3000).collect();
-                let mut to_remove = indices_to_remove.clone();
-                to_remove.sort_unstable_by(|a, b| b.cmp(a)); // décroissant
+                let mut to_remove = ids_to_remove.clone();
+                to_remove.sort_unstable_by(|a, b| b.cmp(a)); // desc
                 (v, to_remove)
             },
             |(mut v, to_remove)| {
@@ -105,13 +104,13 @@ fn bench_buffer(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("Remove 300/3000 big elements (500B)");
 
-    let indices_to_remove: Vec<usize> = (0..3000).step_by(10).collect();
+    let ids_to_remove: Vec<usize> = (0..3000).step_by(10).collect();
 
     group.bench_function("retain", |b| {
         b.iter_batched(
             || {
                 let v: Vec<BigElement> = (0..3000).map(|i| BigElement::new(i as u8)).collect();
-                (v, indices_to_remove.clone())
+                (v, ids_to_remove.clone())
             },
             |(mut v, to_remove)| {
                 let set: std::collections::HashSet<usize> = to_remove.into_iter().collect();
@@ -131,7 +130,7 @@ fn bench_buffer(c: &mut Criterion) {
         b.iter_batched(
             || {
                 let v: Vec<BigElement> = (0..3000).map(|i| BigElement::new(i as u8)).collect();
-                let mut to_remove = indices_to_remove.clone();
+                let mut to_remove = ids_to_remove.clone();
                 to_remove.sort_unstable_by(|a, b| b.cmp(a));
                 (v, to_remove)
             },
@@ -146,9 +145,9 @@ fn bench_buffer(c: &mut Criterion) {
 
     group.finish();
 
-let mut group = c.benchmark_group("Filtering & Removal Comparison (3000 elements)");
+    let mut group = c.benchmark_group("Filtering & Removal Comparison (3000 elements)");
 
-    // Setup Données Vec + HashMap
+    // setup data vec + hashmap
     let setup_hashmap = || {
         let elements: Vec<BigElement> = (0..3000).map(|i| BigElement::new(i as u8)).collect();
         let mut rng = StdRng::seed_from_u64(42);
@@ -158,7 +157,7 @@ let mut group = c.benchmark_group("Filtering & Removal Comparison (3000 elements
         (elements, map)
     };
 
-    // Setup Données SlotMap + SecondaryMap
+    // Setup data slotmap + secondary
     let setup_slotmap = || {
         let mut sm: SlotMap<DefaultKey, BigElement> = SlotMap::with_capacity(3000);
         let mut sec_map: SecondaryMap<DefaultKey, f64> = SecondaryMap::new();
@@ -171,7 +170,7 @@ let mut group = c.benchmark_group("Filtering & Removal Comparison (3000 elements
         (sm, sec_map)
     };
 
-    // 1. Vec + HashMap + swap_remove
+    // Vec + HashMap + swap_remove
     group.bench_function("1. Vec + HashMap + swap_remove", |b| {
         b.iter_batched(
             setup_hashmap,
@@ -193,7 +192,7 @@ let mut group = c.benchmark_group("Filtering & Removal Comparison (3000 elements
         );
     });
 
-    // 2. Vec + HashMap + retain
+    // Vec + HashMap + retain
     group.bench_function("2. Vec + HashMap + retain", |b| {
         b.iter_batched(
             setup_hashmap,
@@ -210,7 +209,7 @@ let mut group = c.benchmark_group("Filtering & Removal Comparison (3000 elements
         );
     });
 
-    // 3. SlotMap + SecondaryMap + retain
+    // SlotMap + SecondaryMap + retain
     group.bench_function("3. SlotMap + retain", |b| {
         b.iter_batched(
             setup_slotmap,
@@ -225,7 +224,7 @@ let mut group = c.benchmark_group("Filtering & Removal Comparison (3000 elements
         );
     });
 
-    // 4. SlotMap + Collect keys + remove O(1)
+    // SlotMap + Collect keys + remove O(1)
     group.bench_function("4. SlotMap + keys collect + remove", |b| {
         b.iter_batched(
             setup_slotmap,

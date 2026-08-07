@@ -1,5 +1,5 @@
 [package]
-name = "tests_rust"
+name = "tests_rust_benches_vec"
 version = "0.1.0"
 edition = "2024"
 

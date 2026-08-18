@@ -117,9 +117,9 @@ void app_main()
 #if CONFIG_USE_ESPNOW
     espnow_init();
 #endif
-    
-    //vTaskDelay(pdMS_TO_TICKS(10000));
-    //print_chip_info();
+    /*
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    print_chip_info()*/
 
 #if CONFIG_DEBUG_WIFI
     wifi_scan_esp();
@@ -131,62 +131,7 @@ void app_main()
     camera_init();
 #endif
     log_msg(TAG, "MAIN ENDING");
-/*
-    int16_t percent = 0;
-    while(1) {
-        percent = 0;
-        ledc_ky029(0, true);
-        ledc_ky029(0, false);
-        while (percent <= 100) {
-            ledc_ky029(percent, true);
-            ledc_ky029(percent / 4, false);
-            percent++;
-            vTaskDelay(pdMS_TO_TICKS(100));
-        }
-        percent = 0;
-        ledc_ky029(0, true);
-        while (percent <= 100) {
-            ledc_ky029(percent, false);
-            percent++;
-            vTaskDelay(pdMS_TO_TICKS(100));
-        }
-        percent = 0;
-        ledc_ky029(0, false);
-        while (percent <= 100) {
-            ledc_ky029(percent, true);
-            percent++;
-            vTaskDelay(pdMS_TO_TICKS(100));
-        }
-    }
-        */
 
-        /*
-    int16_t percent = 0;
-    while(1) {
-        percent = 0;
-        ledc_ky009(0, 0);
-        ledc_ky009(0, 1);
-        ledc_ky009(0, 2);
-        while (percent <= 100) {
-            ledc_ky009(percent, 0);
-            ledc_ky009(percent, 1);
-            ledc_ky009(percent, 2);
-            percent++;
-            vTaskDelay(pdMS_TO_TICKS(100));
-        }
-        for (int i = 0; i < 3; i++) {
-            percent = 0;
-            ledc_ky009(percent, i);
-            ledc_ky009(percent, (i + 1) % 3);
-            while (percent <= 100) {
-                ledc_ky009(percent, (i + 2) % 3);
-                percent++;
-                vTaskDelay(pdMS_TO_TICKS(100));
-            }
-        }
-    }
-        */
-       
 #if CONFIG_USE_ZIGBEE
     log_msg(TAG, "Sending ON command to 0xdaf3...");
     send_cmd_on_off(0xdaf3, 1, true); // TRUE = ON

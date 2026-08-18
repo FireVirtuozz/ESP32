@@ -393,3 +393,68 @@ There are 2 analog potentiometers for the X & Y axis. There is also a button (su
 - SW: Button digital signal
 - VRx: analog X-axis signal
 - VRy: analog Y-axis signal
+
+## VL53L1X
+
+**Datasheet**
+
+https://www.st.com/resource/en/datasheet/vl53l1x.pdf
+
+https://www.st.com/resource/en/user_manual/um2356-vl53l1x-api-user-manual-stmicroelectronics.pdf
+
+**Principle**: It uses the ToF (Time of Flight) technology. It works like the Ultrasonic HCSR04 sensor but with light.
+
+**Protocol** I2C / Interrupt
+
+**Setup**
+
+There is a complete state machine for the sensor that has to be respected.
+
+First, you have to complete the calibration steps: RefSPAD, offset, and crosstalk.
+
+If using a protective shield (like TOF400C), RefSPAD & offset are mandatory.
+
+**Ranging**
+
++ continuous, intermeasurement period (delay between 2 timing budgets), duration of flight (timing budget - 20 to 1000ms, 140ms min for 4m).
++ threshold for interrupts
++ ROI size (FoV custom)
+
+*clear interrupt for the next ranging*
+
+output:
+- ranging distance (mm)
+- return signal
+- ambient signal
+- range status
+
+If no object are detected:
+
+**Distance modes**
+- short, medium, long
+
+**Power up**
+
+1) with XSHUT: Vin, XSHUT to high to boot.
+2) without XHUT: Vin, XSHUT high by pull-up to Vin.
+
+Boot duration: 1.2ms
+
+**I2C**
+
+Address: 0x52 ? why not 0x29 ?
+
+Frequency: up to 400khz
+
+Sequence: From MSB to LSB
+
+**Specifics**
+
+Accuracy: mean of 32 measurements or direct distance.
+
+**Programming**
+
+STM does not expose its registers. As it handling all register can be complex, they give a driver that you can get here:
+
+https://www.st.com/en/embedded-software/stsw-img009.html#get-software
+

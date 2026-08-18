@@ -1,20 +1,54 @@
 idf_component_register(
-    SRCS 
+    SRCS
         "sensors_lib.c"
-    INCLUDE_DIRS 
+        "src/as5600.c"
+        "src/bmp280.c"
+        "src/dht11.c"
+        "src/ds18b20.c"
+        "src/fc33.c"
+        "src/hcsr04.c"
+        "src/ina226.c"
+        "src/ky002.c"
+        "src/ky003.c"
+        "src/ky004.c"
+        "src/ky005.c"
+        "src/ky017.c"
+        "src/ky018.c"
+        "src/ky020.c"
+        "src/ky021.c"
+        "src/ky022.c"
+        "src/ky023.c"
+        "src/ky031.c"
+        "src/ky032.c"
+        "src/ky033.c"
+        "src/ky035.c"
+        "src/ky039.c"
+        "src/ky040.c"
+        "src/mpu9250.c"
+        "src/rcwl_0515.c"
+        "src/rfid_rc522.c"
+        "src/vl53l1x.c"
+        "src/peripherals/adc_helper.c"
+        "src/peripherals/gpio_digital.c"
+        "src/peripherals/i2c_helper.c"
+        "src/peripherals/pcnt_encoder.c"
+        "src/peripherals/rmt_helper.c"
+        "src/peripherals/spi_helper.c"
+    INCLUDE_DIRS
         "."
         "include"
-    PRIV_REQUIRES 
-        esp_driver_gpio 
-        log_lib 
-        esp_timer 
-        esp_driver_i2c 
-        esp_adc 
-        udp_lib 
+        "include/peripherals"
+    PRIV_REQUIRES
+        esp_driver_gpio
+        log_lib
+        esp_timer
+        esp_driver_i2c
+        esp_adc
+        udp_lib
         espnow_lib
-        esp_driver_spi 
-        esp_driver_pcnt 
-        esp_driver_rmt 
+        esp_driver_spi
+        esp_driver_pcnt
+        esp_driver_rmt
         esp_driver_tsens
         actuators_lib
         cmd_lib

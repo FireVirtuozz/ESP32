@@ -108,6 +108,50 @@ menu "RC-Sensors"
     config USE_DS18B20
         bool "DS18B20"
         default n
+    
+    config USE_LIDAR
+        bool "LIDAR"
+        default n
+    
+    config USE_BAT_ADC
+        bool "BAT_ADC"
+        default n
+    
+    config USE_ACS758
+        bool "ACS758"
+        default n
+
+    config USE_GPS
+        bool "GPS"
+        default n
+
+    menu "BNO085 IMU"
+
+    config USE_BNO085
+        bool "BNO085"
+        default n
+    
+    config ACTIVATE_ACCELERATION
+        bool "ACCELERATION"
+        default n
+        depends on USE_BNO085
+    
+    config ACTIVATE_LINEAR_ACCELERATION
+        bool "LINEAR ACCELERATION"
+        default y
+        depends on USE_BNO085
+    
+    config ACTIVATE_ROTATION
+        bool "ROTATION"
+        default y
+        depends on USE_BNO085
+
+    config ACTIVATE_CLASSIFICATION
+        bool "CLASSIFICATION"
+        default n
+        depends on USE_BNO085
+
+    endmenu
 
     menu "ESP"
     config USE_ESP

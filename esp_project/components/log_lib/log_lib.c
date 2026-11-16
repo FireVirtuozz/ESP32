@@ -170,8 +170,8 @@ esp_err_t log_init() {
     esp_log_level_set("udp_library", ESP_LOG_VERBOSE);
     esp_log_level_set("wifi_library", ESP_LOG_INFO);
     esp_log_level_set("ota_library", ESP_LOG_INFO);
-    esp_log_level_set("actuators_lib", ESP_LOG_VERBOSE);
-    esp_log_level_set("cmd_library", ESP_LOG_VERBOSE);
+    esp_log_level_set("actuators_lib", ESP_LOG_INFO);
+    esp_log_level_set("h_bridge_library", ESP_LOG_INFO);
     esp_log_level_set("lcd_lvgl_library", ESP_LOG_VERBOSE);
     esp_log_level_set("ws_library", ESP_LOG_VERBOSE);
     esp_log_level_set("log_library", ESP_LOG_INFO);
@@ -179,7 +179,7 @@ esp_err_t log_init() {
     esp_log_level_set("sensors_library", ESP_LOG_INFO);
     esp_log_level_set("system_library", ESP_LOG_INFO);
     esp_log_level_set("espnow_library", ESP_LOG_VERBOSE);
-    esp_log_level_set("camera_library", ESP_LOG_VERBOSE);
+    esp_log_level_set("camera_library", ESP_LOG_INFO);
     esp_log_level_set("zigbee_library", ESP_LOG_INFO);
     esp_log_level_set("main", ESP_LOG_INFO);
 

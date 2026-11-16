@@ -4,6 +4,9 @@
 #include <inttypes.h>
 #include <stdbool.h>
 #include <esp_err.h>
+#include <stdatomic.h>
+
+extern atomic_bool hc_locked_config;
 
 // HC-SR04: ultrasonic distance sensor. Two units used: front (id 0) and
 // rear (id 1), each driving the H-Bridge's obstacle-blocking logic.
@@ -32,5 +35,8 @@ esp_err_t get_front_blocked(bool *blocked);
  * block backward motion (consumed by actuators_lib's h_bridge.c).
  */
 esp_err_t get_rear_blocked(bool *blocked);
+
+esp_err_t get_front_duty_cap(uint16_t *cap_milli);
+esp_err_t get_rear_duty_cap(uint16_t *cap_milli);
 
 #endif // HCSR04_H_

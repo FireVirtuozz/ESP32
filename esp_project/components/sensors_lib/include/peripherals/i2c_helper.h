@@ -66,4 +66,18 @@ esp_err_t i2c_bus_write_block16addr(i2c_master_dev_handle_t dev, uint16_t reg, c
  */
 esp_err_t i2c_bus_read_reg16addr(i2c_master_dev_handle_t dev, uint16_t reg, uint8_t *data, size_t len);
 
+/**
+ * Write raw i2c data
+ */
+esp_err_t i2c_bus_write_raw(i2c_master_dev_handle_t dev, const uint8_t *data, size_t len);
+
+/**
+ * Read raw i2c data
+ */
+esp_err_t i2c_bus_read_raw(i2c_master_dev_handle_t dev, uint8_t *data, size_t len);
+
+esp_err_t i2c_bus_probe(uint16_t device_addr, uint32_t timeout_ms);
+
+void i2c_bus_scan(void);
+
 #endif // PERIPHERALS_I2C_HELPER_H_

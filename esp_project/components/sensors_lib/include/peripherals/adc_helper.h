@@ -43,30 +43,19 @@ esp_err_t adc_oneshot_sensor_read_raw(adc_oneshot_sensor_t *sensor, int *raw);
  */
 esp_err_t adc_oneshot_sensor_read_mv(adc_oneshot_sensor_t *sensor, int *millivolts);
 
-/**
- * Opaque handle for a continuous (DMA-driven) ADC read across up to two
- * channels sampled together (e.g. a joystick's X/Y axes).
- */
-typedef struct {
-    adc_continuous_handle_t handle;
-    adc_channel_t channel_a;
-    adc_channel_t channel_b;
-    adc_unit_t unit;
-} adc_continuous_dual_t;
+#define ADC_MGR_MAX_CHANNELS 6
+
+// Déclaration du type opaque pour les drivers
+typedef struct adc_channel_handle_st* adc_channel_handle_t;
 
 /**
- * Configure continuous DMA-driven sampling across two channels on the same unit.
- *
- * @param sensor          handle to initialize (unit/channel_a/channel_b must already be set)
- * @param sample_freq_hz  total sampling frequency across both channels
+ * @brief Enregistre un canal et reconfigure le DMA automatiquement
  */
-esp_err_t adc_continuous_dual_init(adc_continuous_dual_t *sensor, uint32_t sample_freq_hz);
+adc_channel_handle_t adc_manager_register_channel(adc_channel_t channel);
 
 /**
- * Read the latest available raw values for both channels.
- * Drains any buffered conversion frames and keeps only the most recent
- * sample of each channel.
+ * @brief Lit la dernière valeur brute (raw) lissée pour un canal
  */
-esp_err_t adc_continuous_dual_read(adc_continuous_dual_t *sensor, int *raw_a, int *raw_b);
+uint32_t adc_manager_get_raw(adc_channel_handle_t handle);
 
 #endif // PERIPHERALS_ADC_HELPER_H_

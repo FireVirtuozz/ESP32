@@ -30,6 +30,12 @@
 #include "ky032.h"
 #include "ky023.h"
 #include "ds18b20.h"
+#include "bno085.h"
+#include "lidar.h"
+#include "esp_monitor.h"
+#include "acs758.h"
+#include "bat_adc.h"
+#include "bz181.h"
 
 static const char *TAG = "sensors_library";
 
@@ -89,6 +95,12 @@ esp_err_t init_sensors(void) {
         { "KY032",          init_ky032 },
         { "KY023",          init_ky023 },
         { "DS18B20",        init_ds18b20 },
+        { "BNO085",         init_bno085 },
+        { "LIDAR",          init_lidar },
+        { "ESP",            init_esp_monitor },
+        { "BAT_ADC",        init_bat_adc },
+        { "ACS758",         init_acs758 },
+        { "BZ181",          init_gps },
     };
 
     for (size_t i = 0; i < sizeof(sensors) / sizeof(sensors[0]); i++) {

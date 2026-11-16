@@ -12,164 +12,175 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_timer.h"
+#include "nvs_lib.h"
+
+#include "VL53L1X_api.h"
+#include "VL53L1X_calibration.h"
+#include "vl53l1x_platform_glue.h"
 
 static const char *TAG = "vl53l1x_sensor";
 
 #if CONFIG_USE_VL53L1X
 
-// --- Registers confirmed directly from ST datasheet DS12385 + UM2356 ---
-#define REG_IDENTIFICATION_MODEL_ID 0x010F // expect 0xEACC (model 0xEA, module 0xCC)
-#define REG_FIRMWARE_SYSTEM_STATUS  0x00E5 // bit0: firmware boot complete
-#define REG_SYSTEM_MODE_START       0x0087 // write 0x40: start ranging (continuous)
-#define REG_SYSTEM_INTERRUPT_CLEAR  0x0086 // write 0x01: clear interrupt / consume result
-#define REG_RESULT_RANGE_STATUS     0x0089
-#define REG_RESULT_FINAL_DISTANCE   0x0096
-#define REG_CONFIG_TABLE_START      0x002D // where the 91-byte default config table loads
+#define VL53L1X_DEV_ID                 0        // slot in the platform glue table
+#define VL53L1X_EXPECTED_MODEL_ID      0xEACC
+#define VL53L1X_BOOT_RETRIES           20
+#define VL53L1X_BOOT_POLL_MS           10       // must be >= 1 tick (10ms @ default 100Hz tick rate)
+#define VL53L1X_READY_TIMEOUT_CYCLES   100       // *10ms poll = 1s, same as before
 
-#define REG_VHV_CONFIG_TIMEOUT_MACROP_LOOP_BOUND 0x000B
-#define REG_VHV_CONFIG_COUNT_MAX_SUBBANK         0x000C
+// Distance mode: 1 = Short (matches your original short-mode config)
+#define VL53L1X_DISTANCE_MODE_SHORT    1
+#define VL53L1X_TIMING_BUDGET_MS       20
+#define VL53L1X_INTER_MEASUREMENT_MS   25        // must stay >= timing budget
+#define VL53L1X_ROI_WIDTH              8
+#define VL53L1X_ROI_HEIGHT             8
+#define VL53L1X_ROI_CENTER_SPAD        199
 
-// --- Registers used for the "is a measurement ready" check ---
-// UM2356 abstracts this behind VL53L1X_CheckForDataReady() and does not
-// document the raw bit logic; the pattern below (read GPIO_HV_MUX__CTRL's
-// bit4 as the interrupt polarity, then compare it against
-// GPIO__TIO_HV_STATUS's bit0) is not from an ST document but is the
-// well-established community reference implementation (Pololu's VL53L1X
-// driver and its many derivatives), independently confirmed by several
-// third-party register-map dumps.
-#define REG_GPIO_HV_MUX_CTRL 0x0030
-#define REG_GPIO_TIO_HV_STATUS 0x0031
+// NVS keys are capped at 15 chars by ESP-IDF, keep these short.
+#define VL53L1X_NVS_KEY_OFFSET         "tof_offset"
+#define VL53L1X_NVS_KEY_XTALK          "tof_xtalk"
+// load_nvs_int() auto-creates a missing key at 0 and returns ESP_OK, so the
+// error code alone can't tell "not calibrated yet" from "calibrated to 0".
+// This flag is only ever set to 1 by run_calibration() on a successful save.
+#define VL53L1X_NVS_KEY_CAL_OK          "tof_cal_ok"
 
 static i2c_master_dev_handle_t dev;
 
 static esp_err_t wait_for_boot(void) {
-    for (int retry = 0; retry < 50; retry++) {
+    for (int retry = 0; retry < VL53L1X_BOOT_RETRIES; retry++) {
         uint8_t boot_state = 0;
-        esp_err_t err = i2c_bus_read_reg16addr(dev, REG_FIRMWARE_SYSTEM_STATUS, &boot_state, 1);
-        if (err == ESP_OK && (boot_state & 0x01)) {
+        VL53L1X_ERROR err = VL53L1X_BootState(VL53L1X_DEV_ID, &boot_state);
+        log_msg(TAG, "boot poll %d: err=%d boot_state=0x%02X", retry, err, boot_state);
+        // ST's own UM2510 reference loops `while (sensorState == 0)` - any
+        // nonzero value means booted, not just 1 (see e.g. 0x03 in practice).
+        if (err == VL53L1X_ERROR_NONE && boot_state != 0) {
             return ESP_OK;
         }
-        vTaskDelay(pdMS_TO_TICKS(2));
+        vTaskDelay(pdMS_TO_TICKS(VL53L1X_BOOT_POLL_MS));
     }
     return ESP_ERR_TIMEOUT;
 }
 
-static esp_err_t check_model_id(void) {
-    uint8_t raw[2];
-    esp_err_t err = i2c_bus_read_reg16addr(dev, REG_IDENTIFICATION_MODEL_ID, raw, sizeof(raw));
-    if (err != ESP_OK) {
-        return err;
+// Reads offset/xtalk from NVS and applies them to the sensor. Call after
+// SensorInit(), before StartRanging(). If nothing's been calibrated yet
+// this just logs a warning and returns - ranging still works uncalibrated.
+static esp_err_t apply_calibration(void) {
+    // Check the explicit flag first - offset/xtalk being 0 doesn't tell us
+    // whether that's a real calibration or just load_nvs_int's auto-init default.
+    int calibrated = 0;
+    load_nvs_int(VL53L1X_NVS_KEY_CAL_OK, &calibrated);
+    if (calibrated != 1) {
+        log_msg_lvl(ESP_LOG_WARN, TAG, "No stored calibration, running uncalibrated");
+        return ESP_ERR_INVALID_RESPONSE;
     }
-    uint16_t id = ((uint16_t)raw[0] << 8) | raw[1];
-    if (id != 0xEACC) {
-        log_msg(TAG, "Unexpected model ID 0x%04X (expected 0xEACC)", id);
-        return ESP_ERR_INVALID_VERSION;
+
+    // nvs_lib stores everything as i32; offset/xtalk both fit comfortably.
+    int offset_val = 0;
+    int xtalk_val = 0;
+    esp_err_t err_offset = load_nvs_int(VL53L1X_NVS_KEY_OFFSET, &offset_val);
+    esp_err_t err_xtalk = load_nvs_int(VL53L1X_NVS_KEY_XTALK, &xtalk_val);
+    if (err_offset != ESP_OK || err_xtalk != ESP_OK) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Calibration flag set but values unreadable, running uncalibrated");
+        return ESP_FAIL;
     }
+
+    VL53L1X_ERROR api_err = VL53L1X_ERROR_NONE;
+    api_err |= VL53L1X_SetOffset(VL53L1X_DEV_ID, (int16_t)offset_val);
+    api_err |= VL53L1X_SetXtalk(VL53L1X_DEV_ID, (uint16_t)xtalk_val);
+    if (api_err != VL53L1X_ERROR_NONE) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Failed to apply calibration (err=%u)", api_err);
+        return ESP_FAIL;
+    }
+
+    log_msg(TAG, "Applied calibration: offset=%d mm, xtalk=%d cps", offset_val, xtalk_val);
     return ESP_OK;
 }
 
-static esp_err_t reset_vhv_config(void) {
-    esp_err_t err;
+#if VL53L1X_CALIBRATE_ON_BOOT
+// Bench-only: runs ST's offset then xtalk calibration (offset MUST run
+// first, it zeroes the offset registers before measuring) and stores the
+// result in NVS. Gated by VL53L1X_CALIBRATE_ON_BOOT in vl53l1x.h.
+static esp_err_t run_calibration(void) {
+    int16_t offset = 0;
+    uint16_t xtalk = 0;
 
-    // Forcer le timeout de boucle MacroP VHV (valeur référence ST = 0x09)
-    err = i2c_bus_write_reg16addr(dev, REG_VHV_CONFIG_TIMEOUT_MACROP_LOOP_BOUND, 0x09);
-    if (err != ESP_OK) return err;
+    log_msg(TAG, "Offset calibration at %u mm...", VL53L1X_CALIB_OFFSET_TARGET_MM);
+    if (VL53L1X_CalibrateOffset(VL53L1X_DEV_ID, VL53L1X_CALIB_OFFSET_TARGET_MM, &offset) != VL53L1X_ERROR_NONE) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Offset calibration failed");
+        return ESP_FAIL;
+    }
+    log_msg(TAG, "Offset found: %d mm", offset);
 
-    // Réinitialiser le compteur de subbank VHV
-    err = i2c_bus_write_reg16addr(dev, REG_VHV_CONFIG_COUNT_MAX_SUBBANK, 0x00);
-    if (err != ESP_OK) return err;
+    log_msg(TAG, "Move the target to %u mm for xtalk calibration...", VL53L1X_CALIB_XTALK_TARGET_MM);
+    for (int s = VL53L1X_CALIB_MOVE_DELAY_S; s > 0; s--) {
+        log_msg(TAG, "Xtalk calibration starts in %d s...", s);
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
 
+    log_msg(TAG, "Xtalk calibration at %u mm...", VL53L1X_CALIB_XTALK_TARGET_MM);
+    if (VL53L1X_CalibrateXtalk(VL53L1X_DEV_ID, VL53L1X_CALIB_XTALK_TARGET_MM, &xtalk) != VL53L1X_ERROR_NONE) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Xtalk calibration failed");
+        return ESP_FAIL;
+    }
+    log_msg(TAG, "Xtalk found: %u cps", xtalk);
+
+    esp_err_t err_offset = save_nvs_int(VL53L1X_NVS_KEY_OFFSET, (int)offset);
+    esp_err_t err_xtalk = save_nvs_int(VL53L1X_NVS_KEY_XTALK, (int)xtalk);
+    if (err_offset != ESP_OK || err_xtalk != ESP_OK) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Failed to store calibration (offset=%s, xtalk=%s)",
+            esp_err_to_name(err_offset), esp_err_to_name(err_xtalk));
+        return ESP_FAIL;
+    }
+    esp_err_t err_flag = save_nvs_int(VL53L1X_NVS_KEY_CAL_OK, 1);
+    if (err_flag != ESP_OK) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Values stored but failed to set calibrated flag: %s",
+            esp_err_to_name(err_flag));
+        return err_flag;
+    }
+
+    log_msg(TAG, "Calibration stored — set VL53L1X_CALIBRATE_ON_BOOT back to 0 and reflash");
     return ESP_OK;
 }
+#endif // VL53L1X_CALIBRATE_ON_BOOT
 
-// Configuration de la ROI (Zone d'intérêt) - Registres ST 0x004F à 0x0052
-static esp_err_t set_roi(uint8_t width, uint8_t height, uint8_t center_spad) {
-    if (width < 4) width = 4;
-    if (height < 4) height = 4;
-    if (width > 16) width = 16;
-    if (height > 16) height = 16;
+//VL53L1X_SetInterruptPolarity -- modify if using interruptions
+//VL53L1X_GetSignalPerSpad -- already in result
+//VL53L1X_GetAmbientPerSpad
+//VL53L1X_GetSignalRate
+//VL53L1X_GetSpadNb -- already in result
+//VL53L1X_GetAmbientRate -- already in result
+//VL53L1X_GetRangeStatus -- already in result
+//VL53L1X_SetDistanceThreshold -- window useful for interruptions
+//VL53L1X_SetSignalThreshold -- threshold of signal sensor considers not valid result
+//VL53L1X_SetSigmaThreshold -- threshold of noise sensor considers not valid result
+//VL53L1X_StartTemperatureUpdate
 
-    uint8_t reg_val = ((height - 1) << 4) | (width - 1);
-    esp_err_t err = i2c_bus_write_reg16addr(dev, 0x004F, reg_val); // ROI config
-    if (err != ESP_OK) return err;
-
-    return i2c_bus_write_reg16addr(dev, 0x0050, center_spad); // Center SPAD
+static char* get_str_window_mode(uint16_t window_mode) {
+    //(0=below; 1=above; 2=out; 3=in)
+    switch (window_mode)
+    {
+    case 0: return "below";
+    case 1: return "above";
+    case 2: return "out";
+    case 3: return "in";
+    default: return "unknown mode";
+    }
 }
 
-// Exemple pour configurer le mode SHORT (registres issus du driver officiel ST / Pololu)
-static esp_err_t set_distance_mode_short(void) {
-    esp_err_t err;
+#define VL53L1X_RESULT_SIZE (4 * sizeof(uint16_t) + sizeof(uint8_t))
 
-    // 1. PHASECAL & VCSEL Periods
-    err = i2c_bus_write_reg16addr(dev, 0x004B, 0x09); if (err != ESP_OK) return err;
-    err = i2c_bus_write_reg16addr(dev, 0x0060, 0x07); if (err != ESP_OK) return err;
-    err = i2c_bus_write_reg16addr(dev, 0x0063, 0x05); if (err != ESP_OK) return err;
-    err = i2c_bus_write_reg16addr(dev, 0x0069, 0x38); if (err != ESP_OK) return err;
-
-    // 2. WOI & Initial Phase (Ajustement du déphasage DSP)
-    uint8_t woi_config[]    = { 0x07, 0x05 };
-    uint8_t initial_phase[] = { 0x06, 0x06 };
-    err = i2c_bus_write_block16addr(dev, 0x0078, woi_config, 2); if (err != ESP_OK) return err;
-    err = i2c_bus_write_block16addr(dev, 0x007A, initial_phase, 2); if (err != ESP_OK) return err;
-
-    // 3. Timeouts MacroPeriod A & B
-    uint8_t timeout_macrop_a[] = { 0x00, 0x1D };
-    uint8_t timeout_macrop_b[] = { 0x00, 0x27 };
-    err = i2c_bus_write_block16addr(dev, 0x005E, timeout_macrop_a, 2); if (err != ESP_OK) return err;
-    err = i2c_bus_write_block16addr(dev, 0x0061, timeout_macrop_b, 2); if (err != ESP_OK) return err;
-
-    // 4. Réglage des targets DSS pour éviter la saturation à courte distance
-    err = i2c_bus_write_reg16addr(dev, 0x005B, 0x00); if (err != ESP_OK) return err; // SD_CONFIG__WOI_TARGET_SETPOINT
-    err = i2c_bus_write_reg16addr(dev, 0x005C, 0x08); if (err != ESP_OK) return err;
-    err = i2c_bus_write_reg16addr(dev, 0x005D, 0x00); if (err != ESP_OK) return err;
-
-    return ESP_OK;
+static void serialize_vl53l1x_result(uint8_t *buf, VL53L1X_Result_t *vl53l1x) {
+    memcpy(&buf[0], &vl53l1x->Distance, 2);
+    memcpy(&buf[2], &vl53l1x->Ambient, 2);
+    memcpy(&buf[4], &vl53l1x->SigPerSPAD, 2);
+    memcpy(&buf[6], &vl53l1x->NumSPADs, 2);
+    buf[8] = vl53l1x->Status;
 }
-
-// 91-byte factory default configuration table, loaded starting at 0x002D.
-// Matches ST's official VL51L1X_DEFAULT_CONFIGURATION array size and content.
-static const uint8_t DEFAULT_CONFIG[] = {
-    0x12, 0x00, 0x00, 0x11, 0x02, 0x00, 0x02, 0x08, 0x00, 0x08, 0x10, 0x01, 0x01, 0x00, 0x00, 0x00,
-    0x00, 0xff, 0x00, 0x0F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0x0b, 0x00, 0x00, 0x02, 0x0a, 0x21,
-    0x00, 0x00, 0x05, 0x05, 0x15, 0x05, 0x03, 0x08, 0x03, 0x08, 0x35, 0x00, 0x03, 0x04, 0x03, 0x08,
-    0x01, 0x01, 0x01, 0x00, 0x01, 0x0c, 0x00, 0x00, 0x00, 0x00, 0x20, 0x0b, 0x00, 0x00, 0x02, 0x0a,
-    0x00, 0x00, 0x03, 0x01, 0x00, 0x02, 0x01, 0x01, 0x00, 0x01, 0x0c, 0x08, 0x01, 0x00, 0x00, 0x08,
-    0x01, 0x14, 0x00, 0x00, 0x00, 0x07, 0x03, 0x05, 0x05, 0x15, 0x03
-};
-
-static esp_err_t load_default_config(void) {
-    return i2c_bus_write_block16addr(dev, REG_CONFIG_TABLE_START, DEFAULT_CONFIG, sizeof(DEFAULT_CONFIG));
-}
-
-/**
- * Whether a new ranging result is available.
- * See the REG_GPIO_HV_MUX_CTRL / REG_GPIO_TIO_HV_STATUS comment above:
- * community reference pattern, not directly documented by ST's public PDFs.
- */
-static esp_err_t data_ready(bool *ready) {
-    uint8_t mux_ctrl = 0, status = 0;
-    esp_err_t err = i2c_bus_read_reg16addr(dev, REG_GPIO_HV_MUX_CTRL, &mux_ctrl, 1);
-    if (err != ESP_OK) { log_msg(TAG, "I2C error reading mux_ctrl: %s", esp_err_to_name(err)); return err; }
-    err = i2c_bus_read_reg16addr(dev, REG_GPIO_TIO_HV_STATUS, &status, 1);
-    if (err != ESP_OK) { log_msg(TAG, "I2C error reading status: %s", esp_err_to_name(err)); return err; }
-
-    bool expected_polarity = !((mux_ctrl & 0x10) >> 4);
-    *ready = ((status & 0x01) == expected_polarity);
-    //log_msg(TAG, "mux_ctrl=0x%02X status=0x%02X expected_pol=%d ready=%d", mux_ctrl, status, expected_polarity, *ready);
-    return ESP_OK;
-}
-
-// Table de conversion officielle du registre 0x0089 (Driver ST ULD)
-static const uint8_t ST_STATUS_LOOKUP[] = {
-    255, 255, 255, 5, 2, 4, 1, 7, 3, 0, 255, 255, 8, 13, 255, 255,
-    255, 255, 10, 6, 255, 255, 11, 12
-};
 
 static void vl53l1x_task(void *params) {
     (void)params;
 
-    // XSHUT sequence (DS12385 3.6, Option 1): hold low, then release high
-    // to boot the sensor, before touching it over I2C.
+    // XSHUT sequence unchanged (DS12385 3.6, Option 1)
     gpio_reset_pin(VL53L1X_XSHUT_GPIO);
     gpio_set_direction(VL53L1X_XSHUT_GPIO, GPIO_MODE_OUTPUT);
     gpio_set_level(VL53L1X_XSHUT_GPIO, 0);
@@ -181,6 +192,7 @@ static void vl53l1x_task(void *params) {
         vTaskDelete(NULL);
         return;
     }
+    vl53l1x_platform_bind(VL53L1X_DEV_ID, dev);
 
     if (wait_for_boot() != ESP_OK) {
         log_msg_lvl(ESP_LOG_ERROR, TAG, "Firmware boot timeout");
@@ -188,166 +200,188 @@ static void vl53l1x_task(void *params) {
         return;
     }
 
-    if (check_model_id() != ESP_OK) {
-        log_msg_lvl(ESP_LOG_ERROR, TAG, "Model ID check failed, check wiring/XSHUT");
+    uint16_t model_id = 0;
+    if (VL53L1X_GetSensorId(VL53L1X_DEV_ID, &model_id) != VL53L1X_ERROR_NONE
+        || model_id != VL53L1X_EXPECTED_MODEL_ID) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG,
+            "Unexpected model ID 0x%04X (expected 0x%04X), check wiring/XSHUT",
+            model_id, VL53L1X_EXPECTED_MODEL_ID);
         vTaskDelete(NULL);
         return;
     }
 
-    if (load_default_config() != ESP_OK) {
-        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error loading default configuration table");
+    // VL53L1X_SensorInit() loads ST's 91-byte default config table, fires one
+    // ranging cycle to confirm the sensor actually answers, clears the
+    // interrupt and stops ranging again.
+    if (VL53L1X_SensorInit(VL53L1X_DEV_ID) != VL53L1X_ERROR_NONE) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "SensorInit failed");
         vTaskDelete(NULL);
         return;
     }
 
-    // Réarmement explicite du VHV pour les boots à chaud
-    if (reset_vhv_config() != ESP_OK) {
-        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error resetting VHV configuration");
+#if VL53L1X_CALIBRATE_ON_BOOT
+    if (run_calibration() != ESP_OK) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Calibration failed");
+        vTaskDelete(NULL);
+        return;
+    }
+#endif
+    apply_calibration(); // no-op (logs a warning) if nothing stored yet
+
+    VL53L1X_ERROR cfg_err = VL53L1X_ERROR_NONE;
+    cfg_err |= VL53L1X_SetDistanceMode(VL53L1X_DEV_ID, VL53L1X_DISTANCE_MODE_SHORT);
+    cfg_err |= VL53L1X_SetROI(VL53L1X_DEV_ID, VL53L1X_ROI_WIDTH, VL53L1X_ROI_HEIGHT);
+    cfg_err |= VL53L1X_SetROICenter(VL53L1X_DEV_ID, VL53L1X_ROI_CENTER_SPAD);
+    // SetTimingBudget before InterMeasurement: the ULD API encodes the
+    // inter-measurement period from the currently configured timing budget
+    // (see VL53L1X_SetInterMeasurementInMs in VL53L1X_api.c) — order matters.
+    cfg_err |= VL53L1X_SetTimingBudgetInMs(VL53L1X_DEV_ID, VL53L1X_TIMING_BUDGET_MS);
+    cfg_err |= VL53L1X_SetInterMeasurementInMs(VL53L1X_DEV_ID, VL53L1X_INTER_MEASUREMENT_MS);
+    if (cfg_err != VL53L1X_ERROR_NONE) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Sensor configuration failed (err=%u)", cfg_err);
         vTaskDelete(NULL);
         return;
     }
 
+    VL53L1X_Version_t sw_version;
+    if (VL53L1X_GetSWVersion(&sw_version) != VL53L1X_ERROR_NONE) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Failed to get SW version");
+        vTaskDelete(NULL);
+        return;
+    } else {
+        log_msg(TAG, "VL53L1X SW version (M:%u, m:%u, b:%u, r:%u)",
+            sw_version.major, sw_version.minor, sw_version.build, sw_version.revision);
+    }
 
-    if (set_distance_mode_short() != ESP_OK) {
-        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error setting distance mode");
+    uint16_t tb; //distance for ranging
+    if (VL53L1X_GetTimingBudgetInMs(VL53L1X_DEV_ID, &tb) == VL53L1X_ERROR_NONE) {
+        log_msg(TAG, "VL53L1X Timing budget applied: %u ms", tb);
+    }
+
+    uint16_t im; //distance between two ranging
+    if (VL53L1X_GetInterMeasurementInMs(VL53L1X_DEV_ID, &im) == VL53L1X_ERROR_NONE) {
+        log_msg(TAG, "VL53L1X Intermeasurement mode applied: %u ms", im);
+    }
+
+    uint16_t dm;
+    if (VL53L1X_GetDistanceMode(VL53L1X_DEV_ID, &dm) == VL53L1X_ERROR_NONE) {
+        log_msg(TAG, "VL53L1X Distance mode applied: %s", dm == 2 ? "long" : "short");
+    }
+
+    int16_t of;
+    if (VL53L1X_GetOffset(VL53L1X_DEV_ID, &of) == VL53L1X_ERROR_NONE) {
+        log_msg(TAG, "VL53L1X offset calibration applied: %d mm", of);
+    }
+
+    uint16_t xt;
+    if (VL53L1X_GetXtalk(VL53L1X_DEV_ID, &xt) == VL53L1X_ERROR_NONE) {
+        log_msg(TAG, "VL53L1X xtalk calibration applied: %u", xt);
+    }
+
+    uint16_t win_mode;
+    if (VL53L1X_GetDistanceThresholdWindow(VL53L1X_DEV_ID, &win_mode) == VL53L1X_ERROR_NONE) {
+        log_msg(TAG, "VL53L1X window detection mode: %s", get_str_window_mode(win_mode));
+    }
+
+    uint16_t low;
+    if (VL53L1X_GetDistanceThresholdLow(VL53L1X_DEV_ID, &low) == VL53L1X_ERROR_NONE) {
+        log_msg(TAG, "VL53L1X window low: %u", low);
+    }
+
+    uint16_t high;
+    if (VL53L1X_GetDistanceThresholdHigh(VL53L1X_DEV_ID, &high) == VL53L1X_ERROR_NONE) {
+        log_msg(TAG, "VL53L1X window high: %u", high);
+    }
+
+    uint16_t x, y;
+    if (VL53L1X_GetROI_XY(VL53L1X_DEV_ID, &x, &y) == VL53L1X_ERROR_NONE) {
+        log_msg(TAG, "VL53L1X ROI, x: %u; y: %u", x, y);
+    }
+
+    uint8_t roi_center;
+    if (VL53L1X_GetROICenter(VL53L1X_DEV_ID, &roi_center) == VL53L1X_ERROR_NONE) {
+        log_msg(TAG, "VL53L1X ROI center: %u", roi_center);
+    }
+
+    uint16_t st;
+    if (VL53L1X_GetSignalThreshold(VL53L1X_DEV_ID, &st) == VL53L1X_ERROR_NONE) {
+        log_msg(TAG, "VL53L1X signal threshold: %u", st);
+    }
+    
+    uint16_t sig;
+    if (VL53L1X_GetSigmaThreshold(VL53L1X_DEV_ID, &sig) == VL53L1X_ERROR_NONE) {
+        log_msg(TAG, "VL53L1X sigma threshold: %u", sig);
+    }
+
+    uint8_t inte;
+    if (VL53L1X_GetInterruptPolarity(VL53L1X_DEV_ID, &inte) == VL53L1X_ERROR_NONE) {
+        log_msg(TAG, "VL53L1X interruption GPIO1: %s", inte ? "active" : "not active");
+    }
+
+    if (VL53L1X_StartRanging(VL53L1X_DEV_ID) != VL53L1X_ERROR_NONE) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "StartRanging failed");
         vTaskDelete(NULL);
         return;
     }
 
-    if (set_roi(8, 8, 199) != ESP_OK) {
-        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error setting distance mode");
-        vTaskDelete(NULL);
-        return;
-    }
-
-    // Timing budget intentionally NOT set here. ST's real
-    // SetMeasurementTimingBudgetMicroSeconds() encodes the value through a
-    // macro-period calculation that depends on the currently configured
-    // VCSEL period (UM2356 section 2.4) — it is not a raw millisecond
-    // value written directly to a register. Writing an un-encoded value
-    // there produces an undefined, not a 50ms, budget. The default
-    // configuration table already sets a valid working timing mode; if you
-    // need a specific budget, port ST's SetMeasurementTimingBudget logic
-    // rather than hand-writing these registers.
-
-    esp_err_t err;
-
-    uint8_t osc_buf[2];
-    err= i2c_bus_read_reg16addr(dev, 0x00DE, osc_buf, 2);
-    if (err != ESP_OK) {
-        log_msg_lvl(ESP_LOG_ERROR, TAG, "Failed to set inter-measurement period");
-        vTaskDelete(NULL);
-        return;
-    }
-    uint16_t clock_pll = ((uint16_t)osc_buf[0] << 8 | osc_buf[1]) & 0x03FF;
-
-    // Calcul précis ST : ClockPLL * InterMeasurementMs * 1.075
-    uint32_t inter_measurement_ms = 100; // Utiliser au moins 100ms pour éviter le dépassement du Timing Budget
-    uint32_t clock_cycles = (uint32_t)(clock_pll * inter_measurement_ms * 1.075f);
-
-    uint8_t inter_meas_buf[4] = {
-        (uint8_t)(clock_cycles >> 24),
-        (uint8_t)(clock_cycles >> 16),
-        (uint8_t)(clock_cycles >> 8),
-        (uint8_t)(clock_cycles & 0xFF)
-    };
-
-    // Registre SYSTEM__INTERMEASUREMENT_PERIOD = 0x006C
-    err = i2c_bus_write_block16addr(dev, 0x006C, inter_meas_buf, 4);
-    if (err != ESP_OK) {
-        log_msg_lvl(ESP_LOG_ERROR, TAG, "Failed to set inter-measurement period");
-        vTaskDelete(NULL);
-        return;
-    }
-
-    err = i2c_bus_write_reg16addr(dev, REG_SYSTEM_MODE_START, 0x40); // start continuous ranging
-    if (err != ESP_OK) {
-        vTaskDelete(NULL);
-        return;
-    }
-
-
-    err = i2c_bus_write_reg16addr(dev, REG_SYSTEM_INTERRUPT_CLEAR, 0x01); // kick off the first measurement
-    if (err != ESP_OK) {
-        log_msg_lvl(ESP_LOG_ERROR, TAG, "Interrupt clear FAILED: %s", esp_err_to_name(err));
-        vTaskDelete(NULL);
-        return;
-    }
-
-    log_msg(TAG, "VL53L1X initialized at address 0x%02X (XSHUT: GPIO%d)", VL53L1X_I2C_ADDR, VL53L1X_XSHUT_GPIO);
+    log_msg(TAG, "VL53L1X initialized at address 0x%02X (XSHUT: GPIO%d)",
+        VL53L1X_I2C_ADDR, VL53L1X_XSHUT_GPIO);
 
     uint8_t ready_timeout_count = 0;
 
     while (true) {
-        bool ready = false;
-        if (data_ready(&ready) == ESP_OK && ready) 
-        {
-            ready_timeout_count = 0; // Réinitialise le compteur sur succès
+        uint8_t ready = 0;
+        if (VL53L1X_CheckForDataReady(VL53L1X_DEV_ID, &ready) == VL53L1X_ERROR_NONE && ready) {
+            ready_timeout_count = 0;
 
-            uint8_t status_raw = 0;
-            err = i2c_bus_read_reg16addr(dev, REG_RESULT_RANGE_STATUS, &status_raw, 1);
-            if (err != ESP_OK) {
-                log_msg_lvl(ESP_LOG_ERROR, TAG, "Range status reading failed: %s", esp_err_to_name(err));
+            // GetResult() pulls status + distance + ambient + signal + SPAD
+            // count in one 17-byte multi-read, instead of two separate
+            // transactions. Also gives you ambient/signal for free next time
+            // you need to debug a HARDWARE_FAIL / low-signal case.
+            VL53L1X_Result_t result;
+            if (VL53L1X_GetResult(VL53L1X_DEV_ID, &result) != VL53L1X_ERROR_NONE) {
+                log_msg_lvl(ESP_LOG_ERROR, TAG, "GetResult failed");
+                VL53L1X_ClearInterrupt(VL53L1X_DEV_ID);
+                vTaskDelay(pdMS_TO_TICKS(10));
                 continue;
             }
+            VL53L1X_ClearInterrupt(VL53L1X_DEV_ID); // always clear, same as before
 
-            uint8_t dist_raw[2];
-            err = i2c_bus_read_reg16addr(dev, REG_RESULT_FINAL_DISTANCE, dist_raw, sizeof(dist_raw));
-            if (err != ESP_OK) {
-                log_msg_lvl(ESP_LOG_ERROR, TAG, "Distance reading failed: %s", esp_err_to_name(err));
-                continue;
-            }
-            uint16_t distance_mm = (uint16_t)((dist_raw[0] << 8) | dist_raw[1]);
+            header_sensor_t header = {0};
+            header.esp_id = (uint8_t)CONFIG_ESP_ID;
+            header.timestamp = (uint32_t)(esp_timer_get_time() / 1000);
+            header.type = SENSOR_TYPE_VL53L1X;
+            uint8_t buf[HEADER_SENSOR_SIZE + VL53L1X_RESULT_SIZE];
+            serialize_header(&header, buf);
+            serialize_vl53l1x_result(&buf[HEADER_SENSOR_SIZE], &result);
 
-            // Toujours effacer l'interruption pour permettre la mesure suivante
-            err = i2c_bus_write_reg16addr(dev, REG_SYSTEM_INTERRUPT_CLEAR, 0x01);
-            if (err != ESP_OK) {
-                log_msg_lvl(ESP_LOG_ERROR, TAG, "Interrupt clear FAILED: %s", esp_err_to_name(err));
-                continue;
-            }
+#if CONFIG_USE_UDPLIB
+            send_udp_sensor(buf, sizeof(buf));
+#endif
 
-            uint8_t raw_code = status_raw & 0x1F;
-            uint8_t range_status = (raw_code < sizeof(ST_STATUS_LOOKUP)) ? ST_STATUS_LOOKUP[raw_code] : 255;
-
-            switch (range_status) { // 0 = mesure valide (ST ULD API)
-                case 0:
-                    header_sensor_t header = {0};
-                    header.esp_id = (uint8_t)CONFIG_ESP_ID;
-                    header.timestamp = (uint32_t)(esp_timer_get_time() / 1000);
-                    header.type = SENSOR_TYPE_VL53L1X;
-                    uint8_t buf[HEADER_SENSOR_SIZE + sizeof(uint16_t)];
-                    serialize_header(&header, buf);
-                    memcpy(&buf[HEADER_SENSOR_SIZE], &distance_mm, sizeof(uint16_t));
-                    log_msg(TAG, "Distance: %u mm", distance_mm);
-
-    #if CONFIG_USE_UDPLIB
-                    send_udp_sensor(buf, sizeof(buf));
-    #endif
+            switch (result.Status) { // 0 = valid measurement (ST ULD status codes)
+                case 0: {
+/*
+                    log_msg(TAG, "Distance: %u mm (ambient %u, sigPerSpad %u, spads %u)",
+                        result.Distance, result.Ambient, result.SigPerSPAD, result.NumSPADs);
+*/
                     break;
+                }
                 case 2:
                     break;
                 default:
-                    log_msg(TAG, "Invalid range, raw distance %u mm, status %u (ST code %u)", 
-                        distance_mm, status_raw, range_status);
+                    log_msg(TAG, "Invalid range, raw distance %u mm, status %u",
+                        result.Distance, result.Status);
                     break;
             }
-        } 
-        else 
-        {
-            // Sécurité : Si ready reste à false pendant 5 cycles (1 seconde)
+        } else {
             ready_timeout_count++;
-            if (ready_timeout_count >= 100) {
+            if (ready_timeout_count >= VL53L1X_READY_TIMEOUT_CYCLES) {
                 log_msg_lvl(ESP_LOG_WARN, TAG, "Sensor hung, resetting ranging sequence...");
-                
-                // 1. Stopper explicitement le ranging
-                i2c_bus_write_reg16addr(dev, REG_SYSTEM_MODE_START, 0x00);
+                VL53L1X_StopRanging(VL53L1X_DEV_ID);
                 vTaskDelay(pdMS_TO_TICKS(10));
-                
-                // 2. Acquitter l'interruption
-                i2c_bus_write_reg16addr(dev, REG_SYSTEM_INTERRUPT_CLEAR, 0x01);
-                
-                // 3. Relancer
-                i2c_bus_write_reg16addr(dev, REG_SYSTEM_MODE_START, 0x40);
+                VL53L1X_ClearInterrupt(VL53L1X_DEV_ID);
+                VL53L1X_StartRanging(VL53L1X_DEV_ID);
                 ready_timeout_count = 0;
             }
         }

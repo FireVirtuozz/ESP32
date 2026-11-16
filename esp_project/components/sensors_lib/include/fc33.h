@@ -5,7 +5,7 @@
 
 // FC-33: speed/pulse sensor module, digital pulse output.
 // Pulses are counted over a 100ms window.
-#define FC33_GPIO 23
+#define FC33_GPIO 8
 
 esp_err_t init_fc33(void);
 

@@ -16,6 +16,7 @@
 
 // Shared helper macro: max duty value for a given LEDC resolution (2^res - 1)
 #define GET_MAX_DUTY(res) ((1 << (res)) - 1)
+#define COMMAND_PACKET_SIZE (2 * sizeof(int16_t) + 4 * sizeof(uint8_t)+ sizeof(uint32_t) + sizeof(float))
 
 /**
  * Initialize every actuator enabled via Kconfig (CONFIG_USE_xxx).
@@ -61,5 +62,7 @@ esp_err_t close_led(void);
  * @return ESP_OK on success, or the underlying ledc driver error
  */
 esp_err_t ledc_apply_duty(ledc_mode_t speed_mode, ledc_channel_t channel, uint32_t duty);
+
+void cmd_dispatch(uint8_t *buf, uint8_t size);
 
 #endif // ACTUATORS_LIB_H_

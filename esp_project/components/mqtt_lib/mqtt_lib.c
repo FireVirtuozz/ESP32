@@ -29,7 +29,6 @@
 #include "wifi_lib.h"
 #include "screen_lib.h"
 #include "cJSON.h"
-#include "cmd_lib.h"
 #include "log_lib.h"
 
 //mqtt through websocket secure
@@ -193,23 +192,8 @@ static void handle_mqtt_data(const char *data, size_t len) {
 static void handle_mqtt_controller(const char *data, size_t len) {
     int8_t *payload = (int8_t *)data; /*from -128 to 127*/
 
-    esp_err_t err;
-    gamepad_t gamepad;
-    err = gamepad_from_buffer(payload, &gamepad);
-    if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) getting gamepad from buffer", 
-                esp_err_to_name(err));
-        return;
-    }
 
-    dump_gamepad(&gamepad);
-
-    err = apply_gamepad_commands(&gamepad);
-    if (err != ESP_OK) {
-        log_msg(TAG, "Error (%s) applying gamepad commands", 
-                esp_err_to_name(err));
-        return;
-    }
+    /*TODO*/
 
 }
 

@@ -952,8 +952,8 @@ static void first_scan() {
     */
     wifi_network_t networks_put[] = {
         {
-            "Bbox-B5236F0B", 
-            "sb3nLzT4xRb3J5PC9P", 
+            "Bbox-C0B64636", 
+            "nHVbvx32tR4rHsxr5X", 
             0 //priority (higher means less priority)
         },
     };

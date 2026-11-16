@@ -23,6 +23,8 @@
 #define BTS_RESOLUTION      LEDC_TIMER_11_BIT
 
 extern ledc_timer_config_t ledc_timer_bts;
+typedef enum { DRIVE_RAW = 0, DRIVE_INTERP = 1, DRIVE_SPEED = 2 } drive_mode_t;
+extern _Atomic float target_speed_m_s;
 
 /**
  * Configure the BTS7960 LEDC timer and both (forward/backward) channels,
@@ -90,16 +92,8 @@ esp_err_t force_motor_stop(void);
  */
 esp_err_t apply_config(uint8_t *buf, uint8_t len);
 
-/**
- * Enable or disable obstacle-based direction blocking (front/rear HC-SR04).
- * When disabled, ledc_motor() no longer refuses commands toward a detected
- * obstacle direction.
- */
-esp_err_t activate_hc_blocking(bool active);
+esp_err_t set_drive_mode(drive_mode_t mode);
 
-/**
- * Read whether obstacle-based direction blocking is currently active.
- */
-esp_err_t get_active_hc_blocking(bool *active);
+void set_brake_held(bool held);
 
 #endif // H_BRIDGE_H_

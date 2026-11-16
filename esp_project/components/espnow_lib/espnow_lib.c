@@ -18,8 +18,6 @@
 #include "log_lib.h"
 #if CONFIG_USE_UDPLIB
 #include "udp_lib.h"
-#else
-#include "cmd_lib.h"
 #endif
 
 #define ESPNOW_MAXDELAY 512

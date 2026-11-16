@@ -127,9 +127,10 @@ void app_main()
 #endif
 
 #if CONFIG_USE_CAMERA
-    vTaskDelay(pdMS_TO_TICKS(10000));
+    vTaskDelay(pdMS_TO_TICKS(1000));
     camera_init();
 #endif
+
     log_msg(TAG, "MAIN ENDING");
 
 #if CONFIG_USE_ZIGBEE

@@ -9,6 +9,9 @@
 #include <stdatomic.h>
 #include "esp_timer.h"
 #include "log_lib.h"
+#include "hcsr04.h"
+#include "sensors_lib.h"
+#include "ky033.h"
 
 #if CONFIG_WRITE_MOTOR_SCREEN
 #include "screen_lib.h"
@@ -52,7 +55,6 @@ static ledc_channel_config_t ledc_channel_bts_bwd = {
 #if CONFIG_USE_BTS7960
 
 #define MOTOR_CTRL_PERIOD 20000 // microseconds (20ms ramp tick)
-#define DEADZONE_MOTOR 50
 #define MIN_MOTOR_DUTY_FWD 0
 #define MAX_MOTOR_DUTY_FWD GET_MAX_DUTY(BTS_RESOLUTION)
 #define MIN_MOTOR_DUTY_BWD 0
@@ -65,41 +67,78 @@ typedef enum {
 } curve_type_t;
 
 typedef struct {
-    uint8_t curve_type;
-    uint8_t accel_param;  // 0-255, meaning depends on curve_type
-    uint8_t decel_param;  // separate from accel_param (accel/braking asymmetry)
+    _Atomic uint8_t curve_type;
+    _Atomic uint8_t accel_param;  // 0-255, meaning depends on curve_type
+    _Atomic uint8_t decel_param;  // separate from accel_param (accel/braking asymmetry)
 } drive_profile_config_t;
 
 #define MOTOR_FRAME_SIZE 8
 #define BREAKING_FRAME_SIZE (sizeof(uint8_t) + sizeof(uint32_t) + 2 * sizeof(uint16_t) + sizeof(int16_t)) // 11
 
 static atomic_bool breaking_lock = false;
-static volatile bool hc_block_activated = false;
 
-static volatile int16_t current_motor = 0;
-static volatile int16_t target_motor = 0;
+static _Atomic int16_t current_motor = 0;
+static _Atomic int16_t target_motor = 0;
+static atomic_bool last_current_motor_sign_positive = false;
+static _Atomic uint32_t timestamp_force_motor_ms = 0;
+static _Atomic uint32_t timeout_breaking = 0;
 
-static int32_t last_target = 0;
-static int64_t timestamp_force_motor = 0;
-static bool last_current_motor_sign_positive = false;
+static drive_profile_config_t cfg = { CURVE_LINEAR, 30, 30 };
+static _Atomic int32_t ramp_start_motor = 0;
+static _Atomic uint32_t ramp_tick = 0;
 
-static drive_profile_config_t cfg = { CURVE_COSINE, 180, 190 };
-static int32_t ramp_start_motor = 0;
-static uint32_t ramp_tick = 0;
-static uint32_t timeout_breaking = 0;
+static _Atomic uint8_t drive_mode = DRIVE_RAW;
+_Atomic float target_speed_m_s = 0;
+
+static float integ;
+static int8_t prev_sign;
+
+static atomic_bool brake_held = false;
+
+void set_brake_held(bool held) {
+    atomic_store(&brake_held, held);
+}
+
+static int16_t speed_pi(float target, float meas, float cap_abs) {
+    const float kp = 100.0f, ki = 200.0f;
+    int8_t sign = (target >= 0.0f) ? 1 : -1;
+    if (sign != prev_sign) { integ = 0.0f; prev_sign = sign; }
+
+    float dt = 0.020f;
+
+    float err = target - meas;
+    integ += err * dt;
+    float u = kp * err + ki * integ;
+    float lim = cap_abs * 1000.0f;
+    if (u > lim) { u = lim; integ -= err * dt; }
+    else if (u < -lim) { u = -lim; integ -= err * dt; }
+    return (int16_t)u;
+}
+
+esp_err_t set_drive_mode(drive_mode_t mode) {
+    if (mode > DRIVE_SPEED) return ESP_ERR_INVALID_ARG;
+    if (mode != atomic_load(&drive_mode)) integ = 0.0f;
+    atomic_store(&drive_mode, mode);
+    return ESP_OK;
+}
 
 /**
  * Serialize the current drive profile + motor state into a telemetry frame.
  * Layout: [curve_type][accel_param][decel_param][current_motor:i16][target_motor:i16][hc_block_activated]
  */
 static void serialize_motor(const drive_profile_config_t *drive_cfg, uint8_t *buf) {
-    buf[0] = drive_cfg->curve_type;
-    buf[1] = drive_cfg->accel_param;
-    buf[2] = drive_cfg->decel_param;
-    int16_t curr = current_motor;
-    int16_t targ = target_motor;
+    uint8_t curve_type = atomic_load(&drive_cfg->curve_type);
+    uint8_t accel_param = atomic_load(&drive_cfg->accel_param);
+    uint8_t decel_param = atomic_load(&drive_cfg->decel_param);
+    buf[0] = curve_type;
+    buf[1] = accel_param;
+    buf[2] = decel_param;
+    int16_t curr = atomic_load(&current_motor);
+    int16_t targ = atomic_load(&target_motor);
     memcpy(&buf[3], &curr, sizeof(int16_t));
     memcpy(&buf[5], &targ, sizeof(int16_t));
+
+    bool hc_block_activated = atomic_load(&hc_locked_config);
     buf[7] = (uint8_t)hc_block_activated;
 }
 
@@ -109,10 +148,11 @@ static void serialize_motor(const drive_profile_config_t *drive_cfg, uint8_t *bu
  */
 static void serialize_breaking(uint8_t *buf, bool breaking, uint16_t pulses_100ms, uint16_t pulses_20ms) {
     buf[0] = (uint8_t)breaking;
-    memcpy(&buf[1], &timeout_breaking, sizeof(uint32_t));
+    uint32_t val_timeout = atomic_load(&timeout_breaking);
+    memcpy(&buf[1], &val_timeout, sizeof(uint32_t));
     memcpy(&buf[5], &pulses_100ms, sizeof(uint16_t));
     memcpy(&buf[7], &pulses_20ms, sizeof(uint16_t));
-    int16_t curr = current_motor;
+    int16_t curr = atomic_load(&current_motor);
     memcpy(&buf[9], &curr, sizeof(int16_t));
 }
 
@@ -172,20 +212,41 @@ static int32_t apply_curve_step(int32_t current, int32_t target, uint8_t param, 
             return current + (int32_t)(delta * alpha);
         }
         case CURVE_COSINE: {
-            ramp_tick++;
+            atomic_fetch_add(&ramp_tick, 1);
             uint32_t total_ticks = 200 - param; // higher param = shorter/sharper ramp
             if (total_ticks < 1) {
                 total_ticks = 1;
             }
-            float t = (float)ramp_tick / total_ticks;
+            uint32_t val_tick = atomic_load(&ramp_tick);
+            float t = (float)val_tick / total_ticks;
             if (t > 1.0f) {
                 t = 1.0f;
             }
             float s = (1.0f - cosf((float)M_PI * t)) / 2.0f;
-            return ramp_start_motor + (int32_t)((target - ramp_start_motor) * s);
+            int32_t start_motor = atomic_load(&ramp_start_motor);
+            return start_motor + (int32_t)((target - start_motor) * s);
         }
     }
     return current;
+}
+
+/**
+ * target_motor > 0 is forward, < 0 is reverse (after the sign flip in ledc_motor).
+ * Front HC limits forward, rear HC limits reverse. Emergency braking is not capped.
+ * The stored command is left intact: only the ramp destination changes.
+ */
+static int16_t limit_target_by_hc(int16_t target) {
+    if (!atomic_load(&hc_locked_config) || atomic_load(&breaking_lock)) {
+        return target;
+    }
+
+    uint16_t cap = 1000;
+    if (target > 0 && get_front_duty_cap(&cap) == ESP_OK) {
+        if (target > (int16_t)cap) target = (int16_t)cap;
+    } else if (target < 0 && get_rear_duty_cap(&cap) == ESP_OK) {
+        if (target < -(int16_t)cap) target = -(int16_t)cap;
+    }
+    return target;
 }
 
 /**
@@ -197,17 +258,47 @@ static int32_t apply_curve_step(int32_t current, int32_t target, uint8_t param, 
  */
 static void apply_target_motor(void *args) {
     (void)args;
+    static int32_t last_target = 0;
+
+    int16_t val_target = atomic_load(&target_motor);
+    int16_t val_current = atomic_load(&current_motor);
+    if (abs(val_target - last_target) > 15) {
+        atomic_store(&ramp_tick, 0);
+        atomic_store(&ramp_start_motor, val_current);
+        last_target = val_target;
+    }
+
+    int16_t applied = val_current;
+    drive_mode_t drive = atomic_load(&drive_mode);
+
 
     if (atomic_load(&breaking_lock)) {
         uint16_t pulses = 0;
-        int64_t dt = esp_timer_get_time() - timestamp_force_motor;
-        bool real_stop = (get_pulses_count_100ms(&pulses) == ESP_OK && pulses < 2);
+        uint32_t dt_ms = (uint32_t)(esp_timer_get_time() / 1000) - atomic_load(&timestamp_force_motor_ms);
+        static uint8_t stopped_windows = 0;
 
-        if (dt > timeout_breaking || real_stop) {
-            log_msg_lvl(ESP_LOG_WARN, TAG, "Braking stopped [%s] 100ms pulses: %u, dt: %lld",
-                dt > timeout_breaking ? "timeout" : "pulse", pulses, dt);
-            target_motor = 0;
+        uint32_t val_timeout = atomic_load(&timeout_breaking);
+        uint32_t timeout_ms = val_timeout / 1000u;
+        if (timeout_ms < 1) timeout_ms = 1;
+
+        bool pulses_valid = (get_pulses_count_20ms(&pulses) == ESP_OK);
+
+        if (pulses_valid && pulses < 2) {
+            if (stopped_windows < 5) {
+                stopped_windows++;
+            }
+        } else {
+            stopped_windows = 0;
+        }
+        bool real_stop = (stopped_windows >= 5);
+
+        if (dt_ms > timeout_ms || real_stop) {
+            log_msg_lvl(ESP_LOG_WARN, TAG, "Braking stopped [%s] 20ms pulses: %u, dt_ms: %u, timeout_ms: %u",
+                real_stop ? "pulse" : "timeout", pulses, dt_ms, timeout_ms);
+            atomic_store(&target_motor, 0);
             atomic_store(&breaking_lock, false);
+            integ = 0.0f;
+            applied = 0;
 
 #if CONFIG_USE_UDPLIB && CONFIG_USE_SENSORS
             uint16_t pulses_100ms = 0, pulses_20ms = 0;
@@ -215,48 +306,90 @@ static void apply_target_motor(void *args) {
             get_pulses_count_20ms(&pulses_20ms);
             send_braking_telemetry(false, pulses_100ms, pulses_20ms);
 #endif
-        }
-    }
-
-    if (target_motor != last_target) {
-        ramp_tick = 0;
-        ramp_start_motor = current_motor;
-        last_target = target_motor;
-    }
-
-    if (current_motor != target_motor) {
-        bool is_accel = (target_motor > current_motor && current_motor >= 0) ||
-                         (target_motor < current_motor && current_motor <= 0);
-
-        current_motor = (int16_t)apply_curve_step(current_motor, target_motor,
-            is_accel ? cfg.accel_param : cfg.decel_param, (curve_type_t)cfg.curve_type);
-
-        if (current_motor > 0) {
-            ledc_apply_duty(BTS_SPEED_MODE, BTS_CHANNEL_FWD,
-                MIN_MOTOR_DUTY_FWD + ((MAX_MOTOR_DUTY_FWD - MIN_MOTOR_DUTY_FWD) * current_motor) / 1000);
-            ledc_apply_duty(BTS_SPEED_MODE, BTS_CHANNEL_BWD, 0);
-            last_current_motor_sign_positive = true;
-        } else if (current_motor < 0) {
-            ledc_apply_duty(BTS_SPEED_MODE, BTS_CHANNEL_BWD,
-                MIN_MOTOR_DUTY_BWD + ((MAX_MOTOR_DUTY_BWD - MIN_MOTOR_DUTY_BWD) * -current_motor) / 1000);
-            ledc_apply_duty(BTS_SPEED_MODE, BTS_CHANNEL_FWD, 0);
-            last_current_motor_sign_positive = false;
         } else {
-            ledc_apply_duty(BTS_SPEED_MODE, BTS_CHANNEL_FWD, 0);
+            bool is_accel = (val_target > applied && applied >= 0) ||
+                            (val_target < applied && applied <= 0);
+            uint8_t curve_type = atomic_load((curve_type_t*)&cfg.curve_type);
+            uint8_t accel_param = atomic_load(&cfg.accel_param);
+            uint8_t decel_param = atomic_load(&cfg.decel_param);
+            applied = (int16_t)apply_curve_step(applied, val_target,
+                is_accel ? accel_param : decel_param, curve_type);
+        }
+    } else if (drive == DRIVE_RAW) {
+        applied = val_target;
+    } else if (atomic_load(&brake_held)) {
+        integ = 0.0f;
+        applied = 0;
+    } else if (drive == DRIVE_SPEED) {
+        float target = atomic_load(&target_speed_m_s);
+        static uint32_t seen_id;
+        static int16_t last_duty;
+
+        uint32_t id = 0;
+        float mag = 0.0f;
+        get_wheel_sample(&id, &mag);
+        float meas = (target >= 0.0f) ? mag : -mag;
+
+        if (fabsf(target) < 0.02f) {
+            integ = 0.0f;
+            applied = 0;
+            last_duty = 0;
+            seen_id = id;
+        } else if (id != seen_id) {
+            seen_id = id;
+            uint16_t cap = 1000;
+            //if (target > 0.0f) get_front_duty_cap(&cap);
+            //else get_rear_duty_cap(&cap);
+            applied = speed_pi(target, meas, cap / 1000.0f);
+            last_duty = applied;
+
+            log_msg(TAG, "PI; target: %.2f, applied: %d, meas: %.2f, ids:%u/%u", 
+                target, applied, meas, seen_id, id);
+        } else {
+            applied = last_duty;
+        }
+    } else {
+        val_target = limit_target_by_hc(val_target);
+        bool is_accel = (val_target > applied && applied >= 0) ||
+                        (val_target < applied && applied <= 0);
+        uint8_t curve_type = atomic_load((curve_type_t*)&cfg.curve_type);
+        uint8_t accel_param = atomic_load(&cfg.accel_param);
+        uint8_t decel_param = atomic_load(&cfg.decel_param);
+        applied = (int16_t)apply_curve_step(applied, val_target,
+            is_accel ? accel_param : decel_param, curve_type);
+    }
+
+    if (applied != val_current) {
+        atomic_store(&current_motor, applied);
+
+        if (applied > 0) {
+            ledc_apply_duty(BTS_SPEED_MODE, BTS_CHANNEL_FWD,
+                MIN_MOTOR_DUTY_FWD + ((MAX_MOTOR_DUTY_FWD - MIN_MOTOR_DUTY_FWD) * applied) / 1000);
             ledc_apply_duty(BTS_SPEED_MODE, BTS_CHANNEL_BWD, 0);
+            atomic_store(&last_current_motor_sign_positive, true);
+        } else if (applied < 0) {
+            ledc_apply_duty(BTS_SPEED_MODE, BTS_CHANNEL_BWD,
+                MIN_MOTOR_DUTY_BWD + ((MAX_MOTOR_DUTY_BWD - MIN_MOTOR_DUTY_BWD) * -applied) / 1000);
+            ledc_apply_duty(BTS_SPEED_MODE, BTS_CHANNEL_FWD, 0);
+            atomic_store(&last_current_motor_sign_positive, false);
+        } else {
+            ledc_apply_duty(BTS_SPEED_MODE, BTS_CHANNEL_FWD, 
+                MIN_MOTOR_DUTY_FWD + ((MAX_MOTOR_DUTY_FWD - MIN_MOTOR_DUTY_FWD) * 1000) / 1000);
+            ledc_apply_duty(BTS_SPEED_MODE, BTS_CHANNEL_BWD, 
+                MIN_MOTOR_DUTY_BWD + ((MAX_MOTOR_DUTY_BWD - MIN_MOTOR_DUTY_BWD) * 1000) / 1000);
         }
 
-        log_msg(TAG, "Motor: %d/%d, on pins; fwd: %d, bwd: %d",
-            current_motor, target_motor, BTS_GPIO_FWD, BTS_GPIO_BWD);
+        log_msg(TAG, "Motor: %d/%d, drive: %d",
+            applied, val_target, drive);
 
 #if CONFIG_WRITE_MOTOR_SCREEN
         char tmp[30];
-        snprintf(tmp, sizeof(tmp), "Motor: %d, Target: %d", current_motor, target_motor);
+        snprintf(tmp, sizeof(tmp), "Motor: %d, Target: %d", applied, val_target);
         ssd1306_draw_string(tmp, 0, 4);
 #endif
     } else {
-        ramp_tick = 0;
-        ramp_start_motor = current_motor;
+        atomic_store(&ramp_tick, 0);
+        atomic_store(&ramp_start_motor, 0);
     }
 
 #if CONFIG_USE_UDPLIB && CONFIG_USE_SENSORS
@@ -272,11 +405,12 @@ esp_err_t apply_config(uint8_t *buf, uint8_t len) {
         return ESP_ERR_INVALID_SIZE;
     }
 
-    cfg.curve_type = buf[0];
-    cfg.accel_param = buf[1];
-    cfg.decel_param = buf[2];
-    ramp_tick = 0;
-    ramp_start_motor = current_motor;
+    atomic_store(&cfg.curve_type, buf[0]);
+    atomic_store(&cfg.accel_param, buf[1]);
+    atomic_store(&cfg.decel_param, buf[2]);
+    atomic_store(&ramp_tick, 0);
+    int16_t val_current = atomic_load(&current_motor);
+    atomic_store(&ramp_start_motor, (int32_t)val_current);
     return ESP_OK;
 }
 
@@ -345,7 +479,7 @@ esp_err_t close_bts(void) {
 esp_err_t set_motor_percent(int16_t motor) {
     if (motor < -1000) motor = -1000;
     if (motor > 1000) motor = 1000;
-    target_motor = motor;
+    atomic_store(&target_motor, motor);
     return ESP_OK;
 }
 
@@ -353,7 +487,7 @@ esp_err_t get_motor_percent(int16_t *motor) {
     if (motor == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
-    *motor = current_motor;
+    *motor = atomic_load(&current_motor);
     return ESP_OK;
 }
 
@@ -361,7 +495,7 @@ esp_err_t get_last_motor_sign_positive(bool *sign) {
     if (sign == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
-    *sign = last_current_motor_sign_positive;
+    *sign = atomic_load(&last_current_motor_sign_positive);
     return ESP_OK;
 }
 
@@ -376,26 +510,27 @@ esp_err_t force_motor_stop(void) {
         return ESP_ERR_INVALID_STATE;
     }
 
-    timestamp_force_motor = esp_timer_get_time();
+    atomic_store(&timestamp_force_motor_ms, (uint32_t)(esp_timer_get_time() / 1000));
 
-    if (abs(current_motor) < 100 && pulses > 0) {
-        // Throttle released but inertia is still carrying the vehicle
-        timeout_breaking = (pulses * 8 + 200) * 800;
+    int16_t val_current = atomic_load(&current_motor);
+    uint32_t timeout_to_store = 0;
+    if (abs(val_current) < 100 && pulses > 0) {
+        // Throttle released but inertia is still carrying the vehicle. Value is microseconds.
+        timeout_to_store = (pulses * 8 + 200) * 800;
     } else {
-        timeout_breaking = abs(current_motor) * 800;
+        timeout_to_store = (uint32_t)abs(val_current) * 800;
     }
+    atomic_store(&timeout_breaking, timeout_to_store);
 
+    bool last_sign = atomic_load(&last_current_motor_sign_positive);
     log_msg_lvl(ESP_LOG_WARN, TAG,
-        "Braking started, pulses: %u, current_motor: %d, timeout: %" PRIu32 ", last_sign: %s",
-        pulses, current_motor, timeout_breaking,
-        last_current_motor_sign_positive ? "+" : "-");
+        "Braking started, pulses: %u, current_motor: %d, timeout_us: %" PRIu32 ", last_sign: %s",
+        pulses, val_current, timeout_to_store,
+        last_sign ? "+" : "-");
 
-    if (last_current_motor_sign_positive) {
-        set_motor_percent(-1000);
-    } else {
-        set_motor_percent(1000);
-    }
     atomic_store(&breaking_lock, true);
+    set_motor_percent(-val_current);
+    buzzer_play(BUZZER_PATTERN_EMERGENCY);
 
 #if CONFIG_USE_UDPLIB && CONFIG_USE_SENSORS
     uint16_t pulses_20ms = 0;
@@ -406,45 +541,15 @@ esp_err_t force_motor_stop(void) {
     return ESP_OK;
 }
 
-esp_err_t activate_hc_blocking(bool active) {
-    hc_block_activated = active;
-    return ESP_OK;
-}
-
-esp_err_t get_active_hc_blocking(bool *active) {
-    if (active == NULL) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    *active = hc_block_activated;
-    return ESP_OK;
-}
-
 esp_err_t ledc_motor(int16_t motor_percent) {
     if (atomic_load(&breaking_lock)) {
-        // Ignored while an emergency braking sequence is in progress.
         return ESP_ERR_INVALID_STATE;
     }
 
     if (motor_percent < -1000) motor_percent = -1000;
     if (motor_percent > 1000) motor_percent = 1000;
 
-    if (abs(motor_percent) < DEADZONE_MOTOR) {
-        motor_percent = 0;
-    }
-
-    // get_front_blocked()/get_rear_blocked() gracefully return an error
-    // (rather than being compiled out) when HC-SR04 support is disabled,
-    // so no CONFIG_ guard is needed here: the check is simply skipped.
-    bool front = false, rear = false;
-    if (get_front_blocked(&front) == ESP_OK && get_rear_blocked(&rear) == ESP_OK) {
-        if ((motor_percent < 0 && front) || (motor_percent > 0 && rear)) {
-            log_msg_lvl(ESP_LOG_WARN, TAG, "Cannot %s, blocked by an obstacle",
-                motor_percent > 0 ? "reverse" : "forward");
-            return ESP_ERR_INVALID_STATE;
-        }
-    }
-
-    target_motor = -motor_percent;
+    atomic_store(&target_motor, motor_percent);
     return ESP_OK;
 }
 
@@ -457,8 +562,6 @@ esp_err_t set_motor_percent(int16_t motor) { (void)motor; return ESP_ERR_NOT_SUP
 esp_err_t get_motor_percent(int16_t *motor) { (void)motor; return ESP_ERR_NOT_SUPPORTED; }
 esp_err_t get_last_motor_sign_positive(bool *sign) { (void)sign; return ESP_ERR_NOT_SUPPORTED; }
 esp_err_t force_motor_stop(void) { return ESP_ERR_NOT_SUPPORTED; }
-esp_err_t activate_hc_blocking(bool active) { (void)active; return ESP_ERR_NOT_SUPPORTED; }
-esp_err_t get_active_hc_blocking(bool *active) { (void)active; return ESP_ERR_NOT_SUPPORTED; }
 esp_err_t ledc_motor(int16_t motor_percent) { (void)motor_percent; return ESP_ERR_NOT_SUPPORTED; }
 
 #endif // CONFIG_USE_BTS7960

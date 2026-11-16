@@ -81,8 +81,8 @@ esp_err_t get_servo_angle(uint8_t *angle) {
 }
 
 esp_err_t ledc_angle(int16_t angle) {
-    if (angle < 0) angle = 0;
-    if (angle > 180) angle = 180;
+    if (angle < -1000) angle = -1000;
+    if (angle > 1000) angle = 1000;
 
     if (current_angle == angle) {
         // No change: skip redundant duty writes.
@@ -91,7 +91,7 @@ esp_err_t ledc_angle(int16_t angle) {
     current_angle = (uint8_t)angle;
 
     esp_err_t err = ledc_apply_duty(MG_SPEED_MODE, MG_CHANNEL,
-        MIN_SERVO_DUTY + ((MAX_SERVO_DUTY - MIN_SERVO_DUTY) * angle) / 180);
+        MIN_SERVO_DUTY + ((MAX_SERVO_DUTY - MIN_SERVO_DUTY) * (angle + 1000)) / 2000);
     if (err != ESP_OK) {
         return err;
     }

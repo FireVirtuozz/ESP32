@@ -2,7 +2,7 @@
 #define OTA_LIB_H_
 
 #include <stdatomic.h>
-static atomic_bool ota_lock = false;
+extern atomic_bool ota_lock;
 
 void ota_init();
 

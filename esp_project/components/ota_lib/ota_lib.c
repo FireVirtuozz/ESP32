@@ -26,6 +26,8 @@ static const char *TAG = "ota_library";
 #define OTA_RECV_TIMEOUT 5000
 #define OTA_BUF_SIZE 1024
 
+atomic_bool ota_lock = ATOMIC_VAR_INIT(false);
+
 /* Event handler for catching system events */
 static void event_handler(void* arg, esp_event_base_t event_base,
                           int32_t event_id, void* event_data)

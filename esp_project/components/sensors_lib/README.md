@@ -394,7 +394,7 @@ There are 2 analog potentiometers for the X & Y axis. There is also a button (su
 - VRx: analog X-axis signal
 - VRy: analog Y-axis signal
 
-## VL53L1X
+## VL53L1X: ToF Sensor
 
 **Datasheet**
 
@@ -442,7 +442,7 @@ Boot duration: 1.2ms
 
 **I2C**
 
-Address: 0x52 ? why not 0x29 ?
+Address: 0x52, so 0x29 for 7 bits
 
 Frequency: up to 400khz
 

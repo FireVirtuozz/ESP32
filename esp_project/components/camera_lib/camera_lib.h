@@ -3,10 +3,14 @@
 
 #include <esp_err.h>
 
-#define CAMCFG_FRAME_SIZE          31
-
 esp_err_t camera_init();
 
 void apply_camera_config(const uint8_t *buffer, size_t len);
+
+esp_err_t get_reg_cam(const uint8_t *buffer, size_t len);
+
+esp_err_t set_reg_cam(const uint8_t *buffer, size_t len);
+
+esp_err_t get_config_cam();
 
 #endif

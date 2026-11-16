@@ -13,7 +13,7 @@
 #else
 #define MG_SPEED_MODE       LEDC_LOW_SPEED_MODE
 #endif
-#define MG_GPIO             (7) // parentheses required to avoid macro-expansion pitfalls
+#define MG_GPIO             (15) // parentheses required to avoid macro-expansion pitfalls
 #define MG_CHANNEL          LEDC_CHANNEL_2
 #define MG_FREQ             50 // 50Hz, required by the MG996R
 #if CONFIG_IDF_TARGET_ESP32

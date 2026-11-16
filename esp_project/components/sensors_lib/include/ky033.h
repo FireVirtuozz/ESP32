@@ -6,7 +6,7 @@
 
 // KY-033: optical line-tracking/speed sensor, single-channel digital pulse
 // output (no direction info). Read via hardware PCNT.
-#define KY033_GPIO 8
+#define KY033_GPIO 18
 
 esp_err_t init_ky033(void);
 
@@ -15,5 +15,7 @@ esp_err_t get_pulses_count_20ms(uint16_t *count);
 
 /** Pulse count over a 100ms sliding window, refreshed every 20ms. */
 esp_err_t get_pulses_count_100ms(uint16_t *count);
+
+esp_err_t get_wheel_sample(uint32_t *id, float *mag_m_s);
 
 #endif // KY033_H_

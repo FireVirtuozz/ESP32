@@ -14,7 +14,22 @@
 // Pick one that isn't shared with another sensor in this project - GPIO23
 // is used by several other test sensors (DHT11, KY005, FC33, KY002...)
 // and WILL conflict if you enable both at the same time.
-#define VL53L1X_XSHUT_GPIO 27
+#define VL53L1X_XSHUT_GPIO 47
+
+// --- Bench calibration ---
+// Set to 1, place the target, flash once. The offset/xtalk found are
+// stored in NVS (namespace "vl53l1x_cal") and get reapplied on every
+// normal boot afterwards. Set back to 0 and reflash once you've confirmed
+// the values in the logs - they persist in NVS across reflashes as long
+// as you don't run `idf.py erase-flash`.
+#define VL53L1X_CALIBRATE_ON_BOOT      0
+#define VL53L1X_CALIB_OFFSET_TARGET_MM 140   // 17%-grey target, ST recommended
+#define VL53L1X_CALIB_XTALK_TARGET_MM  600   // cover-glass inflection point, adjust to your housing
+
+// Seconds to wait between offset and xtalk calibration - gives you time to
+// physically move the target from VL53L1X_CALIB_OFFSET_TARGET_MM to
+// VL53L1X_CALIB_XTALK_TARGET_MM. Watch the countdown in the serial monitor.
+#define VL53L1X_CALIB_MOVE_DELAY_S     30
 
 esp_err_t init_vl53l1x(void);
 

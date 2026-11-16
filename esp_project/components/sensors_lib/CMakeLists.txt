@@ -28,16 +28,34 @@ idf_component_register(
         "src/rcwl_0515.c"
         "src/rfid_rc522.c"
         "src/vl53l1x.c"
+        "src/bno085.c"
+        "src/esp_monitor.c"
+        "src/lidar.c"
+        "src/acs758.c"
+        "src/bat_adc.c"
+        "src/bz181.c"
         "src/peripherals/adc_helper.c"
         "src/peripherals/gpio_digital.c"
         "src/peripherals/i2c_helper.c"
         "src/peripherals/pcnt_encoder.c"
         "src/peripherals/rmt_helper.c"
         "src/peripherals/spi_helper.c"
+        "src/peripherals/uart_helper.c"
+        "STSW-IMG009_v3.5.5_API/core/VL53L1X_api.c"
+        "STSW-IMG009_v3.5.5_API/core/VL53L1X_calibration.c"
+        "STSW-IMG009_v3.5.5_API/platform/vl53l1_platform.c"
+        "sh2_ceva/sh2.c"
+        "sh2_ceva/shtp.c"
+        "sh2_ceva/sh2_util.c"
+        "sh2_ceva/euler.c"
+        "sh2_ceva/sh2_SensorValue.c"
     INCLUDE_DIRS
         "."
         "include"
         "include/peripherals"
+        "STSW-IMG009_v3.5.5_API/core"
+        "STSW-IMG009_v3.5.5_API/platform"
+        "sh2_ceva"
     PRIV_REQUIRES
         esp_driver_gpio
         log_lib
@@ -51,6 +69,7 @@ idf_component_register(
         esp_driver_rmt
         esp_driver_tsens
         actuators_lib
-        cmd_lib
         wifi_lib
+        nvs_lib
+        esp_driver_uart
 )

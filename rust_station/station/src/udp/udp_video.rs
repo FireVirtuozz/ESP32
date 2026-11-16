@@ -28,12 +28,6 @@ fn udp_video_loop(
 ) -> Result<(), AppError> {
     let socket = UdpSocket::bind(format!("0.0.0.0:{}", config_udp_vid.udp_port_vid))?;
 
-    let relay_socket = if config_udp_vid.is_relay_tailscale {
-        Some(UdpSocket::bind("0.0.0.0:0")?)
-    } else {
-        None
-    };
-
     // Receives a single datagram message on the socket. If `buf` is too small to hold
     // the message, it will be cut off.
     let mut buf = [0; BUFFER_MAX_UDP_SIZE];
@@ -41,18 +35,10 @@ fn udp_video_loop(
     let mut reassembler = FragmentReassembler::new(ReassemblyMode::Volatile);
 
     loop {
-        let (amt, _) = socket.recv_from(&mut buf)?;
-
-        if let Some(sock) = &relay_socket {
-            for addr in &config_udp_vid.tailscale_addresses {
-                if let Err(e) = sock.send_to(&buf[.. amt], format!("{}:{}", 
-                    addr,
-                    config_udp_vid.udp_port_vid)) 
-                {
-                    warn!("Relay failed to {}: {:?}", addr, e);
-                }
-            }
-        }
+        let (amt, _) = match socket.recv_from(&mut buf) {
+            Ok(r) => r,
+            Err(e) => { error!("recv_from failed on video: {e}"); continue; }
+        };
         
         let header = match HeaderUdpFragment::header_fragment_parse(&buf[..amt]) {
             Ok(h) => h,

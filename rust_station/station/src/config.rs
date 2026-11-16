@@ -1,43 +1,7 @@
 use serde::Deserialize;
 use std::fs;
 
-#[derive(Deserialize, Clone, Copy, Debug, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum CamResolution {
-    Qqvga, // 160x120
-    Qvga,  // 320x240
-    Vga,   // 640x480
-}
-
-impl Default for CamResolution {
-    fn default() -> Self {
-        CamResolution::Qqvga
-    }
-}
-
-impl CamResolution {
-    pub fn dimensions(&self) -> (usize, usize) {
-        match self {
-            CamResolution::Qqvga => (160, 120),
-            CamResolution::Qvga  => (320, 240),
-            CamResolution::Vga   => (640, 480),
-        }
-    }
-}
-
-#[derive(Deserialize, Clone, Copy, Debug, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum CamFormat {
-    JPEG,
-    YUV,
-    RGB,
-}
-
-impl Default for CamFormat {
-    fn default() -> Self {
-        CamFormat::JPEG
-    }
-}
+use crate::camera::{CamFormat, CamResolution};
 
 #[derive(Deserialize, Clone, Debug, Default)]
 pub struct AppConfig {
@@ -46,10 +10,13 @@ pub struct AppConfig {
     pub udp_port_vid: u16,
     pub debug_frag_udp_cam: bool,
     pub udp_port_ctrl: u16,
+    pub udp_port_config: u16,
     pub udp_port_sensors: u16,
     pub udp_port_dump: u16,
     pub udp_port_logs: u16,
-    pub ip_addr_esp: String,
+    pub udp_port_cfg_sta: u16,
+    pub ip_addr_esp0: String,
+    pub ip_addr_esp1: String,
     pub recording: bool,
     pub replay: bool,
     pub replay_file: String,
@@ -67,8 +34,10 @@ impl AppConfig {
                 cam_format: CamFormat::JPEG,
                 cam_res: CamResolution::Qqvga,
                 debug_frag_udp_cam: false,
-                ip_addr_esp: String::from("192.168.4.1"),
+                ip_addr_esp0: String::from("192.168.4.1"),
+                ip_addr_esp1: String::from("192.168.4.1"),
                 udp_port_ctrl: 3333,
+                udp_port_config: 3334,
                 udp_port_dump: 34256,
                 udp_port_logs: 34257,
                 udp_port_sensors: 34254,

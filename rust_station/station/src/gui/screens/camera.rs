@@ -1,337 +1,213 @@
-use std::{collections::VecDeque, net::UdpSocket, time::Instant};
-use egui::{Color32, FontId, RichText, ScrollArea, TextEdit, Ui, epaint::image};
-use ::image::load_from_memory;
-use log::{debug, error, warn};
+use std::{
+    collections::VecDeque,
+    sync::{
+        atomic::{AtomicU32, AtomicU64, Ordering},
+        mpsc::{Receiver, Sender},
+        Arc, RwLock,
+    },
+    time::{Duration, Instant},
+};
 
-use crate::config::{AppConfig, CamFormat};
+use egui::{Color32, TextEdit, Ui};
 
-pub const CAM_CFG_FRAMESIZE: u32      = 1 << 0;
-pub const CAM_CFG_BRIGHTNESS: u32     = 1 << 1;
-pub const CAM_CFG_CONTRAST: u32       = 1 << 2;
-pub const CAM_CFG_SATURATION: u32     = 1 << 3;
-pub const CAM_CFG_SHARPNESS: u32      = 1 << 4;
-pub const CAM_CFG_DENOISE: u32        = 1 << 5;
-pub const CAM_CFG_QUALITY: u32        = 1 << 6;
-pub const CAM_CFG_GAINCEILING: u32    = 1 << 7;
-pub const CAM_CFG_COLORBAR: u32       = 1 << 8;
-pub const CAM_CFG_WHITEBAL: u32       = 1 << 9;
-pub const CAM_CFG_AWB_GAIN: u32       = 1 << 10;
-pub const CAM_CFG_WB_MODE: u32        = 1 << 11;
-pub const CAM_CFG_EXPOSURE_CTRL: u32  = 1 << 12;
-pub const CAM_CFG_AEC2: u32           = 1 << 13;
-pub const CAM_CFG_AE_LEVEL: u32       = 1 << 14;
-pub const CAM_CFG_AEC_VALUE: u32      = 1 << 15;
-pub const CAM_CFG_GAIN_CTRL: u32      = 1 << 16;
-pub const CAM_CFG_AGC_GAIN: u32       = 1 << 17;
-pub const CAM_CFG_HMIRROR: u32        = 1 << 18;
-pub const CAM_CFG_VFLIP: u32          = 1 << 19;
-pub const CAM_CFG_DCW: u32            = 1 << 20;
-pub const CAM_CFG_BPC: u32            = 1 << 21;
-pub const CAM_CFG_WPC: u32            = 1 << 22;
-pub const CAM_CFG_RAW_GMA: u32        = 1 << 23;
-pub const CAM_CFG_LENC: u32           = 1 << 24;
-pub const CAM_CFG_SPECIAL_EFFECT: u32 = 1 << 25;
+use crate::{
+    camera::{field_names, CameraConfig},
+    gui::ScreensTypes,
+    udp::udp_cfg::{CamCmd, CamEvent, SharedCamCfg},
+};
 
-#[derive(Default, Clone, Copy, Debug)]
-pub struct CameraConfig {
-    pub framesize: Option<u8>,
-    pub brightness: Option<i8>,
-    pub contrast: Option<i8>,
-    pub saturation: Option<i8>,
-    pub sharpness: Option<i8>,
-    pub denoise: Option<u8>,
-    pub quality: Option<u8>,
-    pub gainceiling: Option<u8>,
-    pub colorbar: Option<bool>,
-    pub whitebal: Option<bool>,
-    pub awb_gain: Option<bool>,
-    pub wb_mode: Option<u8>,
-    pub exposure_ctrl: Option<bool>,
-    pub aec2: Option<bool>,
-    pub ae_level: Option<i8>,
-    pub aec_value: Option<u16>,
-    pub gain_ctrl: Option<bool>,
-    pub agc_gain: Option<u8>,
-    pub hmirror: Option<bool>,
-    pub vflip: Option<bool>,
-    pub dcw: Option<bool>,
-    pub bpc: Option<bool>,
-    pub wpc: Option<bool>,
-    pub raw_gma: Option<bool>,
-    pub lenc: Option<bool>,
-    pub special_effect: Option<u8>,
+const NOTICE_DURATION: Duration = Duration::from_secs(6);
+const REG_LOG_LINES: usize = 12;
+
+/// Résolutions proposées. L'ESP refuse tout ce qui dépasse le VGA (buffer JPEG alloué à l'init).
+const FRAMESIZE_OPTIONS: &[(u8, &str)] = &[(1, "QQVGA 160x120"), (6, "QVGA 320x240"), (10, "VGA 640x480")];
+
+fn framesize_label(val: u8) -> String {
+    FRAMESIZE_OPTIONS
+        .iter()
+        .find(|(v, _)| *v == val)
+        .map(|(_, l)| (*l).to_string())
+        .unwrap_or_else(|| format!("#{val}"))
 }
 
-impl CameraConfig {
-    pub fn to_bytes(&self) -> [u8; 32] {
-        let mut frame = [0u8; 32];
-        let mut mask: u32 = 0;
-
-        frame[0] = 2;
-        if let Some(v) = self.framesize      { mask |= CAM_CFG_FRAMESIZE;      frame[5] = v; }
-        if let Some(v) = self.brightness     { mask |= CAM_CFG_BRIGHTNESS;     frame[6] = v as u8; }
-        if let Some(v) = self.contrast       { mask |= CAM_CFG_CONTRAST;       frame[7] = v as u8; }
-        if let Some(v) = self.saturation     { mask |= CAM_CFG_SATURATION;     frame[8] = v as u8; }
-        if let Some(v) = self.sharpness      { mask |= CAM_CFG_SHARPNESS;      frame[9] = v as u8; }
-        if let Some(v) = self.denoise        { mask |= CAM_CFG_DENOISE;        frame[10] = v; }
-        if let Some(v) = self.quality        { mask |= CAM_CFG_QUALITY;        frame[11] = v; }
-        if let Some(v) = self.gainceiling    { mask |= CAM_CFG_GAINCEILING;    frame[12] = v; }
-        if let Some(v) = self.colorbar       { mask |= CAM_CFG_COLORBAR;       frame[13] = v as u8; }
-        if let Some(v) = self.whitebal       { mask |= CAM_CFG_WHITEBAL;       frame[14] = v as u8; }
-        if let Some(v) = self.awb_gain       { mask |= CAM_CFG_AWB_GAIN;       frame[15] = v as u8; }
-        if let Some(v) = self.wb_mode        { mask |= CAM_CFG_WB_MODE;        frame[16] = v; }
-        if let Some(v) = self.exposure_ctrl  { mask |= CAM_CFG_EXPOSURE_CTRL;  frame[17] = v as u8; }
-        if let Some(v) = self.aec2           { mask |= CAM_CFG_AEC2;           frame[18] = v as u8; }
-        if let Some(v) = self.ae_level       { mask |= CAM_CFG_AE_LEVEL;       frame[19] = v as u8; }
-        if let Some(v) = self.aec_value      { mask |= CAM_CFG_AEC_VALUE;      frame[20..22].copy_from_slice(&v.to_le_bytes()); }
-        if let Some(v) = self.gain_ctrl      { mask |= CAM_CFG_GAIN_CTRL;      frame[22] = v as u8; }
-        if let Some(v) = self.agc_gain       { mask |= CAM_CFG_AGC_GAIN;       frame[23] = v; }
-        if let Some(v) = self.hmirror        { mask |= CAM_CFG_HMIRROR;        frame[24] = v as u8; }
-        if let Some(v) = self.vflip          { mask |= CAM_CFG_VFLIP;          frame[25] = v as u8; }
-        if let Some(v) = self.dcw            { mask |= CAM_CFG_DCW;            frame[26] = v as u8; }
-        if let Some(v) = self.bpc            { mask |= CAM_CFG_BPC;            frame[27] = v as u8; }
-        if let Some(v) = self.wpc            { mask |= CAM_CFG_WPC;            frame[28] = v as u8; }
-        if let Some(v) = self.raw_gma        { mask |= CAM_CFG_RAW_GMA;        frame[29] = v as u8; }
-        if let Some(v) = self.lenc           { mask |= CAM_CFG_LENC;           frame[30] = v as u8; }
-        if let Some(v) = self.special_effect { mask |= CAM_CFG_SPECIAL_EFFECT; frame[31] = v; }
-
-        frame[1..5].copy_from_slice(&mask.to_le_bytes());
-        frame
-    }
+fn parse_hex(s: &str) -> Option<u32> {
+    let t = s.trim();
+    let t = t.strip_prefix("0x").or_else(|| t.strip_prefix("0X")).unwrap_or(t);
+    u32::from_str_radix(t, 16).ok()
 }
 
-#[derive(Clone, Copy)]
-pub struct CameraConfigUi {
-    pub framesize: u8,
-    pub brightness: i8,
-    pub contrast: i8,
-    pub saturation: i8,
-    pub sharpness: i8,
-    pub denoise: u8,
-    pub quality: u8,
-    pub gainceiling: u8,
-    pub colorbar: bool,
-    pub whitebal: bool,
-    pub awb_gain: bool,
-    pub wb_mode: u8,
-    pub exposure_ctrl: bool,
-    pub aec2: bool,
-    pub ae_level: i8,
-    pub aec_value: u16,
-    pub gain_ctrl: bool,
-    pub agc_gain: u8,
-    pub hmirror: bool,
-    pub vflip: bool,
-    pub dcw: bool,
-    pub bpc: bool,
-    pub wpc: bool,
-    pub raw_gma: bool,
-    pub lenc: bool,
-    pub special_effect: u8,
+/// Brouillon édité par l'utilisateur + dernier état connu de l'ESP.
+/// L'état de l'ESP reste la référence : le brouillon ne garde que ce que l'utilisateur a touché.
+#[derive(Default)]
+pub struct CfgDraft {
+    draft: Option<CameraConfig>,
+    base: Option<CameraConfig>, // dernier état de l'ESP intégré au brouillon
 }
 
-impl Default for CameraConfigUi {
-    fn default() -> Self {
-        Self {
-            framesize: 10, 
-            brightness: 0, contrast: 0, saturation: 0, sharpness: 0,
-            denoise: 0, quality: 12, gainceiling: 0,
-            colorbar: false, whitebal: true, awb_gain: true, wb_mode: 0,
-            exposure_ctrl: true, aec2: false, ae_level: 0, aec_value: 300,
-            gain_ctrl: true, agc_gain: 0,
-            hmirror: false, vflip: false, dcw: true, bpc: false, wpc: false,
-            raw_gma: true, lenc: true, special_effect: 0,
+impl CfgDraft {
+    /// À appeler à chaque frame avec l'état partagé. Les champs modifiés par l'utilisateur
+    /// sont conservés ; les autres suivent l'ESP.
+    pub fn sync(&mut self, esp: Option<CameraConfig>) {
+        let Some(new) = esp else { return };
+        match (self.draft, self.base) {
+            (Some(d), Some(b)) => {
+                if b != new {
+                    let touched = d.diff(&b);
+                    self.draft = Some(new.overlay(&d, touched));
+                    self.base = Some(new);
+                }
+            }
+            _ => {
+                self.draft = Some(new);
+                self.base = Some(new);
+            }
         }
     }
-}
 
-impl CameraConfigUi {
-    pub fn to_full_config(&self) -> CameraConfig {
-        CameraConfig {
-            framesize: Some(self.framesize), brightness: Some(self.brightness),
-            contrast: Some(self.contrast), saturation: Some(self.saturation),
-            sharpness: Some(self.sharpness), denoise: Some(self.denoise),
-            quality: Some(self.quality), gainceiling: Some(self.gainceiling),
-            colorbar: Some(self.colorbar), whitebal: Some(self.whitebal),
-            awb_gain: Some(self.awb_gain), wb_mode: Some(self.wb_mode),
-            exposure_ctrl: Some(self.exposure_ctrl), aec2: Some(self.aec2),
-            ae_level: Some(self.ae_level), aec_value: Some(self.aec_value),
-            gain_ctrl: Some(self.gain_ctrl), agc_gain: Some(self.agc_gain),
-            hmirror: Some(self.hmirror), vflip: Some(self.vflip),
-            dcw: Some(self.dcw), bpc: Some(self.bpc), wpc: Some(self.wpc),
-            raw_gma: Some(self.raw_gma), lenc: Some(self.lenc),
-            special_effect: Some(self.special_effect),
+    pub fn draft_mut(&mut self) -> Option<&mut CameraConfig> {
+        self.draft.as_mut()
+    }
+
+    /// Champs modifiés par l'utilisateur et pas encore envoyés.
+    pub fn pending(&self) -> u32 {
+        match (self.draft, self.base) {
+            (Some(d), Some(b)) => d.diff(&b),
+            _ => 0,
+        }
+    }
+
+    /// Config à envoyer. Les champs non touchés sont déjà ceux de l'ESP,
+    /// donc le thread d'envoi (qui compare à l'état partagé) n'enverra que les champs touchés.
+    pub fn outgoing(&self) -> Option<CameraConfig> {
+        if self.pending() != 0 {
+            self.draft
+        } else {
+            None
+        }
+    }
+
+    pub fn discard(&mut self) {
+        self.draft = self.base;
+    }
+
+    /// Remet certains champs à la valeur de l'ESP (par exemple ceux qu'il a refusés).
+    pub fn revert_fields(&mut self, mask: u32) {
+        if let (Some(d), Some(b)) = (self.draft, self.base) {
+            self.draft = Some(d.overlay(&b, mask));
         }
     }
 }
 
 pub struct CameraScreen {
-    texture: Option<egui::TextureHandle>,
-    pub cfg: CameraConfigUi,
-    pub socket_udp_cam: UdpSocket,
-    last_fps_time: std::time::Instant,
-    frame_count: u32,
-    fps: f32,
-}
-
-fn yuv422_to_rgba(yuv: &[u8], width: usize, height: usize) -> Vec<u8> {
-    let mut rgba = Vec::with_capacity(width * height * 4);
-
-    //2 pix at a time
-    for chunk in yuv.chunks_exact(4) {
-        let y0 = chunk[0] as f32;
-        let u  = chunk[1] as f32 - 128.0;
-        let y1 = chunk[2] as f32;
-        let v  = chunk[3] as f32 - 128.0;
-
-        // Conversion formula YUV -> RGB
-        let r_offset = 1.402 * v;
-        let g_offset = -0.344136 * u - 0.714136 * v;
-        let b_offset = 1.772 * u;
-
-        // Pixel 1
-        rgba.push((y0 + r_offset).clamp(0.0, 255.0) as u8); // R
-        rgba.push((y0 + g_offset).clamp(0.0, 255.0) as u8); // G
-        rgba.push((y0 + b_offset).clamp(0.0, 255.0) as u8); // B
-        rgba.push(255);                                     // A (Opale)
-
-        // Pixel 2
-        rgba.push((y1 + r_offset).clamp(0.0, 255.0) as u8); // R
-        rgba.push((y1 + g_offset).clamp(0.0, 255.0) as u8); // G
-        rgba.push((y1 + b_offset).clamp(0.0, 255.0) as u8); // B
-        rgba.push(255);                                     // A
-    }
-
-    rgba
+    pub cam_texture: Option<egui::TextureHandle>,
+    last_seen_version: u64,
+    cfg: CfgDraft,
+    notice: Option<(String, Instant)>,
+    reg_reg: String,
+    reg_mask: String,
+    reg_value: String,
+    reg_log: VecDeque<String>,
 }
 
 impl Default for CameraScreen {
     fn default() -> Self {
         Self {
-            texture: None,
-            cfg : CameraConfigUi::default(),
-            socket_udp_cam: UdpSocket::bind("0.0.0.0:0").unwrap(),
-            fps: 0.0,
-            frame_count: 0,
-            last_fps_time: Instant::now(),
+            cam_texture: None,
+            last_seen_version: 0,
+            cfg: CfgDraft::default(),
+            notice: None,
+            reg_reg: String::new(),
+            reg_mask: "FF".into(),
+            reg_value: String::new(),
+            reg_log: VecDeque::new(),
         }
     }
 }
 
-
 impl CameraScreen {
-    pub fn show(&mut self, ctx: &egui::Context, frame: &mut Option<Vec<u8>>, config_egui: &AppConfig) {
-        let mut new_frame_decoded = false;
+    fn set_notice(&mut self, msg: String) {
+        self.notice = Some((msg, Instant::now()));
+    }
 
-        if let Some(binary_data) = frame.take() {
+    fn log_reg(&mut self, line: String) {
+        if self.reg_log.len() >= REG_LOG_LINES {
+            self.reg_log.pop_front();
+        }
+        self.reg_log.push_back(line);
+    }
 
-            // -- PRINT IMAGE ---
-            match config_egui.cam_format {
-                CamFormat::JPEG => {
-                        debug!("image received ({}) header: {:02X}{:02X} footer: {:02X}{:02X}", 
-                        binary_data.len(), 
-                        binary_data[0], binary_data[1],
-                        binary_data[binary_data.len()-2], binary_data[binary_data.len()-1]
-                    );
-
-                    let _ = std::fs::write("debug_camera.jpg", &binary_data);
-                    
-                    if let Ok(img) = load_from_memory(&binary_data) {
-                        let rgba = img.to_rgba8();
-                        let pixels = rgba.as_flat_samples();
-                        
-                        // Convert to native egui format
-                        let color_image = egui::ColorImage::from_rgba_unmultiplied(
-                            [img.width() as usize, img.height() as usize],
-                            pixels.as_slice(),
-                        );
-
-                        if let Some(tex) = &mut self.texture {
-                            tex.set(color_image, Default::default());  // update sans recréer
-                        } else {
-                            self.texture = Some(ctx.load_texture(
-                                "camera_stream",
-                                color_image,
-                                Default::default()
-                            ));
-                        }
-
-                        new_frame_decoded = true;
-                        ctx.request_repaint();
-                    } else {
-                        error!("failed to load image");
-                    }
-                }, 
-                CamFormat::YUV => {
-                    let (cam_width, cam_height) = config_egui.cam_res.dimensions();
-                    let expected_len = cam_width * cam_height * 2;
-
-                    if binary_data.len() == expected_len {
-                        // Converts yuv to rgba
-                        let rgba_pixels = yuv422_to_rgba(&binary_data, cam_width, cam_height);
-                        
-                        // RGBA to egui format
-                        let color_image = egui::ColorImage::from_rgba_unmultiplied(
-                            [cam_width, cam_height],
-                            &rgba_pixels,
-                        );
-
-                        if let Some(tex) = &mut self.texture {
-                            tex.set(color_image, Default::default());
-                        } else {
-                            self.texture = Some(ctx.load_texture(
-                                "camera_stream",
-                                color_image,
-                                Default::default()
-                            ));
-                        }
-
-                        new_frame_decoded = true;
-                        ctx.request_repaint();
-                    } else {
-                        error!(
-                            "Wrong size YUV ! Recv: {}, Expected: {}", 
-                            binary_data.len(), 
-                            expected_len
-                        );
-                    }
-                },
-                CamFormat::RGB => {
-                    warn!("RGB not implemented");
-                },
+    fn on_event(&mut self, ev: CamEvent) {
+        match ev {
+            CamEvent::Refused(mask) => {
+                self.cfg.revert_fields(mask);
+                self.set_notice(format!("Refusé par l'ESP : {}", field_names(mask).join(", ")));
+            }
+            CamEvent::SetTimeout => self.set_notice("Pas de réponse de l'ESP : envoi abandonné".into()),
+            CamEvent::RegRead { reg, mask, value } => {
+                self.log_reg(format!("R 0x{reg:04X} & 0x{mask:02X} = {value}"));
+            }
+            CamEvent::RegWrite { reg, mask, ret, newer } => {
+                self.log_reg(format!("W 0x{reg:04X} & 0x{mask:02X} -> ret {ret}, relu {newer}"));
             }
         }
+    }
 
-        // --- FPS COMPUTATION ---
-        if new_frame_decoded {
-            self.frame_count += 1;
-            let elapsed = self.last_fps_time.elapsed();
-            
-            // Update every seconds
-            if elapsed.as_secs_f32() >= 1.0 {
-                self.fps = self.frame_count as f32 / elapsed.as_secs_f32();
-                self.frame_count = 0;
-                self.last_fps_time = std::time::Instant::now();
-            }
+    #[allow(clippy::too_many_arguments)]
+    pub fn show(
+        &mut self,
+        ctx: &egui::Context,
+        screen: &mut ScreensTypes,
+        shared_texture: &Arc<RwLock<Option<egui::ColorImage>>>,
+        shared_fps: &Arc<AtomicU32>,
+        shared_frame_count: &Arc<AtomicU64>,
+        shared_cfg: &SharedCamCfg,
+        tx_cmd: &Sender<CamCmd>,
+        rx_ev: &Receiver<CamEvent>,
+    ) {
+        // 1. État de l'ESP -> brouillon (Copy : le verrou est relâché aussitôt).
+        let esp = shared_cfg.read().map(|g| *g).unwrap_or(None);
+        self.cfg.sync(esp);
+
+        // 2. Événements (champs refusés, accusés de registres, timeouts).
+        while let Ok(ev) = rx_ev.try_recv() {
+            self.on_event(ev);
         }
-            
-        // -- PICTURE & FPS PANEL --
+
+        // 3. Image + FPS.
         egui::CentralPanel::default().show(ctx, |ui| {
-            if let Some(texture) = &self.texture {
-                let img = egui::Image::from_texture(texture)
-                    .max_size(ui.available_size())
-                    .maintain_aspect_ratio(true);
+            if ui.button("Back").clicked() {
+                *screen = ScreensTypes::Main;
+            }
 
-                let response = ui.add(img);
+            let current_version = shared_frame_count.load(Ordering::Relaxed);
+            if current_version != self.last_seen_version {
+                if let Ok(guard) = shared_texture.read() {
+                    if let Some(color_image) = guard.as_ref() {
+                        match &mut self.cam_texture {
+                            Some(tex) => tex.set(color_image.clone(), egui::TextureOptions::LINEAR),
+                            None => {
+                                self.cam_texture = Some(ctx.load_texture(
+                                    "camera_frame",
+                                    color_image.clone(),
+                                    egui::TextureOptions::LINEAR,
+                                ));
+                            }
+                        }
+                    }
+                }
+                self.last_seen_version = current_version;
+            }
 
-                // FPS left top of image
+            if let Some(texture) = &self.cam_texture {
+                let response = ui.image(texture);
+                let fps = shared_fps.load(Ordering::Relaxed) as f32 / 10.0;
                 let painter = ui.painter_at(response.rect);
                 painter.text(
                     response.rect.left_top() + egui::vec2(10.0, 10.0),
                     egui::Align2::LEFT_TOP,
-                    format!("{:.1} FPS", self.fps),
+                    format!("{fps:.1} FPS"),
                     egui::FontId::proportional(16.0),
-                    if self.fps < 15.0 { egui::Color32::RED } else { egui::Color32::GREEN }
+                    if fps < 15.0 { Color32::RED } else { Color32::GREEN },
                 );
             } else {
                 ui.centered_and_justified(|ui| {
@@ -340,86 +216,146 @@ impl CameraScreen {
             }
         });
 
-        let mut changed = false;
-
-        // -- CAM CONFIG --
+        // 4. Panneau de config.
         egui::SidePanel::right("camera_config_panel").min_width(260.0).show(ctx, |ui| {
             ui.heading("📷 Camera Config");
             ui.separator();
 
-            egui::ComboBox::from_label("Framesize")
-                .selected_text(framesize_label(self.cfg.framesize))
-                .show_ui(ui, |ui| {
-                    for (val, label) in FRAMESIZE_OPTIONS {
-                        changed |= ui.selectable_value(&mut self.cfg.framesize, *val, *label).changed();
+            if esp.is_none() {
+                ui.label("En attente de la config de l'ESP…");
+                if ui.button("Redemander").clicked() {
+                    let _ = tx_cmd.send(CamCmd::Refresh);
+                }
+                return;
+            }
+
+            let pending = self.cfg.pending();
+
+            egui::ScrollArea::vertical().max_height(ui.available_height() - 150.0).show(ui, |ui| {
+                if let Some(c) = self.cfg.draft_mut() {
+                    config_widgets(ui, c);
+                }
+            });
+
+            ui.separator();
+            if pending != 0 {
+                ui.colored_label(Color32::YELLOW, format!("Non envoyé : {}", field_names(pending).join(", ")));
+            }
+            ui.horizontal(|ui| {
+                if ui.add_enabled(pending != 0, egui::Button::new("Send config")).clicked() {
+                    if let Some(c) = self.cfg.outgoing() {
+                        let _ = tx_cmd.send(CamCmd::Set(c));
+                    }
+                }
+                if ui.add_enabled(pending != 0, egui::Button::new("Discard")).clicked() {
+                    self.cfg.discard();
+                }
+                if ui.button("Refresh").clicked() {
+                    let _ = tx_cmd.send(CamCmd::Refresh);
+                }
+            });
+
+            if let Some((msg, t)) = &self.notice {
+                if t.elapsed() < NOTICE_DURATION {
+                    ui.colored_label(Color32::LIGHT_RED, msg);
+                }
+            }
+
+            ui.collapsing("Registres (debug)", |ui| {
+                ui.horizontal(|ui| {
+                    ui.label("reg 0x");
+                    ui.add(TextEdit::singleline(&mut self.reg_reg).desired_width(48.0));
+                    ui.label("mask 0x");
+                    ui.add(TextEdit::singleline(&mut self.reg_mask).desired_width(30.0));
+                    ui.label("val 0x");
+                    ui.add(TextEdit::singleline(&mut self.reg_value).desired_width(30.0));
+                });
+                ui.horizontal(|ui| {
+                    if ui.button("Lire").clicked() {
+                        match (
+                            parse_hex(&self.reg_reg).and_then(|v| u16::try_from(v).ok()),
+                            parse_hex(&self.reg_mask).and_then(|v| u8::try_from(v).ok()),
+                        ) {
+                            (Some(reg), Some(mask)) => {
+                                let _ = tx_cmd.send(CamCmd::GetReg { reg, mask });
+                            }
+                            _ => self.set_notice("reg / mask invalides (hex, reg ≤ FFFF, mask ≤ FF)".into()),
+                        }
+                    }
+                    if ui.button("Écrire").clicked() {
+                        match (
+                            parse_hex(&self.reg_reg).and_then(|v| u16::try_from(v).ok()),
+                            parse_hex(&self.reg_mask).and_then(|v| u8::try_from(v).ok()),
+                            parse_hex(&self.reg_value).and_then(|v| u8::try_from(v).ok()),
+                        ) {
+                            (Some(reg), Some(mask), Some(value)) => {
+                                let _ = tx_cmd.send(CamCmd::SetReg { reg, mask, value });
+                            }
+                            _ => self.set_notice("reg / mask / val invalides (hex)".into()),
+                        }
                     }
                 });
-
-            ui.separator();
-            ui.label("Exposition / Gain");
-            changed |= ui.checkbox(&mut self.cfg.exposure_ctrl, "Auto-exposure (AEC)").changed();
-            ui.add_enabled_ui(!self.cfg.exposure_ctrl, |ui| {
-                changed |= ui.add(egui::Slider::new(&mut self.cfg.aec_value, 0..=1200).text("Exposure value")).changed();
+                for line in self.reg_log.iter().rev() {
+                    ui.monospace(line);
+                }
             });
-            changed |= ui.checkbox(&mut self.cfg.aec2, "AEC2 (extended)").changed();
-            changed |= ui.add(egui::Slider::new(&mut self.cfg.ae_level, -2..=2).text("AE level")).changed();
-
-            changed |= ui.checkbox(&mut self.cfg.gain_ctrl, "Auto-gain (AGC)").changed();
-            ui.add_enabled_ui(!self.cfg.gain_ctrl, |ui| {
-                changed |= ui.add(egui::Slider::new(&mut self.cfg.agc_gain, 0..=30).text("Gain manuel")).changed();
-            });
-            changed |= ui.add(egui::Slider::new(&mut self.cfg.gainceiling, 0..=6).text("Gain ceiling")).changed();
-
-            ui.separator();
-            ui.label("Image");
-            changed |= ui.add(egui::Slider::new(&mut self.cfg.brightness, -2..=2).text("Brightness")).changed();
-            changed |= ui.add(egui::Slider::new(&mut self.cfg.contrast, -2..=2).text("Contrast")).changed();
-            changed |= ui.add(egui::Slider::new(&mut self.cfg.saturation, -2..=2).text("Saturation")).changed();
-            changed |= ui.add(egui::Slider::new(&mut self.cfg.sharpness, -2..=2).text("Sharpness")).changed();
-            changed |= ui.add(egui::Slider::new(&mut self.cfg.denoise, 0..=8).text("Denoise")).changed();
-            changed |= ui.add(egui::Slider::new(&mut self.cfg.quality, 0..=63).text("JPEG quality")).changed();
-
-            ui.separator();
-            ui.label("White balance");
-            changed |= ui.checkbox(&mut self.cfg.whitebal, "Auto white balance").changed();
-            changed |= ui.checkbox(&mut self.cfg.awb_gain, "AWB gain").changed();
-            changed |= ui.add(egui::Slider::new(&mut self.cfg.wb_mode, 0..=4).text("WB mode")).changed();
-
-            ui.separator();
-            ui.label("Correction");
-            changed |= ui.checkbox(&mut self.cfg.dcw, "DCW").changed();
-            changed |= ui.checkbox(&mut self.cfg.bpc, "BPC").changed();
-            changed |= ui.checkbox(&mut self.cfg.wpc, "WPC").changed();
-            changed |= ui.checkbox(&mut self.cfg.raw_gma, "Raw GMA").changed();
-            changed |= ui.checkbox(&mut self.cfg.lenc, "Lens correction").changed();
-
-            ui.separator();
-            ui.label("Divers");
-            changed |= ui.checkbox(&mut self.cfg.hmirror, "H-Mirror").changed();
-            changed |= ui.checkbox(&mut self.cfg.vflip, "V-Flip").changed();
-            changed |= ui.checkbox(&mut self.cfg.colorbar, "Colorbar (test)").changed();
-            changed |= ui.add(egui::Slider::new(&mut self.cfg.special_effect, 0..=6).text("Effet")).changed();
-
-            ui.separator();
-            if ui.button("Reset default").clicked() {
-                self.cfg = CameraConfigUi::default();
-                changed = true;
-            }
         });
-
-        if changed { 
-            self.socket_udp_cam.send_to(&self.cfg.to_full_config().to_bytes(), "192.168.1.59:3334")
-                .expect("couldn't bind to address");
-            println!("send cam: {:?}", &self.cfg.to_full_config());
-        }
-        
     }
 }
 
-const FRAMESIZE_OPTIONS: &[(u8, &str)] = &[
-    (6, "QVGA 320x240"), (10, "VGA 640x480"), (11, "SVGA 800x600"), (15, "UXGA 1600x1200"),
-];
+fn config_widgets(ui: &mut Ui, c: &mut CameraConfig) {
+    egui::ComboBox::from_label("Framesize")
+        .selected_text(framesize_label(c.framesize))
+        .show_ui(ui, |ui| {
+            for (val, label) in FRAMESIZE_OPTIONS {
+                ui.selectable_value(&mut c.framesize, *val, *label);
+            }
+        });
+    // 6..27 MHz (datasheet OV5640). À 27 MHz, ton affichage UDP bugguait : 24 MHz est le point validé.
+    ui.add(egui::Slider::new(&mut c.xclk_khz, 6000..=27000).text("XCLK (kHz)"));
 
-fn framesize_label(val: u8) -> &'static str {
-    FRAMESIZE_OPTIONS.iter().find(|(v, _)| *v == val).map(|(_, l)| *l).unwrap_or("?")
+    ui.separator();
+    ui.label("Exposition / Gain");
+    ui.checkbox(&mut c.exposure_ctrl, "Auto-exposure (AEC)");
+    ui.add_enabled_ui(!c.exposure_ctrl, |ui| {
+        ui.add(egui::Slider::new(&mut c.aec_value, 0..=1200).text("Exposure value"));
+    });
+    ui.checkbox(&mut c.aec2, "AEC2 (extended)");
+    ui.add(egui::Slider::new(&mut c.ae_level, -2..=2).text("AE level"));
+    ui.checkbox(&mut c.gain_ctrl, "Auto-gain (AGC)");
+    ui.add_enabled_ui(!c.gain_ctrl, |ui| {
+        ui.add(egui::Slider::new(&mut c.agc_gain, 0..=30).text("Gain manuel"));
+    });
+    ui.add(egui::Slider::new(&mut c.gainceiling, 1..=1023).text("Gain ceiling"));
+
+    ui.separator();
+    ui.label("Image");
+    ui.add(egui::Slider::new(&mut c.brightness, -2..=2).text("Brightness"));
+    ui.add(egui::Slider::new(&mut c.contrast, -2..=2).text("Contrast"));
+    ui.add(egui::Slider::new(&mut c.saturation, -2..=2).text("Saturation"));
+    ui.add(egui::Slider::new(&mut c.sharpness, -2..=2).text("Sharpness"));
+    ui.add(egui::Slider::new(&mut c.denoise, 0..=8).text("Denoise"));
+    ui.add(egui::Slider::new(&mut c.quality, 1..=63).text("JPEG quality"));
+
+    ui.separator();
+    ui.label("White balance");
+    ui.checkbox(&mut c.whitebal, "Auto white balance");
+    ui.checkbox(&mut c.awb_gain, "AWB gain");
+    ui.add(egui::Slider::new(&mut c.wb_mode, 0..=4).text("WB mode"));
+
+    ui.separator();
+    ui.label("Correction");
+    ui.checkbox(&mut c.dcw, "DCW");
+    ui.checkbox(&mut c.bpc, "BPC");
+    ui.checkbox(&mut c.wpc, "WPC");
+    ui.checkbox(&mut c.raw_gma, "Raw GMA");
+    ui.checkbox(&mut c.lenc, "Lens correction");
+
+    ui.separator();
+    ui.label("Divers");
+    ui.checkbox(&mut c.hmirror, "H-Mirror");
+    ui.checkbox(&mut c.vflip, "V-Flip");
+    ui.checkbox(&mut c.colorbar, "Colorbar (test)");
+    ui.add(egui::Slider::new(&mut c.special_effect, 0..=6).text("Effet"));
+    // pixformat : volontairement absent. L'ESP refuse un changement à chaud.
 }

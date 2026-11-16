@@ -1,21 +1,34 @@
 # Projects around ESP32
 
+This repository presents some experiments with ESP32 (esp_project), communicating with a laptop (rust_station). 
+
+Projects I've done and are easy to make with this repo:
+- RC Car
+- Hub Zigbee ESP32-C6
+
+You can also use it to easily test with sensors (I made a lot of basic sensors drivers), experience with Zigbee, MQTT, OTA, ESP-NOW, encryption, WIFI.
+
+More details are available in each of the folders, but here is some overview:
+
 ## esp_project
 
 This is the ESP-IDF repo. Features:
+- camera lib
+  * Allow a JPG stream over UDP (tested with OV5640, OV2640) using [esp32-camera](https://components.espressif.com/components/espressif/esp32-camera/versions/2.1.6/readme?language=en) component
 - zigbee library using [esp-zigbee-sdk](https://docs.espressif.com/projects/esp-zigbee-sdk/en/latest/esp32/introduction.html) & [esp-zigbee-lib](https://components.espressif.com/components/espressif/esp-zigbee-lib/versions/2.0.3/readme) component
   * simple on/off led
-- nvs library 
-- - sensors lib
- * Get the data of sensors using peripherals such as:
-   * I2C: complex sensors such as IMU (MPU6050, BNO085), TOF (VL53L1X), Voltage monitoring (INA226)
-   * GPIO: digital signal - ISR related [Ultrasonic (HCSR04), "Slow" Rotation Encoder, Reed, Buttons..]
-   * PCNT: couting GPIO ["fast" encoder such as on the power-axis of a car]
-       * Use this instead of ISRs when there is a very frequent event to avoid starving CPU, as it is a module on is own that puts its counter to a shared memory. We just have to read it at some period.
-       * Also it can be used to have a clear event and filter events (ex: remove bounces)
+- nvs library
+  * Easily edit NVS data
+- sensors lib, get the data of sensors using peripherals such as:
+    * I2C: complex sensors such as IMU (MPU6050, BNO085), TOF (VL53L1X), Voltage monitoring (INA226)
+    * GPIO: digital signal - ISR related [Ultrasonic (HCSR04), "Slow" Rotation Encoder, Reed, Buttons..]
+    * PCNT: couting GPIO ["fast" encoder such as on the power-axis of a car]
+      * Use this instead of ISRs when there is a very frequent event to avoid starving CPU, as it is a module on is own that puts its counter to a shared memory. We just have to read it at some period.
+      * Also it can be used to have a clear event and filter events (ex: remove bounces)
    * RMT: handles sensors that needs specific timings, such as one-wire sensors (DHT11), or infrared receiver using NEC protocol.
    * ADC: sensors delivering analogic signals [Potentiometers (Joystick), Photosensors, Linear Hall, Vibration..]
    * SPI: sensors delivering fast data (compared to I2C) [RFID car reader]
+   * ESP: getting ESP data (SoC temperature, %CPU, memory)
 - wifi library [TODO: seperate AP / STA, debug helper]
     * AP/STA/APSTA configs
     * auto connect to known networks stored in encrypted-NVS
@@ -27,7 +40,6 @@ This is the ESP-IDF repo. Features:
   * simple led using GPIO
   * two color led using LEDC
   * RGB led using LEDC
-- camera lib [using [esp32-camera](https://components.espressif.com/components/espressif/esp32-camera/versions/2.1.6/readme?language=en) component]
 - ws lib
   * simple websocket server
 - udp lib
@@ -56,8 +68,10 @@ This is the ESP-IDF repo. Features:
 - udp
   * receives udp frames from ESPs
 - controller
-  * emits udp commands with a controller (ex: PS4/XBOX)
+  * receive commands with a controller (ex: PS4/XBOX)
+  * a thread controls the data sent to the ESP, can be Pure Pursuit with waypoints or a controller.
 - egui: HMI
+  * dashboard: manages ESP Zigbee coordinator
   * sensors: plots for some sensors (IMU, INA, BMP, ESP, Encoder, RFID car reader)
   * ota: choose and flash the ESP over the air
   * logs: print logs from ESPs
@@ -66,6 +80,13 @@ This is the ESP-IDF repo. Features:
   * commands: controller panel
   * camera: show camera image & edit its config
   * car: Car control panel with sensors info, estimated trajectory
+- odometry
+  * frames: easily switch between frames (different sensors)
+  * outputs a Pose from IMU (BNO085) & Encoder (FC-33)
+- SLAM
+  * lidar accumulutor: outputs a scan (360° turn) from batches of LD500
+  * mapping with log-odds & fix sized grid
+  * SLAM algorithms: ICP Point-to-Line & NDT
 - recorder
   *  record data from sensors to replay it later
 - ai
@@ -73,6 +94,10 @@ This is the ESP-IDF repo. Features:
 - train_ia
   * ia training with a simulator (random room with obstacles and estimated data from sensors) using burn crate
   * gui to monitor steps
+
+Threads are made with rust-std. For communications I use rust-std channels, crossbeam channels, arc-swap, Arc<RwLock> & Arc<Atomic>.
+
+Note: It can be compiled for Android, but the user interface is not yet ready.
 
 ## Docker
 

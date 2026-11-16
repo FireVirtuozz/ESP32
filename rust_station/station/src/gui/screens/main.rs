@@ -21,14 +21,13 @@ impl MainScreen {
                 ui.add_enabled_ui(logs_connected.load(Ordering::Relaxed), |ui| {
                     if ui.button("Logs").clicked() { *screen = ScreensTypes::Logs; }
                 });
-                ui.add_enabled_ui(camera_connected.load(Ordering::Relaxed), |ui| {
-                    if ui.button("Camera").clicked() { *screen = ScreensTypes::Camera; }
-                });
+                if ui.button("Camera").clicked() { *screen = ScreensTypes::Camera; }
                 if ui.button("Commands").clicked() { *screen = ScreensTypes::Commands; }
                 if ui.button("Dumps").clicked() { *screen = ScreensTypes::Dump; }
                 if ui.button("Car").clicked() { *screen = ScreensTypes::Car; }
                 if ui.button("Tuning").clicked() { *screen = ScreensTypes::Tuning; }
                 if ui.button("Ota").clicked() { *screen = ScreensTypes::Ota; }
+                if ui.button("Dashboard").clicked() { *screen = ScreensTypes::Dashboard; }
                 ui.add_space(10.0);
                 if ui.button("Quit").clicked() { 
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close);

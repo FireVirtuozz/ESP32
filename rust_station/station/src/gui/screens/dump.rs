@@ -82,7 +82,7 @@ impl Default for DumpScreen {
     }
 }
 impl DumpScreen {
-    pub fn show(&mut self, ctx: &egui::Context, dumps: &[DumpEntry]) {
+    pub fn show(&mut self, ctx: &egui::Context, dumps: &[DumpEntry], screen : &mut ScreensTypes) {
         
         // LEFT PANEL: CHOOSE ESP / LIBRARY
         egui::SidePanel::left("dump_explorer")
@@ -93,6 +93,7 @@ impl DumpScreen {
                 // SELECT ESP
                 ui.heading("Devices");
                 ui.add_space(4.0);
+                if ui.button("Back").clicked() { *screen = ScreensTypes::Main; }
 
                 // Extract ESP IDs
                 let esp_ids: BTreeSet<u8> = dumps.iter().map(|e| e.esp_id).collect();

@@ -1,197 +1,200 @@
-use std::{collections::VecDeque, sync::{Arc, atomic::{AtomicBool, Ordering}, mpsc}, time::Instant};
+use std::{collections::{HashMap, VecDeque}, dbg, f64::consts::{FRAC_PI_2, PI}, format, println, sync::{Arc, RwLock, atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering}, mpsc}, time::Instant};
 
+use arc_swap::ArcSwap;
 use egui_plot::{Line, Plot, PlotPoints, Points};
+use image::load_from_memory;
+use log::{debug, error, warn};
+use nalgebra::Point2;
 
-use crate::{controller::ControllerPacket, gui::ScreensTypes, sensors::{TelemetryEnum, TelemetryPacket}};
+use crate::{config::AppConfig, control::{DriveCommand, MiscellaneousCommand, SafetyCommand}, controller::ControllerPacket, gui::{ScreensTypes, get_sensor_data}, odometry::{frames::{CAR_H, CAR_W}, odo::OdoState, slam::SlamState}, sensors::{SensorKey, TelemetryEnum, TelemetryPacket}};
 
+fn load_car_icon(ctx: &egui::Context) -> egui::TextureHandle {
+    let bytes = include_bytes!("../../../images/supra_v2.png"); // chemin relatif à CE fichier .rs
+    let img = image::load_from_memory(bytes).expect("PNG voiture invalide");
+    let rgba = img.to_rgba8();
+    let size = [rgba.width() as usize, rgba.height() as usize];
+    let color_image = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_flat_samples().as_slice());
+    ctx.load_texture("car_icon", color_image, Default::default())
+}
+
+pub const ESP_CTRL_ID : u8 = 0;
+pub const ESP_CAM_ID : u8 = 1;
 
 pub struct CarScreen {
     pub last_packet: Option<ControllerPacket>,
-    pub car_yaw: f32,
     pub last_mpu_timestamp: u32,
     pub last_mpu_timestamp_sta : f64,
-    pub car_pos: egui::Vec2,
-    pub trajectory: VecDeque<[f64; 2]>,
-    pub last_ky_timestamp: f64,
     pub last_dir: f32,
+    pub texture: Option<egui::TextureHandle>,
+    pub last_fps_time: std::time::Instant,
+    pub car_icon: Option<egui::TextureHandle>,
+    pub cam_texture: Option<egui::TextureHandle>,
+    last_seen_version: u64,
+    selected_esp_id: Option<u8>,
+    pub current_history: VecDeque<f32>,
+    pub last_slam: SlamState,
 }
 
 impl Default for CarScreen {
     fn default() -> Self {
-        Self { 
+        Self {
             last_packet: None,
-            car_yaw: 0.0,
             last_mpu_timestamp: 0,
             last_mpu_timestamp_sta : 0.0,
-            car_pos: egui::Vec2::ZERO,
-            trajectory: VecDeque::new(),
-            last_ky_timestamp: 0.0,
             last_dir: 0.0,
+            texture: None,
+            last_fps_time: Instant::now(),
+            car_icon: None,
+            cam_texture: None,
+            last_seen_version: 0,
+            selected_esp_id: None,
+            current_history: VecDeque::with_capacity(100),
+            last_slam: SlamState::default(),
         }
     }
 }
 
 impl CarScreen {
-    pub fn show(&mut self, ctx: &egui::Context, screen: &mut ScreensTypes, data: &VecDeque<(TelemetryPacket, f64)>, 
-        controller_connected: &Arc<AtomicBool>, rx_ctrl: &mpsc::Receiver<ControllerPacket>, start_instant: &Instant) 
-    {
-
+    pub fn show(&mut self, ctx: &egui::Context, 
+        screen: &mut ScreensTypes, 
+        devices: &HashMap<u8, [VecDeque<(TelemetryPacket, f64)>; SensorKey::COUNT]>, 
+        controller_connected: &Arc<AtomicBool>, rx_ctrl: &mpsc::Receiver<ControllerPacket>,
+        start_instant: &Instant, shared_texture: &Arc<RwLock<Option<egui::ColorImage>>>,
+        shared_fps: &Arc<AtomicU32>, shared_frame_count: &Arc<AtomicU64>, 
+        shared_odo: &Arc<RwLock<OdoState>>, shared_slam: &Arc<RwLock<SlamState>>, 
+        packet_sent: &Arc<AtomicU32>, shared_live_scan: &Arc<RwLock<Vec<Point2<f32>>>>,
+        active_drive: &Arc<ArcSwap<DriveCommand>>, active_safety: &Arc<ArcSwap<SafetyCommand>>,
+        active_misc: &Arc<ArcSwap<MiscellaneousCommand>>,
+        shared_waypoints: &Arc<RwLock<Vec<[f64; 2]>>>,
+        shared_predicted_path: &Arc<RwLock<Vec<[f64; 2]>>>,
+    ) {
         // --- GETTING PACKETS ---
         while let Ok(pkt) = rx_ctrl.try_recv() {
             self.last_packet = Some(pkt);
         }
 
-        let hc0_opt = data.iter().rev().find_map(|(p, _)| {
-            if let TelemetryEnum::HCSR04(pck) = &p.packet { if pck.hc_id == 0 { Some((pck.get_distance_cm(), pck.blocked)) } else { None } } else { None }
-        });
+        let (car_pose, trajectory, obstacles) = {
+            let guard = shared_odo.read().unwrap();
+            (guard.car_pose, guard.trajectory.clone(), guard.obstacles.clone())
+        };
 
-        let hc1_opt = data.iter().rev().find_map(|(p, _)| {
-            if let TelemetryEnum::HCSR04(pck) = &p.packet { if pck.hc_id == 1 { Some((pck.get_distance_cm(), pck.blocked)) } else { None } } else { None }
-        });
+        let front_offset = CAR_H / 2.0; // tof at the front of the car
+
+        if self.car_icon.is_none() {
+            self.car_icon = Some(load_car_icon(ctx));
+        }
+
+        let hc0_opt = if let Some(buf) = 
+        get_sensor_data(devices, &Some(ESP_CTRL_ID), SensorKey::HCSR04_0) {
+            if let Some((TelemetryPacket { packet: TelemetryEnum::HCSR04(hc), .. }, _)) = buf.back() {
+                Some((hc.get_distance_cm(), hc.blocked))
+            } else { None }
+        } else { None };
+
+        let hc1_opt = if let Some(buf) = 
+        get_sensor_data(devices, &Some(ESP_CTRL_ID), SensorKey::HCSR04_1) {
+            if let Some((TelemetryPacket { packet: TelemetryEnum::HCSR04(hc), .. }, _)) = buf.back() {
+                Some((hc.get_distance_cm(), hc.blocked))
+            } else { None }
+        } else { None };
 
         let latest_hc0 = hc0_opt.unwrap_or((400.0, false));
         let latest_hc1 = hc1_opt.unwrap_or((400.0, false));
 
-        let break_entry = data.iter().rev().find_map(|(p, _)| {
-            if let TelemetryEnum::BREAK(pck) = &p.packet { Some((pck, p.hd_info.timestamp)) } else { None }
-        });
+        // --- BRAKE (Fixé sur `ESP_CTRL_ID`) ---
+        let brake_entry = if let Some(buf) =
+        get_sensor_data(devices, &Some(ESP_CTRL_ID), SensorKey::Brake) {
+            if let Some((TelemetryPacket { packet: TelemetryEnum::BRAKE(pck), hd_info }, timestamp_sta)) = buf.back() {
+                Some((pck, hd_info.timestamp))
+            } else { None }
+        } else { None };
 
-        let mpu_entry = data.iter().rev().find_map(
-            |(p, timestamp_sta)| {
-            if let TelemetryEnum::MPU(pck) = &p.packet { 
-                Some((pck, p.hd_info.timestamp, *timestamp_sta)) 
-            } else { 
-                None 
-            }
-        });
+        // --- BNO085 ROTATION (Fixé sur `ESP_CTRL_ID`) ---
+        let bno_entry_rot = if let Some(buf) = get_sensor_data(devices, &Some(ESP_CTRL_ID), SensorKey::Bno085Rotation) {
+            if let Some((TelemetryPacket { packet: TelemetryEnum::BNO085ROTATION(rot), .. }, timestamp_sta)) = buf.back() {
+                self.last_mpu_timestamp_sta = *timestamp_sta;
+                Some(rot)
+            } else { None }
+        } else { None };
 
-        let latest_bmp = data.iter().rev().find_map(
-            |(p, _)| {
-            if let TelemetryEnum::BMP(pck) = &p.packet { Some(pck) } else { None }
-        });
+        // --- BNO085 LINEAR ACCEL (Depuis l'ESP actif) ---
+        let bno_entry_lin_accel = if let Some(buf) = get_sensor_data(devices, &Some(ESP_CTRL_ID), SensorKey::Bno085LinearAccel) {
+            if let Some((TelemetryPacket { packet: TelemetryEnum::BNO085LINEARACCEL(lin_accel), .. }, _)) = buf.back() {
+                Some(lin_accel)
+            } else { None }
+        } else { None };
 
-        let latest_esp = data.iter().rev().find_map(|(p, _)| {
-            if let TelemetryEnum::ESP(pck) = &p.packet { Some(pck) } else { None }
-        });
+        // --- PONG ---
+        let latest_ping = if let Some(buf) = get_sensor_data(devices, &Some(ESP_CTRL_ID), SensorKey::Pong) {
+            if let Some((TelemetryPacket { packet: TelemetryEnum::PONG(pck), .. }, _)) = buf.back() {
+                Some(pck)
+            } else { None }
+        } else { None };
 
-        let latest_ping = data.iter().rev().find_map(|(p, _)| {
-            if let TelemetryEnum::PONG(pck) = &p.packet { Some(pck) } else { None }
-        });
+        // --- ADC BAT ---
+        let latest_bat = if let Some(buf) = 
+        get_sensor_data(devices, &Some(ESP_CTRL_ID), SensorKey::BatAdc) {
+            if let Some((TelemetryPacket { packet: TelemetryEnum::BATADC(pck), .. }, _)) = buf.back() {
+                Some(pck)
+            } else { None }
+        } else { None };
 
-        let latest_ina = data.iter().rev().find_map(|(p, _)| {
-            if let TelemetryEnum::INA226(pck) = &p.packet { Some(pck) } else { None }
-        });
-
-        let ky_entry = data.iter().rev().find_map(|(p, ts)| {
-            if let TelemetryEnum::KY033(pck) = &p.packet { Some((pck, *ts)) } else { None }
-        });
-
-        let latest_ky = ky_entry.map(|(k, _)| k); 
-        
-        // -- MPU integral (gyro->angle) --
-        if let Some((mpu, current_ts_esp, current_ts_sta)) = mpu_entry {
-            if current_ts_esp > self.last_mpu_timestamp {
-                if self.last_mpu_timestamp > 0 {
-                    // substract by preventing overflow
-                    let diff_ms = current_ts_esp.saturating_sub(self.last_mpu_timestamp);
-                    let dt = diff_ms as f32 / 1000.0;       
-                    
-                    if dt > 0.0 && dt < 1.0 {
-                        let gyro_z_deg = mpu.get_gyro_deg_s().2 as f32;
-                        
-                        // angle = speed_gyro_z * dt
-                        self.car_yaw += -gyro_z_deg.to_radians() * dt;
-                        
-                        // angle in [-pi,pi]
-                        if self.car_yaw > std::f32::consts::PI { self.car_yaw -= 2.0 * std::f32::consts::PI; }
-                        if self.car_yaw < -std::f32::consts::PI { self.car_yaw += 2.0 * std::f32::consts::PI; }
-                    }
+        // --- ADC CURRENT ---
+        if let Some(buf) = 
+        get_sensor_data(devices, &Some(ESP_CTRL_ID), SensorKey::ACS758) {
+            if let Some((TelemetryPacket { packet: TelemetryEnum::ACS758(pck), .. }, _)) = buf.back() {
+                let current_ma = pck.adc_current;
+                self.current_history.push_back(current_ma);
+                if self.current_history.len() > 100 {
+                    self.current_history.pop_front();
                 }
-                self.last_mpu_timestamp = current_ts_esp;
-                self.last_mpu_timestamp_sta = current_ts_sta;
             }
         }
 
-        // --- ENCODER (distance) ---
-        if let Some((ky, current_ts)) = ky_entry {
-            if current_ts > self.last_ky_timestamp {
-                // Sign by ESP at the moment of the packet
-                let dist = if ky.sign_motor_positive {ky.get_distance_m() as f32} else {-ky.get_distance_m() as f32};
+        // --- VL53L1X (ToF) ---
+        let latest_tof = if let Some(buf) = get_sensor_data(devices, &Some(ESP_CTRL_ID), SensorKey::VL53L1X) {
+            if let Some((TelemetryPacket { packet: TelemetryEnum::VL53L1X(pck), .. }, _)) = buf.back() {
+                if pck.status == 0 { Some(pck) } else { None }
+            } else { None }
+        } else { None };
 
-                self.car_pos += egui::vec2(dist * self.car_yaw.sin(), -dist * self.car_yaw.cos());
+        // --- KY033 ---
+        let ky_entry = if let Some(buf) = get_sensor_data(devices, &Some(ESP_CTRL_ID), SensorKey::Ky033) {
+            if let Some((TelemetryPacket { packet: TelemetryEnum::KY033(pck), .. }, ts)) = buf.back() {
+                Some((pck, *ts))
+            } else { None }
+        } else { None };
+        let latest_ky = ky_entry.map(|(k, _)| k);
 
-                self.trajectory.push_back([self.car_pos.x as f64, self.car_pos.y as f64]);
-                if self.trajectory.len() > 2000 { self.trajectory.pop_front(); }
-                self.last_ky_timestamp = current_ts;
-            }
-        }
+        let latest_gnss = if let Some(buf) = 
+        get_sensor_data(devices, &Some(ESP_CTRL_ID), SensorKey::BZ181) {
+            if let Some((TelemetryPacket { packet: TelemetryEnum::BZ181(pck), .. }, _)) = buf.back() {
+                Some(pck)
+            } else { None }
+        } else { None };
+
+        // --- ESP ---
+        let latest_esp_ctrl = if let Some(buf) = 
+        get_sensor_data(devices, &Some(ESP_CTRL_ID), SensorKey::ESP) {
+            if let Some((TelemetryPacket { packet: TelemetryEnum::ESP(pck), .. }, _)) = buf.back() {
+                Some(pck)
+            } else { None }
+        } else { None };
 
         //disconnected if not received mpu data for 500ms
         let is_ok = (start_instant.elapsed().as_secs_f64() - self.last_mpu_timestamp_sta) < 0.5;
 
-        let sensors_connected = mpu_entry.is_some() && is_ok && hc0_opt.is_some() && hc1_opt.is_some();
+        let sensors_connected = bno_entry_rot.is_some() && bno_entry_lin_accel.is_some() 
+            && is_ok && hc0_opt.is_some() && hc1_opt.is_some();
         let connected = controller_connected.load(Ordering::Relaxed);
 
         // --- MAIN PANEL ---
         egui::CentralPanel::default().show(ctx, |ui| {
+            if ui.button("Back").clicked() {
+                *screen = ScreensTypes::Main;
+            }
             ui.heading("RC Car Real-Time Control Center");
             ui.separator();
-
-            // ==========================================
-            // TOP BAND: ESP STATE
-            // ==========================================
-            if let Some(esp) = latest_esp {
-                ui.group(|ui| {
-                    ui.horizontal(|ui| {
-                        // WIFI
-                        let rssi_color = if esp.rssi > -60 { 
-                            egui::Color32::GREEN 
-                        } else if esp.rssi > -75 { 
-                            egui::Color32::GOLD 
-                        } else { 
-                            egui::Color32::RED 
-                        };
-                        ui.label("Wi-fi RSSI :");
-                        ui.colored_label(rssi_color, format!("{} dBm", esp.rssi));
-                        ui.separator();
-
-                        // TEMP SOC
-                        let temp_color = if esp.esp_deg < 65.0 { 
-                            egui::Color32::LIGHT_GREEN 
-                        } else if esp.esp_deg < 80.0 { 
-                            egui::Color32::GOLD 
-                        } else { 
-                            egui::Color32::RED 
-                        };
-                        ui.label("SOC Temp :");
-                        ui.colored_label(temp_color, format!("{:.1} °C", esp.esp_deg));
-                        ui.separator();
-
-                        // Boot reason
-                        ui.label(format!("Boot Reason : {}", esp.reset_reason.as_str()));
-                        ui.separator();
-
-                        // Number of control packets received by ESP
-                        ui.label(format!("Packets Rx : {}", esp.nb_packets));
-
-                        // Ping (RTT PC <-> ESP)
-                        if let Some(ping) = latest_ping {
-                            ui.separator();
-                            let ping_color = if ping.ping_pong < 20 { 
-                                egui::Color32::GREEN 
-                            } else if ping.ping_pong < 60 { 
-                                egui::Color32::GOLD 
-                            } else { 
-                                egui::Color32::RED 
-                            };
-                            ui.label("Ping :");
-                            ui.colored_label(ping_color, format!("{} ms", ping.ping_pong));
-                        }
-                    });
-                });
-                ui.add_space(8.0);
-            }
-
             ui.columns(3, |cols| {
                 
                 // ==========================================
@@ -234,6 +237,30 @@ impl CarScreen {
                         ui.label("Connect via Bluetooth / USB");
                     }
 
+                    ui.add_space(10.0);
+                    ui.label(egui::RichText::new("MOTOR & STEERING").strong());
+                    let ctrl_values = if let Some(esp) = latest_esp_ctrl {
+                        &format!("Angle: {}, Motor: {}", esp.angle, esp.motor)
+                    } else {
+                        "No ESP data"
+                    };
+                    ui.label(format!("ESP: {}", ctrl_values));
+                    let motor_control = active_drive.load();
+                    ui.label(format!("Angle: {}, Motor: {}", motor_control.steering, motor_control.throttle));
+
+                    ui.add_space(10.0);
+                    ui.label(egui::RichText::new("SAFETY MEASURES").strong());
+                    let safety_control = active_safety.load();
+                    ui.label(format!("Emergency brake: {}, HC Blocking: {}", safety_control.brake_stop, safety_control.hc_block));
+
+                    ui.add_space(10.0);
+                    ui.label(egui::RichText::new("MISCELLANEOUS").strong());
+                    let misc_control = active_misc.load();
+
+                    ui.label(format!("Horn: {}, Drive Mode: {}, Target (m/s): {:.2}",
+                        misc_control.horn, misc_control.drive_mode, misc_control.target_m_s));
+
+                    ui.add_space(10.0);
                     // Small car with HC data
                     ui.label(egui::RichText::new("VEHICLE STATE").strong());
                     ui.add_space(10.0);
@@ -244,9 +271,11 @@ impl CarScreen {
 
                         let car_w = 40.0;
                         let car_h = 70.0;
-                        
-                        let direction = egui::vec2(self.car_yaw.sin(), -self.car_yaw.cos());
-                        let side = egui::vec2(self.car_yaw.cos(), self.car_yaw.sin());
+
+                        let dir = car_pose.forward();
+                        let s = car_pose.side();
+                        let direction = egui::vec2(dir.x, dir.y);
+                        let side = egui::vec2(s.x, s.y);
 
                         let p1 = center - direction * (car_h / 2.0) - side * (car_w / 2.0);
                         let p2 = center + direction * (car_h / 2.0) - side * (car_w / 2.0);
@@ -264,13 +293,32 @@ impl CarScreen {
                         let front_color = if latest_hc0.0 < 20.0 { egui::Color32::RED } else if latest_hc0.0 < 50.0 { egui::Color32::GOLD } else { egui::Color32::GREEN };
                         let bar_front_y = center.y - 60.0;
                         painter.line_segment(
-                            [egui::pos2(center.x - 50.0, bar_front_y), egui::pos2(center.x + 50.0, bar_front_y)],
+                            [egui::pos2(center.x - 50.0, bar_front_y), egui::pos2(center.x, bar_front_y)],
                             egui::Stroke::new(5.0, front_color)
                         );
                         painter.text(
-                            egui::pos2(center.x, bar_front_y - 12.0), 
+                            egui::pos2(center.x - 50.0, bar_front_y - 12.0), 
                             egui::Align2::CENTER_CENTER, 
                             format!("{:.1} cm{}", latest_hc0.0, if latest_hc0.1 {", BLOCKED"} else {""}), 
+                            egui::FontId::proportional(12.0), egui::Color32::WHITE
+                        );
+
+                        // Front ToF
+                        let tof = if let Some(tof) = latest_tof {
+                            tof.distance as f64 / 10.0
+                        } else {
+                            -1.0
+                        };
+                        let front_color = if tof < 20.0 { egui::Color32::RED } else if tof < 50.0 { egui::Color32::GOLD } else { egui::Color32::GREEN };
+                        let bar_front_y = center.y - 60.0;
+                        painter.line_segment(
+                            [egui::pos2(center.x, bar_front_y), egui::pos2(center.x + 50.0, bar_front_y)],
+                            egui::Stroke::new(5.0, front_color)
+                        );
+                        painter.text(
+                            egui::pos2(center.x + 50.0, bar_front_y - 12.0), 
+                            egui::Align2::CENTER_CENTER, 
+                            format!("{:.1} cm", tof), 
                             egui::FontId::proportional(12.0), egui::Color32::WHITE
                         );
 
@@ -290,7 +338,6 @@ impl CarScreen {
                         
                     } else {
                         // If no telemetry
-                        ui.add_space(40.0);
                         ui.colored_label(egui::Color32::GOLD, "Telemetry Offline");
                         ui.label("Missing required sensors data\n(HC-SR04, MPU)");
                     }
@@ -298,17 +345,17 @@ impl CarScreen {
                     // Emergency brake state and monitoring
                     ui.label(egui::RichText::new("BRAKE STATE").strong());
                     ui.add_space(10.0);
-                    if let Some((brake, _)) = break_entry {
+                    if let Some((brake, _)) = brake_entry {
                         ui.add_space(8.0);
                         
                         // Red if braking
-                        let frame_bg = if brake.breaking { 
+                        let frame_bg = if brake.braking { 
                             egui::Color32::from_rgb(60, 15, 15) 
                         } else { 
                             egui::Color32::from_gray(30) 
                         };
 
-                        let stroke_color = if brake.breaking { 
+                        let stroke_color = if brake.braking { 
                             egui::Color32::RED 
                         } else { 
                             egui::Color32::from_gray(60) 
@@ -319,8 +366,8 @@ impl CarScreen {
                             .stroke(egui::Stroke::new(1.0, stroke_color))
                             .show(ui, |ui| {
                                 ui.vertical_centered(|ui| {
-                                    if brake.breaking {
-                                        ui.label(egui::RichText::new(format!("BRAKE ACTIVE ({}ms)", brake.timeout_breaking)).strong().color(egui::Color32::RED));
+                                    if brake.braking {
+                                        ui.label(egui::RichText::new(format!("BRAKE ACTIVE ({}ms)", brake.timeout_braking)).strong().color(egui::Color32::RED));
                                     } else {
                                         ui.label(egui::RichText::new("BRAKE SYSTEM & PULSES").small().weak());
                                     }
@@ -350,27 +397,106 @@ impl CarScreen {
                 // COLUMN 2 : PLOT OF CAR & OBSTACLES
                 // ==========================================
                 cols[1].vertical_centered(|ui| {
+                    // TODO: Arc<ColorImage> for perfs
+                    let current_version = shared_frame_count.load(Ordering::Relaxed);
+                    if current_version != self.last_seen_version {
+                        let guard = shared_texture.read().unwrap();
+                        if let Some(color_image) = guard.as_ref() {
+                            match &mut self.cam_texture {
+                                Some(tex) => tex.set(color_image.clone(), egui::TextureOptions::LINEAR),
+                                None => {
+                                    self.cam_texture = Some(ctx.load_texture(
+                                        "camera_frame", color_image.clone(), egui::TextureOptions::LINEAR
+                                    ));
+                                }
+                            }
+                        }
+                        self.last_seen_version = current_version;
+                    }
+                    if let Some(texture) = &self.cam_texture {
+                        let response = ui.image(&*texture);
+                        let fps = shared_fps.load(Ordering::Relaxed) as f32 / 10.0;
+                        let painter = ui.painter_at(response.rect);
+                        painter.text(
+                            response.rect.left_top() + egui::vec2(10.0, 10.0),
+                            egui::Align2::LEFT_TOP,
+                            format!("{:.1} FPS", fps),
+                            egui::FontId::proportional(16.0),
+                            if fps < 15.0 { egui::Color32::RED } else { egui::Color32::GREEN },
+                        );
+                    } else {
+                        ui.centered_and_justified(|ui| {
+                            ui.label("Camera not connected");
+                        });
+                    }
 
                     ui.add_space(10.0);
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("TRAJECTORY").small().weak());
-                        if ui.small_button("Reset").clicked() {
-                            self.trajectory.clear();
-                            self.car_pos = egui::Vec2::ZERO;
-                        }
-                    });
 
-                    let traj_vec: Vec<[f64; 2]> = self.trajectory.iter().cloned().collect();
-                    Plot::new("car_trajectory")
-                        .view_aspect(1.0)
-                        .data_aspect(1.0)
+                    if let Ok(s) = shared_slam.try_read() { self.last_slam = s.clone(); }
+                    let slam_state = &self.last_slam;
+
+                    Plot::new("lidar_live_plot")
+                        .data_aspect(1.0) // Keeps 1:1 scale so meters aren't distorted
+                        .width(ui.available_width())
+                        .height(ui.available_height()) // Fills the available space in the tab/panel
+                        .default_x_bounds(-5.0, 5.0)
+                        .default_y_bounds(-5.0, 5.0)
                         .show(ui, |plot_ui| {
-                            plot_ui.line(Line::new("trajectory", PlotPoints::from(traj_vec)).color(egui::Color32::from_rgb(24, 95, 165)));
+                            plot_ui.points(Points::new("slam_map", slam_state.cached_grid_points.clone())
+                                        .radius(1.5).color(egui::Color32::LIGHT_BLUE));
+
+                            let live: PlotPoints = slam_state.map_points.iter()
+                                .map(|p| [p.x as f64, p.y as f64]).collect();
+                            plot_ui.points(Points::new("live_scan", live).radius(2.0).color(egui::Color32::RED));
+
+                            let (px, py, yaw) = slam_state.corrected_pose;
+                            let (px, py) = (px as f64, py as f64);
+                            let tip = [px + 0.3 * (yaw as f64).cos(), py + 0.3 * (yaw as f64).sin()];
+                            plot_ui.line(Line::new("heading", vec![[px, py], tip]).color(egui::Color32::GREEN).width(2.0));
+                            if let Some(icon) = &self.car_icon {
+                                plot_ui.image(
+                                    egui_plot::PlotImage::new(
+                                        "car",
+                                        icon.id(),
+                                        egui_plot::PlotPoint::new(px, py),
+                                        egui::vec2(CAR_W as f32, CAR_H as f32),
+                                    )
+                                    .rotate(yaw as f64 - FRAC_PI_2),
+                                );
+                            }
+                            //plot_ui.points(Points::new("car", vec![[px, py]]).radius(5.0).color(egui::Color32::GREEN));
+
+                            // 3. Origin marker
                             plot_ui.points(
-                                Points::new("position", vec![[self.car_pos.x as f64, self.car_pos.y as f64]])
-                                    .radius(5.0)
-                                    .color(egui::Color32::YELLOW),
+                                Points::new("origin", vec![[0.0, 0.0]])
+                                    .radius(4.0)
+                                    .color(egui::Color32::WHITE)
                             );
+
+                            if plot_ui.response().clicked_by(egui::PointerButton::Secondary) {
+                                if let Some(pos) = plot_ui.pointer_coordinate() {
+                                    let mut waypoints = shared_waypoints.write().unwrap();
+                                    waypoints.push([pos.x, pos.y]);
+                                }
+                            }
+
+                            let waypoints = shared_waypoints.read().unwrap();
+                            if !waypoints.is_empty() {
+                                let wp_plot_points: PlotPoints = waypoints.iter().cloned().collect();
+                                plot_ui.points(Points::new("waypoints", wp_plot_points).radius(5.0).color(egui::Color32::YELLOW));
+                                
+                                // Ligne reliant la voiture aux waypoints (optionnel pour visualiser le chemin)
+                                let mut path_line = vec![[px, py]];
+                                path_line.extend(waypoints.iter().cloned());
+                                plot_ui.line(Line::new("target_path", path_line).color(egui::Color32::YELLOW).width(2.0));
+                            }
+
+                            let path_guard = shared_predicted_path.read().unwrap();
+                            let predicted_line = Line::new("predicted_path", path_guard.clone())
+                                .color(egui::Color32::from_rgb(255, 165, 0))
+                                .width(3.0);
+
+                            plot_ui.line(predicted_line);
                         });
                 });
 
@@ -380,9 +506,10 @@ impl CarScreen {
                 cols[2].vertical_centered(|ui| {
                     ui.group(|ui| {
                     ui.label("IMU values (Accel XY / Gyro Z)");
-                    if let Some((mpu, _, _)) = mpu_entry {
-                        let (ax, ay, _) = mpu.get_accel_g();
-                        let gyro_z = -mpu.get_gyro_deg_s().2 as f32;
+                    if let (Some(bno_lin_accel), Some(bno_rot)) 
+                    = (bno_entry_lin_accel, bno_entry_rot) {
+                        let (ax, ay, _) = bno_lin_accel.get_accel_g();
+                        let gyro_z = -bno_rot.get_angles_deg().1 as f32; //pitch as yaw
 
                         let (response, painter) = ui.allocate_painter(egui::vec2(160.0, 160.0), egui::Sense::hover());
                         let center = response.rect.center();
@@ -407,7 +534,7 @@ impl CarScreen {
                         let needle_end = center + egui::vec2(gyro_angle_rad.sin(), -gyro_angle_rad.cos()) * (radius + 10.0);
                         painter.line_segment([center, needle_end], egui::Stroke::new(2.0, egui::Color32::from_rgb(80, 180, 255)));
                         painter.text(center + egui::vec2(0.0, radius + 28.0), egui::Align2::CENTER_CENTER,
-                            format!("gyro Z: {:.1} °/s", gyro_z), egui::FontId::proportional(11.0), egui::Color32::from_rgb(80, 180, 255));
+                            format!("gyro Z: {:.1} °", gyro_z), egui::FontId::proportional(11.0), egui::Color32::from_rgb(80, 180, 255));
                     } else {
                         ui.colored_label(egui::Color32::GRAY, "No IMU data");
                     }
@@ -430,78 +557,157 @@ impl CarScreen {
                     // Battery
                     ui.group(|ui| {
                         ui.label("Battery Status");
-                        if let Some(ina) = latest_ina {
-                            let voltage = ina.get_bus_voltage_v();
-                            let pct = ((voltage - 3.4) / (4.2 - 3.4)).clamp(0.0, 1.0) as f32;
+                        if let Some(bat) = latest_bat {
+                            let voltage = bat.adc_voltage;
+                            let pct = ((voltage - 7.2) / (8.1 - 7.2)).clamp(0.0, 1.0);
                             
                             ui.add(egui::ProgressBar::new(pct).text(format!("{:.2} V", voltage)));
-                            ui.label(format!("Current: {:.1} mA", ina.get_current_ma()));
-                            ui.label(format!("Power: {:.1} mW", ina.get_power_mw()));
+
+                            ui.add_space(4.0);
+
                         } else {
-                            ui.colored_label(egui::Color32::GRAY, "No INA226 Data");
+                            ui.colored_label(egui::Color32::GRAY, "No Battery Data");
+                        }
+
+                        ui.label("Current Status");
+
+                        if self.current_history.len() > 1 {
+                            // --- SPARKLINE MINI-PLOT ---
+                            let desired_size = egui::vec2(ui.available_width(), 35.0);
+                            let (response, painter) = ui.allocate_painter(desired_size, egui::Sense::hover());
+                            let rect = response.rect;
+
+                            painter.rect_filled(rect, 3.0, egui::Color32::from_gray(25));
+
+                            let max_val = self.current_history.iter().cloned().fold(100.0f32, f32::max);
+                            let min_val = 0.0f32;
+                            let range = (max_val - min_val).max(1.0);
+
+                            let points: Vec<egui::Pos2> = self.current_history
+                                .iter()
+                                .enumerate()
+                                .map(|(i, &val)| {
+                                    let x = rect.left() + (i as f32 / (self.current_history.len() - 1) as f32) * rect.width();
+                                    let norm = ((val - min_val) / range).clamp(0.0, 1.0);
+                                    let y = rect.bottom() - norm * rect.height();
+                                    egui::pos2(x, y)
+                                })
+                                .collect();
+
+                            painter.add(egui::Shape::line(
+                                points, egui::Stroke::new(1.5, egui::Color32::from_rgb(80, 200, 120))
+                            ));
+
+                            if let Some(&latest_val) = self.current_history.back() {
+                                let text = format!("{:.1} A", latest_val);
+                                
+                                painter.text(
+                                    rect.right_top() + egui::vec2(-6.0, 4.0),
+                                    egui::Align2::RIGHT_TOP,
+                                    text,
+                                    egui::FontId::proportional(11.0),
+                                    egui::Color32::WHITE,
+                                );
+                            }
+
+                        } else {
+                            ui.colored_label(egui::Color32::GRAY, "No Current Data");
                         }
                     });
 
                     // ESP-S3 ressources
                     ui.group(|ui| {
                         ui.label("ESP32-S3 Hardware Resources");
-                        if let Some(esp) = latest_esp {
-                            // Core 0
-                            ui.horizontal(|ui| {
-                                ui.label(egui::RichText::new("Core 0:").small());
-                                ui.add(egui::ProgressBar::new(esp.core0 / 100.0)
-                                    .text(format!("{:.1}%", esp.core0)));
-                            });
-                            // Core 1
-                            ui.horizontal(|ui| {
-                                ui.label(egui::RichText::new("Core 1:").small());
-                                ui.add(egui::ProgressBar::new(esp.core1 / 100.0)
-                                    .text(format!("{:.1}%", esp.core1)));
-                            });
-                            
-                            ui.separator();
-                            
-                            // DRAM memory
-                            let dram_total = 320 * 1024;
-                            let dram_used = dram_total - esp.free_dram;
-                            ui.horizontal(|ui| {
-                                ui.label(egui::RichText::new("DRAM:").small());
-                                ui.add(egui::ProgressBar::new(dram_used as f32 / dram_total as f32)
-                                    .text(format!("{:.0} KB left", esp.free_dram as f32 / 1024.0)));
-                            });
+                        ui.horizontal(|ui| {
+                            ui.strong("Active ESP :");
+                            let mut ids: Vec<u8> = devices.keys().cloned().collect();
+                            ids.sort();
+                            for id in ids {
+                                let is_selected = self.selected_esp_id == Some(id);
+                                if ui.selectable_label(is_selected, format!("ESP #{}", id)).clicked() {
+                                    self.selected_esp_id = Some(id);
+                                }
+                            }
+                        });
+                        ui.separator();
 
-                            // PSRAM memory (N16R8 ESP32-S3)
-                            let psram_total = 8 * 1024 * 1024;
-                            let psram_used = psram_total - esp.free_psram;
-                            ui.horizontal(|ui| {
-                                ui.label(egui::RichText::new("PSRAM:").small());
-                                ui.add(egui::ProgressBar::new(psram_used as f32 / psram_total as f32)
-                                    .text(format!("{:.2} MB left", esp.free_psram as f32 / (1024.0 * 1024.0))));
+                        // --- ESP ---
+                        let latest_esp = if let Some(buf) = 
+                        get_sensor_data(devices, &self.selected_esp_id, SensorKey::ESP) {
+                            if let Some((TelemetryPacket { packet: TelemetryEnum::ESP(pck), .. }, _)) = buf.back() {
+                                Some(pck)
+                            } else { None }
+                        } else { None };
+
+                        if let Some(esp) = latest_esp {
+                            ui.group(|ui| {
+                                ui.set_width(ui.available_width()); // force le group à occuper toute la largeur dispo, pas sa largeur "naturelle"
+
+                                // Ligne 1 : coupe en deux horizontales au lieu d'une seule qui s'étire
+                                ui.horizontal_wrapped(|ui| { // wrap automatique si ça dépasse, au lieu de forcer un seul scroll horizontal invisible
+                                    let rssi_color = if esp.rssi > -60 { egui::Color32::GREEN } else if esp.rssi > -75 { egui::Color32::GOLD } else { egui::Color32::RED };
+                                    ui.label("Wi-Fi:");
+                                    ui.colored_label(rssi_color, format!("{}dB", esp.rssi));
+                                    ui.separator();
+
+                                    let temp_color = if esp.esp_deg < 65.0 { egui::Color32::LIGHT_GREEN } else if esp.esp_deg < 80.0 { egui::Color32::GOLD } else { egui::Color32::RED };
+                                    ui.label("SOC:");
+                                    ui.colored_label(temp_color, format!("{:.0}°C", esp.esp_deg));
+                                    ui.separator();
+
+                                    ui.label(format!("Boot: {}", esp.reset_reason.as_str()));
+                                    ui.separator();
+
+                                    let packets_diff = packet_sent.load(Ordering::Relaxed).saturating_sub(esp.nb_packets);
+                                    ui.label(format!("Lost: {}", packets_diff));
+
+                                    ui.separator();
+                                    
+                                    let ping_pong = if let Some(ping) = latest_ping {ping.ping_pong} else {0};
+                                    let ping_color = if ping_pong < 20 { egui::Color32::GREEN } else if ping_pong < 60 { egui::Color32::GOLD } else { egui::Color32::RED };
+                                    ui.label("Ping:");
+                                    ui.colored_label(ping_color, format!("{}ms", ping_pong));
+
+                                });
+
+                                ui.add_space(4.0);
+
+                                // Ligne 2 : CPUs — empile verticalement plutôt que côte à côte,
+                                // chaque barre prend toute la largeur dispo (plus de dépassement possible)
+                                ui.add(egui::ProgressBar::new(esp.core0 / 100.0).text(format!("Core 0: {:.1}%", esp.core0)));
+                                ui.add(egui::ProgressBar::new(esp.core1 / 100.0).text(format!("Core 1: {:.1}%", esp.core1)));
+
+                                ui.add_space(4.0);
+
+                                // Ligne 3 : Mémoires, même principe — vertical, pleine largeur
+                                let dram_used = (320 * 1024) - esp.free_dram;
+                                ui.add(egui::ProgressBar::new(dram_used as f32 / (320.0 * 1024.0))
+                                    .text(format!("DRAM: {:.0} KB free", esp.free_dram as f32 / 1024.0)));
+
+                                let psram_used = (8 * 1024 * 1024) - esp.free_psram;
+                                ui.add(egui::ProgressBar::new(psram_used as f32 / (8.0 * 1024.0 * 1024.0))
+                                    .text(format!("PSRAM: {:.2} MB free", esp.free_psram as f32 / (1024.0 * 1024.0))));
                             });
                         } else {
                             ui.colored_label(egui::Color32::GRAY, "No ESP32 Metrics Received");
                         }
                     });
 
-                    // Environment (BMP)
+                    // --- GNSS BZ-181 STATUS ---
                     ui.group(|ui| {
-                        ui.label("Environment");
-                        if let Some(bmp) = latest_bmp {
-                            ui.label(format!("Temp: {:.1} °C", bmp.get_temperature_deg()));
-                            ui.label(format!("Pressure: {:.2} bar", bmp.get_pressure_bar()));
+                        ui.label(egui::RichText::new("GNSS (BZ-181)").strong());
+                        if let Some(gnss) = latest_gnss {
+                            let fix_str = if gnss.status == b'A' { "Active (3D/2D)" } else { "Void" };
+                            ui.label(format!("Fix : {} | Sats : {}", fix_str, gnss.satellites_used));
+                            ui.label(format!("Lat/Lon : {:.5}, {:.5}", gnss.latitude, gnss.longitude));
+                            ui.label(format!("Speed : {:.1} km/h | HDOP : {:.2}", gnss.speed_kmh, gnss.hdop));
                         } else {
-                            ui.colored_label(egui::Color32::GRAY, "No Env Data");
+                            ui.colored_label(egui::Color32::GRAY, "No GNSS Data");
                         }
                     });
                 });
             });
-
-            // Back button
-            ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
-                if ui.button("Back").clicked() {
-                    *screen = ScreensTypes::Main;
-                }
-            });
+        
         });
     }
 }

@@ -8,3 +8,4 @@ pub mod dump;
 pub mod car;
 pub mod tuning;
 pub mod ota_control;
+pub mod dashboard;

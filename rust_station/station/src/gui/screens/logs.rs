@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, str::from_utf8};
+use std::{collections::VecDeque, format, str::from_utf8};
 use egui::{Color32, FontId, RichText, ScrollArea, TextEdit, Ui};
 
 use crate::{error::AppError, gui::ScreensTypes};

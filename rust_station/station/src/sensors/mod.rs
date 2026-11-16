@@ -3,9 +3,12 @@ use std::{error::Error, f64::consts::PI, io, println, string::FromUtf8Error};
 use log::error;
 use serde::{Deserialize, Serialize};
 
-use crate::{error::AppError, gui::screens::tuning::CurveType, sensors::parser::SensorsUdpHeader};
+use crate::{error::AppError, gui::screens::tuning::CurveType, sensors::{lidar::{LidarD500Batch, LidarD500Packet}, parser::SensorsUdpHeader}};
 
 pub mod parser;
+pub mod lidar;
+
+pub const RAD_TO_DEG : f64 = 180.0 / PI;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[repr(u8)]
@@ -40,11 +43,19 @@ pub enum SensorType {
     Esp       = 27, 
     Pong      = 28,
     Motor     = 29,
-    Break     = 30,
+    Brake     = 30,
     Bmp280    = 31,
     Ds18b20   = 32,
+    Bno085Rot     = 33,
+    Bno085Accel    = 34,
+    Bno085Stability = 35,
+    Bno085LinearAccel = 36,
+    LidarD500 = 37,
+    BatAdc = 38,
+    Acs758 = 39,
+    Bz181 = 40,
 
-    Max       = 33,
+    Max       = 41,
 }
 
 impl TryFrom<u8> for SensorType {
@@ -82,16 +93,25 @@ impl TryFrom<u8> for SensorType {
             27 => Ok(SensorType::Esp),
             28 => Ok(SensorType::Pong),
             29 => Ok(SensorType::Motor),
-            30 => Ok(SensorType::Break),
+            30 => Ok(SensorType::Brake),
             31 => Ok(SensorType::Bmp280),
             32 => Ok(SensorType::Ds18b20),
-            33 => Ok(SensorType::Max),
+            33 => Ok(SensorType::Bno085Rot),
+            34 => Ok(SensorType::Bno085Accel),
+            35 => Ok(SensorType::Bno085Stability),
+            36 => Ok(SensorType::Bno085LinearAccel),
+            37 => Ok(SensorType::LidarD500),
+            38 => Ok(SensorType::BatAdc),
+            39 => Ok(SensorType::Acs758),
+            40 => Ok(SensorType::Bz181),
+            41 => Ok(SensorType::Max),
             _ => Err("Sensor code not valid"),
         }
     }
 }
 
 const TIRE_DIAMETER : u8 = 65; //mm
+const COUNT_PULSES_PER_REV : u8 = 12;
 
 const INA_SHUNT_RESISTANCE: f64 = 0.1; //ohms on INA226
 //on datasheet, shunt voltage input range [-81.92 .. 81.92]mV
@@ -148,7 +168,7 @@ pub const INA_SIZE: usize = 8;
 //ina226
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PacketIna {
-    pub current: u16,
+    pub current: i16,
     pub power: u16,
     pub bus_voltage: i16,
     pub shunt_voltage: i16,
@@ -308,9 +328,9 @@ pub struct PacketKy033 {
 
 impl PacketKy033 {
     pub fn get_speed_m_s(&self) -> f64 {
-        let dt = 0.1; //100ms period
+        let dt = 0.02; //20ms period
         let diam = TIRE_DIAMETER as f64;
-        let nb_rounds = self.pulses as f64 / 12.0;
+        let nb_rounds = self.pulses as f64 / COUNT_PULSES_PER_REV as f64;
         //println!("{}", self.pulses);
         nb_rounds / dt * PI * diam * 1.0e-3 //1 revolution per dt
     }
@@ -322,7 +342,7 @@ impl PacketKy033 {
 
     pub fn get_distance_m(&self) -> f64 {
         let diam = TIRE_DIAMETER as f64;
-        let nb_rounds = self.pulses as f64 / 12.0;
+        let nb_rounds = self.pulses as f64 / COUNT_PULSES_PER_REV as f64;
         nb_rounds * PI * diam * 1.0e-3
     }
 
@@ -356,10 +376,19 @@ pub enum TelemetryEnum {
     KY033(PacketKy033),
     PONG(PacketPong),
     MOTOR(PacketMotor),
-    BREAK(BreakPacket),
+    BRAKE(BrakePacket),
     BMP(PacketBmp),
     DHT11(PacketDht11),
     PHOTOSENSOR(PacketPhotosensor),
+    VL53L1X(PacketVl53l1x),
+    BNO085ACCEL(PacketBno085Accel),
+    BNO085LINEARACCEL(PacketBno085LinearAccel),
+    BNO085ROTATION(PacketBno085Rotation),
+    BNO085CLASSIF(PacketBno085Classif),
+    LIDARD500(LidarD500Batch),
+    BATADC(PacketBatAdc),
+    ACS758(PacketAcs758),
+    BZ181(PacketBz181),
 }
 
 //Buffer from ESP
@@ -475,18 +504,20 @@ pub struct EspPacket {
     pub free_dram_block: u32,
     pub free_psram: u32,
     pub free_psram_block: u32,
-    pub angle: u8,
+    pub angle: i16,
     pub motor: i16,
     pub nb_packets: u32,
     pub core0: f32,
     pub core1: f32,
-    pub drive_mode: DriveMode,
+    pub udp_drop: u32,
+    pub ip_drop: u32,
+    pub udp_chkerr: u32,  
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
-pub struct BreakPacket {
-    pub breaking: bool,
-    pub timeout_breaking: u32,
+pub struct BrakePacket {
+    pub braking: bool,
+    pub timeout_braking: u32,
     pub pulses_100ms: u16,
     pub pulses_20ms: u16,
     pub current_motor: i16,
@@ -504,3 +535,409 @@ pub struct PacketDht11 {
     pub temperature: u8,
 }
 
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct PacketVl53l1x {
+    pub distance: u16,
+    pub ambient: u16,
+    pub sig_per_spad: u16,
+    pub num_spad: u16,
+    pub status: u8,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub enum Bno085Status {
+    #[default]
+    Unreliable = 0,
+    AccuracyLow = 1,
+    AccuracyMedium = 2,
+    AccuracyHigh = 3,
+}
+
+impl Bno085Status {
+    pub fn from_u8(val: u8) -> Self {
+        match val {
+            0 => Self::Unreliable,
+            1 => Self::AccuracyLow,
+            2 => Self::AccuracyMedium,
+            3 => Self::AccuracyHigh,
+            _ => Self::Unreliable,
+        }
+    }
+
+    pub fn to_str(self) -> String {
+        match self {
+            Bno085Status::Unreliable => "Unreliable".to_string(),
+            Bno085Status::AccuracyLow => "Low".to_string(),
+            Bno085Status::AccuracyMedium => "Medium".to_string(),
+            Bno085Status::AccuracyHigh => "High".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct PacketBno085Accel {
+    pub status: Bno085Status,
+    pub timestamp: u32,
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+}
+
+impl PacketBno085Accel {
+    pub fn get_accel_g(&self) -> (f64, f64, f64) {
+        (self.x as f64/ 9.81, self.y as f64 / 9.81, self.z as f64 / 9.81)
+    }
+
+    pub fn get_time_seconds(&self) -> f64 {
+        self.timestamp as f64 * 1e-6
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct PacketBno085LinearAccel {
+    pub status: Bno085Status,
+    pub timestamp: u32,
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+}
+
+impl PacketBno085LinearAccel {
+    pub fn get_accel_g(&self) -> (f64, f64, f64) {
+        (self.x as f64/ 9.81, self.y as f64 / 9.81, self.z as f64 / 9.81)
+    }
+
+    pub fn get_time_seconds(&self) -> f64 {
+        self.timestamp as f64 * 1e-6
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub enum Bno085Classif {
+    #[default]
+    Unknown = 0,
+    OnTable = 1,
+    Stationary = 2,
+    Stable = 3,
+    Motion = 4,
+}
+
+impl Bno085Classif {
+    pub fn from_u8(val: u8) -> Self {
+        match val {
+            0 => Self::Unknown,
+            1 => Self::OnTable,
+            2 => Self::Stationary,
+            3 => Self::Stable,
+            4 => Self::Motion,
+            _ => Self::Unknown,
+        }
+    }
+
+    pub fn to_str(&self) -> String {
+        match self {
+            Bno085Classif::Unknown => "Unknown".to_string(),
+            Bno085Classif::Motion => "Motion".to_string(),
+            Bno085Classif::OnTable => "On Table".to_string(),
+            Bno085Classif::Stable => "Stable".to_string(),
+            Bno085Classif::Stationary => "Stationary".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct PacketBno085Classif {
+    pub status: Bno085Status,
+    pub classif: Bno085Classif,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct PacketBno085Rotation {
+    pub status: Bno085Status,
+    pub accuracy: f32,
+    pub roll: f32,
+    pub pitch: f32,
+    pub yaw: f32,
+}
+
+impl PacketBno085Rotation {
+    pub fn get_angles_deg(&self) -> (f64, f64, f64) {
+        (self.roll as f64 * RAD_TO_DEG, self.pitch as f64 * RAD_TO_DEG, self.yaw as f64 * RAD_TO_DEG)
+    }
+
+    pub fn get_angles_rad(&self) -> (f32, f32, f32) {
+        (self.roll, self.pitch, self.yaw)
+    }
+
+    pub fn get_accuracy_deg(&self) -> f64 {
+        self.accuracy as f64 * RAD_TO_DEG
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct PacketBatAdc {
+    pub adc_voltage: f32,
+}
+
+impl PacketBatAdc {
+    
+    pub fn from_bytes(buf: &[u8]) -> Result<Self, AppError> {
+        Ok(Self {
+            adc_voltage: f32::from_le_bytes(buf[0 .. 4].try_into()?),
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct PacketAcs758 {
+    pub adc_current: f32,
+}
+
+impl PacketAcs758 {
+    
+    pub fn from_bytes(buf: &[u8]) -> Result<Self, AppError> {
+        Ok(Self {
+            adc_current: f32::from_le_bytes(buf[0 .. 4].try_into()?),
+        })
+    }
+}
+
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SensorKey {
+    HCSR04_0,
+    HCSR04_1,
+    ESP,
+    MPU,
+    KY003,
+    INA226,
+    Temperature,
+    RfidRc522,
+    Rcwl0515,
+    Ky033,
+    Pong,
+    Motor,
+    Brake,
+    BMP,
+    DHT11,
+    Photosensor,
+    VL53L1X,
+    Bno085Accel,
+    Bno085LinearAccel,
+    Bno085Rotation,
+    Bno085Classif,
+    LidarD500Raw,
+    BatAdc,
+    ACS758,
+    BZ181,
+    Last
+}
+
+impl From<&TelemetryEnum> for SensorKey {
+    fn from(packet: &TelemetryEnum) -> Self {
+        match packet {
+            TelemetryEnum::HCSR04(packet) => {
+                if packet.hc_id == 0 {
+                    SensorKey::HCSR04_0
+                } else {
+                    SensorKey::HCSR04_1
+                }
+            },
+            TelemetryEnum::ESP(_) => SensorKey::ESP,
+            TelemetryEnum::MPU(_) => SensorKey::MPU,
+            TelemetryEnum::KY003(_) => SensorKey::KY003,
+            TelemetryEnum::INA226(_) => SensorKey::INA226,
+            TelemetryEnum::TEMPERATURE(_) => SensorKey::Temperature,
+            TelemetryEnum::RFIDRC522(_) => SensorKey::RfidRc522,
+            TelemetryEnum::RCWL0515(_) => SensorKey::Rcwl0515,
+            TelemetryEnum::KY033(_) => SensorKey::Ky033,
+            TelemetryEnum::PONG(_) => SensorKey::Pong,
+            TelemetryEnum::MOTOR(_) => SensorKey::Motor,
+            TelemetryEnum::BRAKE(_) => SensorKey::Brake,
+            TelemetryEnum::BMP(_) => SensorKey::BMP,
+            TelemetryEnum::DHT11(_) => SensorKey::DHT11,
+            TelemetryEnum::PHOTOSENSOR(_) => SensorKey::Photosensor,
+            TelemetryEnum::VL53L1X(_) => SensorKey::VL53L1X,
+            TelemetryEnum::BNO085ACCEL(_) => SensorKey::Bno085Accel,
+            TelemetryEnum::BNO085LINEARACCEL(_) => SensorKey::Bno085LinearAccel,
+            TelemetryEnum::BNO085ROTATION(_) => SensorKey::Bno085Rotation,
+            TelemetryEnum::BNO085CLASSIF(_) => SensorKey::Bno085Classif,
+            TelemetryEnum::LIDARD500(_) => SensorKey::LidarD500Raw,
+            TelemetryEnum::BATADC(_) => SensorKey::BatAdc,
+            TelemetryEnum::ACS758(_) => SensorKey::ACS758,
+            TelemetryEnum::BZ181(_) => SensorKey::BZ181,
+        }
+    }
+}
+
+impl SensorKey {
+    pub const COUNT: usize = SensorKey::Last as usize;
+
+    pub fn index(self) -> usize {
+        self as usize
+    }
+}
+
+pub const MAX_ACTIVE_SATS: usize = 16;
+pub const MAX_SATELLITES_VIEW: usize = 48;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(u8)]
+pub enum GnssConstellation {
+    Unknown = 0,
+    Gps = 1,
+    Glonass = 2,
+    Galileo = 3,
+    Beidou = 4,
+    Qzss = 5,
+}
+
+impl GnssConstellation {
+    pub fn from_u8(val: u8) -> Self {
+        match val {
+            1 => Self::Gps,
+            2 => Self::Glonass,
+            3 => Self::Galileo,
+            4 => Self::Beidou,
+            5 => Self::Qzss,
+            _ => Self::Unknown,
+        }
+    }
+
+    pub fn to_str(&self) -> &str {
+        match self {
+            GnssConstellation::Gps => "GPS",
+            GnssConstellation::Glonass => "GLONASS",
+            GnssConstellation::Galileo => "Galileo",
+            GnssConstellation::Beidou => "Beidou",
+            GnssConstellation::Qzss => "QZSS",
+            _ => "Unknown",
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+pub struct GpsSatellite {
+    pub azimuth: u16,
+    pub prn: u8,
+    pub elevation: u8,
+    pub snr: u8,
+    pub constellation: GnssConstellation,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PacketBz181 {
+    pub utc_time: String,   // depuis [u8; 12], tronqué au premier \0
+    pub utc_date: String,   // depuis [u8; 8]
+    pub status: u8,         // 'A' ou 'V' en ASCII, garde brut
+    pub mode_indicator: u8, // 'A'/'D'/'E'/'M'/'S'/'N', ou 0 si absent
+    pub latitude: f64,
+    pub longitude: f64,
+    pub speed_knots: f32,
+    pub speed_kmh: f32,
+    pub course_over_ground: f32,
+
+    pub fix_quality: u8,
+    pub satellites_used: u8,
+    pub hdop: f32,
+    pub altitude_m: f32,
+    pub geoid_height_m: f32,
+
+    pub fix_mode: u8,
+    pub fix_type: u8,
+    pub pdop: f32,
+    pub vdop: f32,
+    pub active_sats_ids: [u8; MAX_ACTIVE_SATS],
+    pub active_sats_count: u8,
+
+    #[serde(with = "serde_arrays")]
+    pub sats_in_view: [GpsSatellite; MAX_SATELLITES_VIEW],
+    pub total_sats_in_view: u16,
+
+    pub last_rmc_ms: u32,
+    pub last_gga_ms: u32,
+    pub last_gsa_ms: u32,
+    pub last_gsv_ms: u32,
+}
+
+impl PacketBz181 {
+    pub fn from_bytes(buf: &[u8]) -> Result<Self, AppError> {
+        let mut pos = 0usize;
+
+        // --- utc_time[12] ---
+        let utc_time_raw = &buf[pos..pos + 12];
+        let utc_time = String::from_utf8_lossy(utc_time_raw)
+            .trim_end_matches('\0')
+            .to_string();
+        pos += 12;
+
+        // --- utc_date[8] ---
+        let utc_date_raw = &buf[pos..pos + 8];
+        let utc_date = String::from_utf8_lossy(utc_date_raw)
+            .trim_end_matches('\0')
+            .to_string();
+        pos += 8;
+
+        let status = buf[pos]; pos += 1;
+        let mode_indicator = buf[pos]; pos += 1;
+
+        let latitude = f64::from_le_bytes(buf[pos..pos + 8].try_into().unwrap()); pos += 8;
+        let longitude = f64::from_le_bytes(buf[pos..pos + 8].try_into().unwrap()); pos += 8;
+
+        let speed_knots = f32::from_le_bytes(buf[pos..pos + 4].try_into().unwrap()); pos += 4;
+        let speed_kmh = f32::from_le_bytes(buf[pos..pos + 4].try_into().unwrap()); pos += 4;
+        let course_over_ground = f32::from_le_bytes(buf[pos..pos + 4].try_into().unwrap()); pos += 4;
+
+        let fix_quality = buf[pos]; pos += 1;
+        let satellites_used = buf[pos]; pos += 1;
+
+        let hdop = f32::from_le_bytes(buf[pos..pos + 4].try_into().unwrap()); pos += 4;
+        let altitude_m = f32::from_le_bytes(buf[pos..pos + 4].try_into().unwrap()); pos += 4;
+        let geoid_height_m = f32::from_le_bytes(buf[pos..pos + 4].try_into().unwrap()); pos += 4;
+
+        let fix_mode = buf[pos]; pos += 1;
+        let fix_type = buf[pos]; pos += 1;
+
+        let pdop = f32::from_le_bytes(buf[pos..pos + 4].try_into().unwrap()); pos += 4;
+        let vdop = f32::from_le_bytes(buf[pos..pos + 4].try_into().unwrap()); pos += 4;
+
+        let mut active_sats_ids = [0u8; MAX_ACTIVE_SATS];
+        active_sats_ids.copy_from_slice(&buf[pos..pos + MAX_ACTIVE_SATS]);
+        pos += MAX_ACTIVE_SATS;
+
+        let active_sats_count = buf[pos]; pos += 1;
+
+        let mut sats_in_view = [GpsSatellite {
+            azimuth: 0, prn: 0, elevation: 0, snr: 0,
+            constellation: GnssConstellation::Unknown,
+        }; MAX_SATELLITES_VIEW];
+
+        for sat in sats_in_view.iter_mut() {
+            let azimuth = u16::from_le_bytes(buf[pos..pos + 2].try_into().unwrap());
+            pos += 2;
+            let prn = buf[pos]; pos += 1;
+            let elevation = buf[pos]; pos += 1;
+            let snr = buf[pos]; pos += 1;
+            let constellation = GnssConstellation::from_u8(buf[pos]); pos += 1;
+
+            *sat = GpsSatellite { azimuth, prn, elevation, snr, constellation };
+        }
+
+        let total_sats_in_view = u16::from_le_bytes(buf[pos..pos + 2].try_into().unwrap()); pos += 2;
+
+        let last_rmc_ms = u32::from_le_bytes(buf[pos..pos + 4].try_into().unwrap()); pos += 4;
+        let last_gga_ms = u32::from_le_bytes(buf[pos..pos + 4].try_into().unwrap()); pos += 4;
+        let last_gsa_ms = u32::from_le_bytes(buf[pos..pos + 4].try_into().unwrap()); pos += 4;
+        let last_gsv_ms = u32::from_le_bytes(buf[pos..pos + 4].try_into().unwrap());
+        // pos += 4; -- dernière lecture, pas besoin d'avancer pos davantage
+
+        Ok(Self {
+            utc_time, utc_date, status, mode_indicator,
+            latitude, longitude, speed_knots, speed_kmh, course_over_ground,
+            fix_quality, satellites_used, hdop, altitude_m, geoid_height_m,
+            fix_mode, fix_type, pdop, vdop, active_sats_ids, active_sats_count,
+            sats_in_view, total_sats_in_view,
+            last_rmc_ms, last_gga_ms, last_gsa_ms, last_gsv_ms,
+        })
+    }
+}

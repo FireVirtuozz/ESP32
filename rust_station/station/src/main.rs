@@ -2,8 +2,10 @@ use station::{config::AppConfig, error::AppError, run_app};
 
 fn main() -> Result<(), AppError> {
     env_logger::init();
+    let mut options = eframe::NativeOptions::default();
+    options.vsync = false;
 
-    run_app(eframe::NativeOptions::default())
+    run_app(options)
 }
 
 #[cfg(test)]

@@ -1,13 +1,33 @@
 use std::collections::HashMap;
 
-use crate::error::AppError;
+use serde::{Deserialize, Serialize};
+
+use crate::{camera::CameraConfig, error::AppError, gui::screens::tuning::TuningParams, sensors::parser::SensorsUdpHeader};
 
 pub mod udp_logs;
 pub mod udp_dump;
 pub mod udp_sensors;
 pub mod udp_video;
+pub mod udp_tailscale;
+pub mod udp_cfg;
 
-const BUFFER_MAX_UDP_SIZE: usize = 1400;
+pub enum ConfigCommandType {
+    Tuning = 1,
+    Camera = 2,
+    Ota = 3,
+}
+
+impl ConfigCommandType {
+    pub fn to_u8(&self) -> u8 {
+        match self {
+            Self::Tuning => 1,
+            Self::Camera => 2,
+            Self::Ota => 3,
+        }
+    }
+}
+
+pub const BUFFER_MAX_UDP_SIZE: usize = 1400;
 pub const HEADER_FRAGMENT_SIZE: usize = 4 + 1 + 1 + 1;
 
 pub struct HeaderUdpFragment {

@@ -4,11 +4,11 @@ use std::{error::Error, time::Instant};
 use eframe::Frame;
 use serde::{Deserialize, Serialize};
 
-use crate::{error::AppError, gui::screens::tuning::CurveType, sensors::{BreakPacket, DriveMode, EspPacket, EspResetReason, PacketBmp, PacketDht11, PacketImu, PacketMotor, PacketPhotosensor, PacketPong, PacketTemperature, PacketUltrasonic, SensorType}};
+use crate::{error::AppError, gui::screens::tuning::CurveType, sensors::{Bno085Classif, Bno085Status, BrakePacket, DriveMode, EspPacket, EspResetReason, PacketBmp, PacketBno085Accel, PacketBno085Classif, PacketBno085LinearAccel, PacketBno085Rotation, PacketDht11, PacketImu, PacketMotor, PacketPhotosensor, PacketPong, PacketTemperature, PacketUltrasonic, PacketVl53l1x, SensorType}};
 
 pub fn parse_buffer_ina(buffer : &[u8]) -> Result<super::PacketIna, AppError> {
     let bus_voltage       = i16::from_le_bytes(buffer[0..2].try_into()?);
-    let current         = u16::from_le_bytes(buffer[2..4].try_into()?);
+    let current         = i16::from_le_bytes(buffer[2..4].try_into()?);
     let power   = u16::from_le_bytes(buffer[4..6].try_into()?);
     let shunt_voltage = i16::from_le_bytes(buffer[6..8].try_into()?);
 
@@ -115,12 +115,14 @@ pub fn parse_buffer_esp(buffer: &[u8]) -> Result<EspPacket, AppError> {
     let free_dram_block  = u32::from_le_bytes(buffer[10 .. 14].try_into()?);
     let free_psram       = u32::from_le_bytes(buffer[14 .. 18].try_into()?);
     let free_psram_block = u32::from_le_bytes(buffer[18 .. 22].try_into()?);
-    let angle            = buffer[22];
-    let motor            = i16::from_le_bytes(buffer[23 .. 25].try_into()?);
-    let nb_packets       = u32::from_le_bytes(buffer[25 .. 29].try_into()?);
-    let core0            = f32::from_le_bytes(buffer[29 .. 33].try_into()?);
-    let core1            = f32::from_le_bytes(buffer[33 .. 37].try_into()?);
-    let drive_mode = DriveMode::from_u8(buffer[37]);
+    let angle            = i16::from_le_bytes(buffer[22 .. 24].try_into()?);
+    let motor            = i16::from_le_bytes(buffer[24 .. 26].try_into()?);
+    let nb_packets       = u32::from_le_bytes(buffer[26 .. 30].try_into()?);
+    let core0            = f32::from_le_bytes(buffer[30 .. 34].try_into()?);
+    let core1            = f32::from_le_bytes(buffer[34 .. 38].try_into()?);
+    let udp_drop         = u32::from_le_bytes(buffer[38 .. 42].try_into()?);
+    let ip_drop          = u32::from_le_bytes(buffer[42 .. 46].try_into()?);
+    let udp_chkerr       = u32::from_le_bytes(buffer[46 .. 50].try_into()?);
 
     Ok(EspPacket {
         esp_deg,
@@ -135,7 +137,9 @@ pub fn parse_buffer_esp(buffer: &[u8]) -> Result<EspPacket, AppError> {
         nb_packets,
         core0,
         core1,
-        drive_mode,
+        udp_drop,
+        ip_drop,
+        udp_chkerr,
     })
 }
 
@@ -166,19 +170,19 @@ pub fn parse_buffer_motor(buf: &[u8]) -> Result<PacketMotor, AppError> {
     })
 }
 
-pub fn parse_buffer_break(buf: &[u8]) -> Result<BreakPacket, AppError> {
-    let breaking = match buf[0] {1 => true, 0 => false, _ => false};
-    let timeout_breaking = u32::from_le_bytes(buf[1 .. 5].try_into()?);
+pub fn parse_buffer_brake(buf: &[u8]) -> Result<BrakePacket, AppError> {
+    let braking = match buf[0] {1 => true, 0 => false, _ => false};
+    let timeout_braking = u32::from_le_bytes(buf[1 .. 5].try_into()?);
     let pulses_100ms = u16::from_le_bytes(buf[5 .. 7].try_into()?);
     let pulses_20ms = u16::from_le_bytes(buf[7 .. 9].try_into()?);
     let current_motor = i16::from_le_bytes(buf[9 .. 11].try_into()?);
 
-    Ok(BreakPacket {
-        breaking,
+    Ok(BrakePacket {
+        braking,
         current_motor,
         pulses_100ms,
         pulses_20ms,
-        timeout_breaking,
+        timeout_braking,
     })
 }
 
@@ -197,5 +201,79 @@ pub fn parse_buffer_photosensor(buf: &[u8]) -> Result<PacketPhotosensor, AppErro
 
     Ok(PacketPhotosensor {
         raw_value,
+    })
+}
+
+pub fn parse_buffer_vl53l1x(buf: &[u8]) -> Result<PacketVl53l1x, AppError> {
+    let distance = u16::from_le_bytes(buf[0 .. 2].try_into()?);
+    let ambient = u16::from_le_bytes(buf[2 .. 4].try_into()?);
+    let sig_per_spad = u16::from_le_bytes(buf[4 .. 6].try_into()?);
+    let num_spad = u16::from_le_bytes(buf[6 .. 8].try_into()?);
+    let status = buf[8];
+
+    Ok(PacketVl53l1x {
+        distance,
+        ambient,
+        sig_per_spad,
+        num_spad,
+        status,
+    })
+}
+
+pub fn parse_buffer_bno085_accel(buf: &[u8]) -> Result<PacketBno085Accel, AppError> {
+    let status = Bno085Status::from_u8(buf[0]);
+    let timestamp = u32::from_le_bytes(buf[1 .. 5].try_into()?);
+    let x = f32::from_le_bytes(buf[5 .. 9].try_into()?);
+    let y = f32::from_le_bytes(buf[9 .. 13].try_into()?);
+    let z = f32::from_le_bytes(buf[13 .. 17].try_into()?);
+
+    Ok(PacketBno085Accel {
+        status,
+        timestamp,
+        x,
+        y,
+        z,
+    })
+}
+
+pub fn parse_buffer_bno085_linear_accel(buf: &[u8]) -> Result<PacketBno085LinearAccel, AppError> {
+    let status = Bno085Status::from_u8(buf[0]);
+    let timestamp = u32::from_le_bytes(buf[1 .. 5].try_into()?);
+    let x = f32::from_le_bytes(buf[5 .. 9].try_into()?);
+    let y = f32::from_le_bytes(buf[9 .. 13].try_into()?);
+    let z = f32::from_le_bytes(buf[13 .. 17].try_into()?);
+
+    Ok(PacketBno085LinearAccel {
+        status,
+        timestamp,
+        x,
+        y,
+        z,
+    })
+}
+
+pub fn parse_buffer_bno085_classif(buf: &[u8]) -> Result<PacketBno085Classif, AppError> {
+    let status = Bno085Status::from_u8(buf[0]);
+    let classif = Bno085Classif::from_u8(buf[1]);
+
+    Ok(PacketBno085Classif {
+        status,
+        classif,
+    })
+}
+
+pub fn parse_buffer_bno085_rotation(buf: &[u8]) -> Result<PacketBno085Rotation, AppError> {
+    let status = Bno085Status::from_u8(buf[0]);
+    let accuracy = f32::from_le_bytes(buf[1 .. 5].try_into()?);
+    let pitch = f32::from_le_bytes(buf[5 .. 9].try_into()?);
+    let roll = f32::from_le_bytes(buf[9 .. 13].try_into()?);
+    let yaw = f32::from_le_bytes(buf[13 .. 17].try_into()?);
+
+    Ok(PacketBno085Rotation {
+        status,
+        accuracy,
+        pitch,
+        roll,
+        yaw,
     })
 }

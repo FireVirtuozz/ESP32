@@ -1,70 +1,71 @@
-use std::{net::UdpSocket, sync::{Arc, atomic::{AtomicBool, Ordering}, mpsc::Sender}, thread, time::Instant};
+use std::{net::UdpSocket, println, sync::{Arc, atomic::{AtomicBool, Ordering}, mpsc::Sender}, thread, time::Instant};
 
+use crossbeam_channel::Sender as CrossbeamSender;
 use gilrs::{Gilrs, Event, Button, Axis};
 use log::error;
 
-use crate::error::AppError;
+use crate::{control::{Bounded, ControlType, DriveCommand, DriveMode, DriveModeCommand, MiscellaneousCommand, ModeState, SafetyCommand}, error::AppError};
 
 const UDP_FRAME_SIZE: usize = 13;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Default)]
 pub struct ControllerPacket {
-    pub left_x: i8,
-    pub left_y: i8,
-    pub right_x: i8,
-    pub right_y: i8,
-    pub left_trig: i8,
-    pub right_trig: i8,
-    pub buttons_mask: u8,
-}
-
-impl Default for ControllerPacket{
-    fn default() -> Self {
-        Self {
-            left_x: 0,
-            left_y: 0,
-            right_x: 0,
-            right_y: 0,
-            left_trig: 0,
-            right_trig: 0,
-            buttons_mask: 0,
-        }
-    }
+    pub left_x: f32,
+    pub left_y: f32,
+    pub right_x: f32,
+    pub right_y: f32,
+    pub left_trig: f32,
+    pub right_trig: f32,
+    pub right_arrow: bool,
+    pub left_arrow: bool,
+    pub up_arrow: bool,
+    pub down_arrow: bool,
+    pub right_button: bool,
+    pub left_button: bool,
+    pub up_button: bool,
+    pub down_button: bool,
 }
 
 impl ControllerPacket {
-    pub fn to_udp_frame(&self, start_instant: Instant) -> [u8; UDP_FRAME_SIZE] {
-        let mut frame: [u8; UDP_FRAME_SIZE] = [0; UDP_FRAME_SIZE];
-        let timestamp = start_instant.elapsed().as_millis() as u32;
-        frame[0] = 0;
-        frame[1] = 7;
-        frame[2] = self.left_x as u8;
-        frame[3] = self.left_y as u8;
-        frame[4] = self.right_x as u8;
-        frame[5] = self.right_y as u8;
-        frame[6] = (self.left_trig as i16 * 2 - 100) as u8;
-        frame[7] = (self.right_trig as i16 * 2 - 100) as u8;
-        frame[8] = self.buttons_mask;
-        frame[9 .. 13].copy_from_slice(&timestamp.to_le_bytes());
-        frame
+    pub fn to_drive_command(&self, mode_state: DriveMode) -> DriveCommand {
+        let throttle = match (self.right_trig > 0.01, self.left_trig > 0.01) {
+            (true, true) => 0i16,
+            (true, false) => (self.right_trig * 1.20 * mode_state.mode_factor() * 1000.0) as i16,
+            (false, true) => (self.left_trig * mode_state.mode_factor() * -1000.0) as i16,
+            (false, false) => 0i16,
+        };
+        let steering = (self.left_x * 1000.0) as i16;
+        DriveCommand { throttle: Bounded::new(throttle), steering: Bounded::new(steering) }
     }
 }
 
-pub fn init_controller(tx: Sender<ControllerPacket>, controller_connected: Arc<AtomicBool>, start_instant: Instant)
- -> thread::JoinHandle<()> {
+pub fn init_controller(
+    tx: Sender<ControllerPacket>,
+    tx_control: CrossbeamSender<ControlType>, 
+    tx_safety: CrossbeamSender<SafetyCommand>, 
+    tx_misc: CrossbeamSender<MiscellaneousCommand>, 
+    controller_connected: Arc<AtomicBool>, 
+    active_mode: Arc<ModeState>,
+) -> thread::JoinHandle<()> {
     let handle = thread::spawn(move || {
-        if let Err(e) = controller_loop(tx, controller_connected, start_instant) {
+        if let Err(e) = controller_loop(tx, tx_control, tx_safety, 
+            tx_misc, controller_connected, active_mode) {
             error!("UDP error ctrl: {:?}", e);
         }
     });
     handle
 }
 
-fn controller_loop(tx: Sender<ControllerPacket>, controller_connected: Arc<AtomicBool>, start_instant: Instant) 
--> Result<(), AppError> {
+fn controller_loop(
+    tx: Sender<ControllerPacket>,
+    tx_control: CrossbeamSender<ControlType>,
+    tx_safety: CrossbeamSender<SafetyCommand>, 
+    tx_misc: CrossbeamSender<MiscellaneousCommand>, 
+    controller_connected: Arc<AtomicBool>, 
+    active_mode: Arc<ModeState>,
+) -> Result<(), AppError> {
     let mut gilrs = Gilrs::new().unwrap();
     let mut controller_pck = ControllerPacket::default();
-    let socket = UdpSocket::bind("0.0.0.0:0")?;
 
     for (_id, gamepad) in gilrs.gamepads() {
         if gamepad.is_connected() {
@@ -73,96 +74,206 @@ fn controller_loop(tx: Sender<ControllerPacket>, controller_connected: Arc<Atomi
         }
     }
 
+    let mut last_up_arrow = false;
+    let mut last_down_arrow = false;
+    let mut last_right_arrow = false;
+    let mut last_left_arrow = false;
+
+    let mut last_left_button = false;
+    let mut last_down_button = false;
+
+    let mut hc_block_activated = false;
+    let mut forced_stop = false;
+    
+    let mut misc_cmd = MiscellaneousCommand::default();
+
     loop {
+
+        if !controller_connected.load(Ordering::Relaxed) {
+            // On consomme les événements de déconnexion/connexion en arrière-plan sans bloquer
+            while let Some(Event { event, .. }) = gilrs.next_event() {
+                match event {
+                    gilrs::EventType::Connected => {
+                        controller_connected.store(true, Ordering::Relaxed);
+                    }
+                _ => {} // tout le reste, ignoré tant que déconnecté
+                }
+            }
+            
+            thread::sleep(std::time::Duration::from_millis(500));
+            continue;
+        }
+        
         while let Some(Event { id, event, .. }) = gilrs.next_event() {
             match event {
                 gilrs::EventType::ButtonPressed(Button::South, _) => {
-                    controller_pck.buttons_mask |= 0b00000001;
+                    controller_pck.down_button = true;
                 },
                 gilrs::EventType::ButtonPressed(Button::East, _) => {
-                    controller_pck.buttons_mask |= 0b00000010;
+                    controller_pck.right_button = true;
                 },
                 gilrs::EventType::ButtonPressed(Button::West, _) => {
-                    controller_pck.buttons_mask |= 0b00000100;
+                    controller_pck.left_button = true;
                 },
                 gilrs::EventType::ButtonPressed(Button::North, _) => {
-                    controller_pck.buttons_mask |= 0b00001000;
+                    controller_pck.up_button = true;
                 },
                 gilrs::EventType::ButtonPressed(Button::DPadDown, _) => {
-                    controller_pck.buttons_mask |= 0b00010000;
+                    controller_pck.down_arrow = true;
                 },
                 gilrs::EventType::ButtonPressed(Button::DPadLeft, _) => {
-                    controller_pck.buttons_mask |= 0b00100000;
+                    controller_pck.left_arrow = true;
                 },
                 gilrs::EventType::ButtonPressed(Button::DPadRight, _) => {
-                    controller_pck.buttons_mask |= 0b01000000;
+                    controller_pck.right_arrow = true;
                 },
                 gilrs::EventType::ButtonPressed(Button::DPadUp, _) => {
-                    controller_pck.buttons_mask |= 0b10000000;
+                    controller_pck.up_arrow = true;
                 },
                 gilrs::EventType::ButtonReleased(Button::South, _) => {
-                    controller_pck.buttons_mask &= !0b00000001;
+                    controller_pck.down_button = false;
                 },
                 gilrs::EventType::ButtonReleased(Button::East, _) => {
-                    controller_pck.buttons_mask &= !0b00000010;
+                    controller_pck.right_button = false;
                 },
                 gilrs::EventType::ButtonReleased(Button::West, _) => {
-                    controller_pck.buttons_mask &= !0b00000100;
+                    controller_pck.left_button = false;
                 },
                 gilrs::EventType::ButtonReleased(Button::North, _) => {
-                    controller_pck.buttons_mask &= !0b00001000;
+                    controller_pck.up_button = false;
                 },
                 gilrs::EventType::ButtonReleased(Button::DPadDown, _) => {
-                    controller_pck.buttons_mask &= !0b00010000;
+                    controller_pck.down_arrow = false;
                 },
                 gilrs::EventType::ButtonReleased(Button::DPadLeft, _) => {
-                    controller_pck.buttons_mask &= !0b00100000;
+                    controller_pck.left_arrow = false;
                 },
                 gilrs::EventType::ButtonReleased(Button::DPadRight, _) => {
-                    controller_pck.buttons_mask &= !0b01000000;
+                    controller_pck.right_arrow = false;
                 },
                 gilrs::EventType::ButtonReleased(Button::DPadUp, _) => {
-                    controller_pck.buttons_mask &= !0b10000000;
+                    controller_pck.up_arrow = false;
                 },
                 gilrs::EventType::AxisChanged(Axis::LeftStickX, val, _) => {
-                    let val = val * 100.0;
-                    controller_pck.left_x = val as i8;
+                    controller_pck.left_x = val;
                 },
                 gilrs::EventType::AxisChanged(Axis::LeftStickY, val, _) => {
-                    let val = val * -100.0;
-                    controller_pck.left_y = val as i8;
+                    controller_pck.left_y = -val;
                 },
                 gilrs::EventType::AxisChanged(Axis::RightStickX, val, _) => {
-                    let val = val * 100.0;
-                    controller_pck.right_x = val as i8;
+                    controller_pck.right_x = val;
                 },
                 gilrs::EventType::AxisChanged(Axis::RightStickY, val, _) => {
-                    let val = val * -100.0;
-                    controller_pck.right_y = val as i8;
+                    controller_pck.right_y = -val;
                 },
                 gilrs::EventType::ButtonChanged(Button::LeftTrigger2, val, _) => {
-                    let val = val * 100.0;
-                    controller_pck.left_trig = val as i8;
+                    controller_pck.left_trig = val;
                 },
                 gilrs::EventType::ButtonChanged(Button::RightTrigger2, val, _) => {
-                    let val = val * 100.0 * 1.3;
-                    let val = if val > 100.0 {100.0} else {val};
-                    //println!("{}", val);
-                    controller_pck.right_trig = val as i8;
+                    controller_pck.right_trig = val;
                 },
                 gilrs::EventType::Connected => {
                     controller_connected.store(true, Ordering::Relaxed);
                 },
                 gilrs::EventType::Disconnected => {
                     controller_connected.store(false, Ordering::Relaxed);
+                    controller_pck = ControllerPacket::default();
+                    forced_stop = true;
+                    hc_block_activated = true;
+                    if let Err(e) = tx_safety.send(SafetyCommand { hc_block: hc_block_activated, brake_stop: forced_stop }) {
+                        error!("failed to send safety command on disconnect {e}");
+                    }
                 },
                 _ => {}
             }
         }
 
-        //socket.send_to(&controller_pck.to_udp_frame(), "192.168.4.1:3333")?;
-        socket.send_to(&controller_pck.to_udp_frame(start_instant), "192.168.1.58:3333")?;
-        tx.send(controller_pck)?;
+        match (controller_pck.right_arrow, last_right_arrow) {
+            (true, false) => active_mode.increment(),//increase mode
+            _ => {},
+        }
+
+        match (controller_pck.left_arrow, last_left_arrow) {
+            (true, false) => active_mode.decrement(),//decrease mode
+            _ => {},
+        }
+
+        let mut safety_to_send = false;
+        let mut misc_to_send = false;
+
+        match (controller_pck.down_arrow, last_down_arrow) {
+            (true, false) => {
+                hc_block_activated = !hc_block_activated;
+                safety_to_send = true;
+            },//hc_block toggle
+            _ => {},
+        }
+
+        match (controller_pck.up_arrow, last_up_arrow) {
+            (true, false) => {
+                forced_stop = true;
+                safety_to_send = true;
+            },//brake_stop start
+            (false, true) => {
+                forced_stop = false;
+                safety_to_send = true;
+            },//brake_stop end
+            _ => {},
+        }
+
+        match (controller_pck.left_button, last_left_button) {
+            (true, false) => {
+                misc_cmd.horn = true;
+                misc_to_send = true;
+            },//brake_stop start
+            (false, true) => {
+                misc_cmd.horn = false;
+                misc_to_send = true;
+            },//brake_stop end
+            _ => {},
+        }
+
+        match (controller_pck.down_button, last_down_button) {
+            (true, false) => {
+                match misc_cmd.drive_mode {
+                    DriveModeCommand::Interp => misc_cmd.drive_mode = DriveModeCommand::Speed,
+                    DriveModeCommand::Speed => misc_cmd.drive_mode = DriveModeCommand::Interp,
+                    DriveModeCommand::Raw => {},
+                }
+                misc_to_send = true;
+            },
+            _ => {},
+        }
+
+
+        if safety_to_send {
+            if let Err(e) = tx_safety
+            .send(SafetyCommand { hc_block: hc_block_activated, brake_stop: forced_stop }) {
+                error!("failed to send safety command {e}");
+            }
+        }
+
+        if misc_to_send {
+            if let Err(e) = tx_misc
+            .send(misc_cmd.clone()) {
+                error!("failed to send safety command {e}");
+            }
+        }
+
+        last_right_arrow = controller_pck.right_arrow;
+        last_left_arrow = controller_pck.left_arrow;
+        last_down_arrow = controller_pck.down_arrow;
+        last_up_arrow = controller_pck.up_arrow;
+        last_left_button = controller_pck.left_button;
+        last_down_button = controller_pck.down_button;
+
+        if let Err(e) = tx_control.
+        send(ControlType::Gamepad(controller_pck.to_drive_command(active_mode.get()))) {
+            error!("error sending control {e}");
+        }
+        if let Err(e) = tx.send(controller_pck) {
+            error!("error sending controller {e}");
+        };
         thread::sleep(std::time::Duration::from_millis(30));
     }
 }

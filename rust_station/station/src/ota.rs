@@ -1,4 +1,4 @@
-use std::{fs::File, process::Command, sync::{Arc, Mutex}};
+use std::{format, fs::File, process::Command, sync::{Arc, Mutex}};
 use tiny_http::{Response, Server};
 
 #[derive(Clone, Default)]
@@ -8,21 +8,23 @@ pub struct OtaServerStatus {
     pub bytes_served: u64,
 }
 
-pub fn fetch_latest_bin(server_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub fn fetch_latest_bin(server_path: &str) -> Result<(), String> {
     println!("Getting latest bin from server...");
 
-    let status = Command::new("scp")
+    let status = match Command::new("scp")
         .arg(server_path)
         .arg("./firmware.bin")
-        .status()?;
+        .status() {
+            Err(e) => return Err(format!("Error SCP: {e}")),
+            Ok(r) => r,
+        };
 
     if status.success() {
         println!("SCP success");
+        Ok(())
     } else {
-        eprintln!("SCP failed");
+        Err(format!("SCP failed with status: {status}"))
     }
-
-    Ok(())
 }
 
 pub fn serve_firmware(bind_addr: &str, firmware_path: String, status: Arc<Mutex<OtaServerStatus>>) {

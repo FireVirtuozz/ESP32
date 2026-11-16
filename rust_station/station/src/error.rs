@@ -84,3 +84,9 @@ impl From<SendError<ControllerPacket>> for AppError {
         AppError::Send(e.to_string())
     }
 }
+
+impl From<crossbeam_channel::SendError<TelemetryPacket>> for AppError {
+    fn from(value: crossbeam_channel::SendError<TelemetryPacket>) -> Self {
+        AppError::Send(value.to_string())
+    }
+}

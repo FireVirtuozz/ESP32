@@ -2,8 +2,13 @@
 #define SENSORS_LIB_H_
 
 #include <inttypes.h>
+#include <stdbool.h>
 #include <esp_err.h>
 
+// Telemetry frame header shared by every sensor. Wire layout (little-endian):
+// [0] = type, [1] = esp_id, [2..5] = timestamp (uint32_t).
+// This layout is relied upon by the PC-side receiver: do not reorder fields
+// or renumber sensor_type_t values without updating it too.
 #define HEADER_SENSOR_SIZE (sizeof(uint8_t) + sizeof(uint8_t) + sizeof(uint32_t))
 
 typedef struct header_sensor_st {
@@ -46,18 +51,44 @@ typedef enum {
     SENSOR_TYPE_BREAK      = 30,
     SENSOR_TYPE_BMP        = 31,
     SENSOR_TYPE_DS18B20    = 32,
-    
+
     SENSOR_TYPE_MAX
 } sensor_type_t;
 
-void serialize_header(header_sensor_t *hd, uint8_t *buf);
+/**
+ * Pack a telemetry header into the first HEADER_SENSOR_SIZE bytes of buf.
+ */
+esp_err_t serialize_header(const header_sensor_t *hd, uint8_t *buf);
 
-esp_err_t init_sensors();
+/**
+ * Initialize and start every sensor enabled via Kconfig (CONFIG_USE_xxx),
+ * each in its own FreeRTOS task.
+ */
+esp_err_t init_sensors(void);
 
+// --- Cross-component accessors (consumed by actuators_lib's h_bridge) ---
+
+/**
+ * Wheel-encoder pulse count over the last 20ms window (KY033).
+ */
 esp_err_t get_pulses_count_20ms(uint16_t *count);
+
+/**
+ * Wheel-encoder pulse count over the last 100ms sliding window (KY033),
+ * refreshed every 20ms rather than only every 100ms.
+ */
 esp_err_t get_pulses_count_100ms(uint16_t *count);
 
-esp_err_t get_front_blocked(bool* blocked);
-esp_err_t get_rear_blocked(bool* blocked);
+/**
+ * Whether the front HC-SR04 currently reports an obstacle close enough to
+ * block forward motion.
+ */
+esp_err_t get_front_blocked(bool *blocked);
 
-#endif
+/**
+ * Whether the rear HC-SR04 currently reports an obstacle close enough to
+ * block backward motion.
+ */
+esp_err_t get_rear_blocked(bool *blocked);
+
+#endif // SENSORS_LIB_H_

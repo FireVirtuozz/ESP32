@@ -1,114 +1,88 @@
-# Projects around ESP32
+# ESP32 RC car and Rust ground station
 
-This repository presents some experiments with ESP32 (esp_project), communicating with a laptop (rust_station). 
+A 1/10 RC car (Supra MK5 body, 3D printed chassis) built from scratch: a custom PCB, two ESP32-S3 running C firmware (ESP-IDF), and a Rust ground station that drives the car, shows the sensors and builds a 2D map (SLAM).
 
-Projects I've done and are easy to make with this repo:
-- RC Car
-- Hub Zigbee ESP32-C6
+<p align="center">
+  <img src="images/AI_Enhanced_car.jpeg" width="48%" alt="AI-enhanced overview of the car">
+  <img src="images/slam_map.png" width="48%" alt="2D SLAM map">
+</p>
 
-You can also use it to easily test with sensors (I made a lot of basic sensors drivers), experience with Zigbee, MQTT, OTA, ESP-NOW, encryption, WIFI.
+## What it does
 
-More details are available in each of the folders, but here is some overview:
+- **Drive** the car with a gamepad over Wi-Fi (UDP), with configurable acceleration profiles, an emergency brake and front / rear obstacle blocking
+- **Sense**: IMU, lidar, ToF, ultrasonic, GNSS, camera (JPG stream), wheel encoder, battery voltage and motor current
+- **Ground station** (laptop): egui GUI, record and replay, OTA updates, odometry, 2D SLAM (NDT and ICP)
+- **Remote**: a Tailscale relay forwards the data without the GUI
 
-## esp_project
+## How it fits together
 
-This is the ESP-IDF repo. Features:
-- camera lib
-  * Allow a JPG stream over UDP (tested with OV5640, OV2640) using [esp32-camera](https://components.espressif.com/components/espressif/esp32-camera/versions/2.1.6/readme?language=en) component
-- zigbee library using [esp-zigbee-sdk](https://docs.espressif.com/projects/esp-zigbee-sdk/en/latest/esp32/introduction.html) & [esp-zigbee-lib](https://components.espressif.com/components/espressif/esp-zigbee-lib/versions/2.0.3/readme) component
-  * simple on/off led
-- nvs library
-  * Easily edit NVS data
-- sensors lib, get the data of sensors using peripherals such as:
-    * I2C: complex sensors such as IMU (MPU6050, BNO085), TOF (VL53L1X), Voltage monitoring (INA226)
-    * GPIO: digital signal - ISR related [Ultrasonic (HCSR04), "Slow" Rotation Encoder, Reed, Buttons..]
-    * PCNT: couting GPIO ["fast" encoder such as on the power-axis of a car]
-      * Use this instead of ISRs when there is a very frequent event to avoid starving CPU, as it is a module on is own that puts its counter to a shared memory. We just have to read it at some period.
-      * Also it can be used to have a clear event and filter events (ex: remove bounces)
-   * RMT: handles sensors that needs specific timings, such as one-wire sensors (DHT11), or infrared receiver using NEC protocol.
-   * ADC: sensors delivering analogic signals [Potentiometers (Joystick), Photosensors, Linear Hall, Vibration..]
-   * SPI: sensors delivering fast data (compared to I2C) [RFID car reader]
-   * ESP: getting ESP data (SoC temperature, %CPU, memory)
-- wifi library [TODO: seperate AP / STA, debug helper]
-    * AP/STA/APSTA configs
-    * auto connect to known networks stored in encrypted-NVS
-- actuators library
-  * addressable rgb led using RMT
-  * passive buzzer control using LEDC (PWM)
-  * h bridge control using LEDC [MCPWM todo] & custom motor curves
-  * servo control using LEDC
-  * simple led using GPIO
-  * two color led using LEDC
-  * RGB led using LEDC
-- ws lib
-  * simple websocket server
-- udp lib
-  * emits messages through a queue safely, fragmentation can be used
-  * receives messages
-- system lib
-  * get all the useful info on the ESP chip (eFuse blocks, CPU, DRAM, PSRAM, APP, BOOTLOADER)
-- screen lib
-  * minimalist screen library for tiny screens like SSD1306
-- lcd lvgl lib
-    * screen libraries for large screens (animations..) using [LCD](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/lcd/index.html) & [lvgl](https://components.espressif.com/components/lvgl/lvgl/versions/9.5.0/readme) component
-- cmd lib
-  * Parse messages received by the controller and apply it to motor through h_bridge
-- espnow lib
-  * send messages to ESP safely using a queue & [ESP-NOW](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/network/esp_now.html). Fragmentation can be used and useful as max size is 250 bytes.
-  * receives messages from other ESPs
-- log lib
-  * custom log system that allows to redirect logs through UDP or ESP-NOW 
-- mqtt lib
-  * receives MQTT commands from https using [mqtt](https://components.espressif.com/components/espressif/mqtt/versions/1.1.0/readme) component and [espressif certificate](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/protocols/esp_crt_bundle.html)
-- ota lib
-  * flash the ESP "over the air" using HTTP server 
+```
+ sensors / motor / servo
+          |
+   custom PCB (KiCad)
+          |
+  ESP32-S3 control (C, ESP-IDF) --.
+                                   >--- UDP over Wi-Fi ---> rust_station (laptop, egui)
+  ESP32-S3 camera  (C, ESP-IDF) --'                          |  odometry, SLAM, record / replay
+          ^                                                   |
+          '------------- commands (gamepad, every 30 ms) -----'
+```
 
-## rust_station
+## Repo
 
-- udp
-  * receives udp frames from ESPs
-- controller
-  * receive commands with a controller (ex: PS4/XBOX)
-  * a thread controls the data sent to the ESP, can be Pure Pursuit with waypoints or a controller.
-- egui: HMI
-  * dashboard: manages ESP Zigbee coordinator
-  * sensors: plots for some sensors (IMU, INA, BMP, ESP, Encoder, RFID car reader)
-  * ota: choose and flash the ESP over the air
-  * logs: print logs from ESPs
-  * dump: print dumps from ESPs
-  * tuning: tune and monitor the motor curve
-  * commands: controller panel
-  * camera: show camera image & edit its config
-  * car: Car control panel with sensors info, estimated trajectory
-- odometry
-  * frames: easily switch between frames (different sensors)
-  * outputs a Pose from IMU (BNO085) & Encoder (FC-33)
-- SLAM
-  * lidar accumulutor: outputs a scan (360° turn) from batches of LD500
-  * mapping with log-odds & fix sized grid
-  * SLAM algorithms: ICP Point-to-Line & NDT
-- recorder
-  *  record data from sensors to replay it later
-- ai
-  * inference: load weights from a pre-trained model and apply decisions like turn, forward
-- train_ia
-  * ia training with a simulator (random room with obstacles and estimated data from sensors) using burn crate
-  * gui to monitor steps
+| Folder | Content |
+|---|---|
+| [`esp_project`](esp_project) | ESP-IDF firmware (C): the libraries and the car firmware |
+| [`rust_station`](rust_station) | Rust ground station ([`station`](rust_station/station)) and AI training ([`train_ia`](rust_station/train_ia)) |
+| [`hardware`](hardware) | KiCad project of the PCB, power and wiring |
 
-Threads are made with rust-std. For communications I use rust-std channels, crossbeam channels, arc-swap, Arc<RwLock> & Arc<Atomic>.
+The same ESP-IDF libraries were also used for a Zigbee home hub (ESP32-C6). They are easy to reuse to test sensors, MQTT, OTA, ESP-NOW, encryption or Wi-Fi.
 
-Note: It can be compiled for Android, but the user interface is not yet ready.
+## Hardware
 
-## Docker
+| Part | Model |
+|---|---|
+| Body / chassis | Supra MK5 1/10, 3D printed chassis (Dukedoks design), full PLA |
+| Battery | LiPo 7.3 V, 3000 mAh, 25C |
+| Motor / driver | Brushed 550 (21T), BTS7960 H-bridge |
+| Steering | MG996R servo |
+| Boards | ESP32-S3 N16R8 (control), ESP32-S3 (camera) |
+| Camera | OV5640, 120° lens <!-- TODO: check, it was in the TODO list of my notes --> |
+| Sensors | BNO085 IMU, D500 lidar, BZ181 GNSS, TOF400C (front), HC-SR04 (front / rear), ACS758 50 A current sensor, FC-33 optical encoder |
+| Other | KY-006 passive buzzer, 2x Mini560 Pro buck converters (5 V / 3.3 V) |
 
-You can use this minimal Dockefile [windows-friendly] or the one from [espressif](https://github.com/espressif/esp-idf/blob/master/tools/docker/Dockerfile).
+Power and wiring details are in [`hardware`](hardware).
+
+## Status
+
+| Done | In progress / planned |
+|---|---|
+| UDP control and telemetry, OTA | Check the camera with sleep / framerate |
+| Acceleration profiles, emergency brake | Wi-Fi hotspot setup, cleaner logs |
+| Odometry (IMU + encoder) | Chunked grid, better log-odds |
+| 2D SLAM (NDT, ICP) | Sensor fusion (accelerometer / odometry / camera) to detect and correct slipping |
+| Record and replay | Second, phase-shifted encoder to get the direction |
+| egui GUI, Tailscale relay | Pure Pursuit with waypoints |
+| ESP-NOW library (not used on the car yet) | Exploration algorithm on the grid |
+| | Rear camera |
+| | AI for control |
+| | Custom controller (ESP-NOW) |
+| | Real Tamiya TT02 chassis, new clean body (PETG / clear PETG / TPU) |
+
+## Docker (ESP-IDF)
+
+You can use the minimal Dockerfile of this repo (Windows-friendly) or the one from [Espressif](https://github.com/espressif/esp-idf/blob/master/tools/docker/Dockerfile).
 
 ```bash
 docker build -t esp32-idf .
 docker run -it --rm --network host --device=/dev/ttyUSB0 -v $(pwd):/workspace esp32-idf
 ```
 
-Setup usb windows -> linux docker
+<details>
+<summary>Windows + WSL (USB passthrough)</summary>
+
+Share the USB device from Windows to WSL:
+
 ```bash
 ls /dev/ttyUSB*
 usbipd list
@@ -116,17 +90,24 @@ usbipd bind --busid 2-3
 usbipd attach --wsl --busid 2-3
 ```
 
-Launch container (windows powershell)
+Then launch the container from PowerShell:
+
 ```bash
 usbipd attach --wsl --busid 2-3
 
-#using /mnt/c from wsl (unconvenient for performance)
+# using /mnt/c from WSL (works, but slow)
 cd D:\ESP32
 wsl
 docker run -it --rm --network host --device=/dev/ttyUSB0 -v $(pwd):/workspace esp32-idf
 
-#better for performance using wsl only and update files with github
+# better for performance: stay inside WSL and sync files with GitHub
 wsl
 cd ~/projects/ESP32
 docker run -it --rm --network host -v $(pwd):/workspace esp32-idf:latest
 ```
+
+</details>
+
+## Run the station
+
+See [`rust_station`](rust_station) for the details of the station.

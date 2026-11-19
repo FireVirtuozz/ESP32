@@ -8,6 +8,7 @@
 #include <string.h>
 #include <esp_mac.h>
 #include "nvs_lib.h"
+#include "udp_lib.h"
 
 /**
  * WiFi library
@@ -1216,6 +1217,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         snprintf(s_ip_str, sizeof(s_ip_str),
                  IPSTR, IP2STR(&event->ip_info.ip));
 
+        reset_ip_hello();
         //update global handler to wifi connected to unlock tasks waiting for wifi
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
     } else if (event_id == WIFI_EVENT_AP_STACONNECTED) {
@@ -1227,6 +1229,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         wifi_event_ap_stadisconnected_t* event = (wifi_event_ap_stadisconnected_t*) event_data;
         log_msg(TAG, "station " MACSTR " leave, AID=%d, reason=%d, is mesh : %s",
                  MAC2STR(event->mac), event->aid, event->reason, event->is_mesh_child ? "Yes" : "No");
+        xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
 
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_ASSIGNED_IP_TO_CLIENT) {
         const ip_event_assigned_ip_to_client_t *e = (const ip_event_assigned_ip_to_client_t *)event_data;
@@ -1421,6 +1424,12 @@ static void wifi_init_sta(void)
         return;
     }
 
+    err = esp_wifi_set_ps(WIFI_PS_NONE);
+    if (err != ESP_OK) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) setting power save", esp_err_to_name(err));
+        return;
+    }
+
 #if CONFIG_DEBUG_WIFI
     log_msg(TAG, "Connection to ...");
 #endif
@@ -1435,9 +1444,6 @@ static void wifi_init_sta(void)
         log_msg(TAG, "UNEXPECTED EVENT");
         return;
     }
-
-    //ESP_LOGI("WIFI", "Activation du Power Save pour la coexistence Zigbee...");
-    //esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
 }
 #endif
 
@@ -1483,6 +1489,12 @@ static void wifi_init_ap(void)
     err = esp_wifi_start();
     if (err != ESP_OK) {
         log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) starting wifi", esp_err_to_name(err));
+        return;
+    }
+
+    err = esp_wifi_set_ps(WIFI_PS_NONE);
+    if (err != ESP_OK) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) setting power save", esp_err_to_name(err));
         return;
     }
 
@@ -1568,6 +1580,12 @@ static void wifi_init_apsta()
         return;
     }
 
+    err = esp_wifi_set_ps(WIFI_PS_NONE);
+    if (err != ESP_OK) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) setting power save", esp_err_to_name(err));
+        return;
+    }
+
     //Waiting for connection until WIFI_CONNECTED_BIT is activated (if init in main, it will wait..)
     EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_BIT,
                         pdFALSE, pdTRUE, portMAX_DELAY);
@@ -1623,6 +1641,11 @@ void wifi_init() {
         err = esp_wifi_start();
         if (err != ESP_OK) {
             log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) starting wifi", esp_err_to_name(err));
+            return;
+        }
+        err = esp_wifi_set_ps(WIFI_PS_NONE);
+        if (err != ESP_OK) {
+            log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%s) setting power save", esp_err_to_name(err));
             return;
         }
         log_msg(TAG, "ESP-NOW wifi initialized");
@@ -2049,7 +2072,6 @@ esp_err_t sta_get_rssi(int *rssi) {
 //esp_wifi_clear_fast_connect
 //esp_wifi_set_scan_parameters
 //esp_wifi_scan_stop
-//esp_wifi_set_ps
 //esp_wifi_set_protocol
 //esp_wifi_set_bandwidth
 //esp_wifi_set_channel

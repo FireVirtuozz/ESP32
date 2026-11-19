@@ -59,6 +59,7 @@ typedef enum {
     SENSOR_TYPE_BAT_ADC = 38,
     SENSOR_TYPE_ACS758 = 39,
     SENSOR_TYPE_GPS = 40,
+    SENSOR_TYPE_OTA = 41,
 
     SENSOR_TYPE_MAX
 } sensor_type_t;

@@ -189,7 +189,7 @@ esp_err_t ledc_buzzer(int16_t buzzer_percent) {
         return err;
     }
 
-    log_msg(TAG, "Applied duty %" PRIu32, duty);
+    log_msg_lvl(ESP_LOG_DEBUG, TAG, "Applied duty %" PRIu32, duty);
     return ESP_OK;
 }
 

@@ -88,6 +88,9 @@ void app_main()
 
 #if CONFIG_USE_UDPLIB
     udp_server_init();
+
+    
+
     udp_client_init();
 #endif
 #if CONFIG_USE_MQTTLIB

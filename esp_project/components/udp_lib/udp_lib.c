@@ -18,6 +18,7 @@
 #include "ota_lib.h"
 #include "sensors_lib.h"
 #include "esp_timer.h"
+#include "esp_mac.h"
 
 #define PORT 3333
 
@@ -26,6 +27,9 @@
 //TODO : IPv6 support, length commands buffer check, security
 
 static const char *TAG = "udp_library"; // tag of this library
+
+static volatile uint32_t ip_addr_host = 0;
+static volatile bool hello_ack = false;
 
 #if CONFIG_PACKET_DEBUG
 static char * sock_type_to_str(int val) {
@@ -395,7 +399,7 @@ static void udp_server_task(void *pvParameters)
 
         //shutdown socket if error
         if (sock != -1) {
-            log_msg_lvl(ESP_LOG_WARN, TAG, "Shutting down socket and restarting...");
+            log_msg_lvl(ESP_LOG_DEBUG, TAG, "Shutting down socket and restarting...");
             shutdown(sock, 0);
             close(sock);
             force_motor_stop();
@@ -458,24 +462,24 @@ static void udp_server_cfg_task(void *pvParameters)
             size_t plen = (size_t)len - 1;
 
             switch (temp_buffer[0]) {
-                case 1:
+                case 1: // set cfg drive profile
                     apply_config(payload, plen);
                     break;
                 #if CONFIG_USE_CAMERA
-                case 2:
+                case 2: // set cfg cam
                     apply_camera_config(payload, plen);
                     break;
-                case 4:
+                case 4: // get reg cam
                     get_reg_cam(payload, plen);
                     break;
-                case 5:
+                case 5: // set reg cam
                     set_reg_cam(payload, plen);
                     break;
-                case 6:
+                case 6: // get cfg cam
                     get_config_cam();
                     break;
                 #endif
-                case 3: {
+                case 3: {  //OTA begin
                     atomic_store(&ota_lock, true);
 
                     force_motor_stop();
@@ -535,15 +539,13 @@ void udp_server_init()
     
 }
 
-//#define HOST_IP_ADDR "192.168.4.2" /*esp - lenovo*/
-//#define HOST_IP_ADDR "192.168.1.48" /*Bbox - lenovo*/
-#define HOST_IP_ADDR "192.168.1.163" /*Bbox - asus*/
-
 #define PORT_SENSORS 34254
 #define VIDEO_PORT 34255
 #define PORT_DUMP 34256
 #define PORT_LOGS 34257
 #define PORT_CFG 34258
+#define PORT_HELLO 34259
+#define PORT_LINK 34260
 
 static QueueHandle_t queue_send_log = NULL;
 static QueueHandle_t queue_send_sensor = NULL;
@@ -601,14 +603,14 @@ void send_udp_log(const uint8_t * data, uint32_t len){
 }
 
 void send_udp_sensor(const uint8_t * data, uint32_t len){
-    if (atomic_load(&ota_lock) || len > UDP_MAX_SIZE || data == NULL || len == 0) {
+    if (len > UDP_MAX_SIZE || data == NULL || len == 0) {
         return; // skip all
     }
     send_msg_to_queue(data, len, queue_send_sensor);
 }
 
 void send_udp_cfg(const uint8_t * data, uint32_t len){
-    if (atomic_load(&ota_lock) || len > UDP_MAX_SIZE || data == NULL || len == 0) {
+    if (len > UDP_MAX_SIZE || data == NULL || len == 0) {
         return; // skip all
     }
     send_msg_to_queue(data, len, queue_send_cfg);
@@ -671,8 +673,7 @@ static void udp_client_generic_task(void *pvParameters)
     QueueHandle_t queue = config->queue_handle;
     uint16_t port = config->port;
 
-    struct sockaddr_in dest_addr;
-    dest_addr.sin_addr.s_addr = inet_addr(HOST_IP_ADDR);
+    struct sockaddr_in dest_addr = {0};
     dest_addr.sin_family = AF_INET;
     dest_addr.sin_port = htons(port);
 
@@ -685,13 +686,19 @@ static void udp_client_generic_task(void *pvParameters)
     }
 
     bool frag = config->fragmented;
-    log_msg(TAG, "Socket created, streaming to %s:%d", HOST_IP_ADDR, port);
+    log_msg(TAG, "Socket created, streaming to port %d", port);
     free(config);
 
     udp_msg_t msg_tmp;
     uint32_t local_frag_id = 0;
 
     while (xQueueReceive(queue, &msg_tmp, portMAX_DELAY) == pdTRUE) {
+        uint32_t ip = ip_addr_host;                 
+        if (ip == 0) {                         
+            free(msg_tmp.data);                
+            continue;
+        }
+        dest_addr.sin_addr.s_addr = ip;
 
         if (frag) {
             udp_send_fragmented(sock, &dest_addr, &msg_tmp, &local_frag_id);
@@ -737,6 +744,111 @@ void send_udp_dump(const uint8_t *data, uint32_t len) {
         return; // skip all
     }
     send_msg_to_queue(data, len, queue_send_dump);
+}
+
+#define HELLO_FRAME_SIZE 8
+
+#define MSG_TYPE_HELLO 1
+#define MSG_TYPE_PING_PONG 2
+#define MSG_TYPE_GET_INFO 3
+
+typedef struct {
+    uint8_t esp_id;
+    uint8_t mac_addr[6];
+} hello_msg_t;
+
+static void serialize_hello(uint8_t* buffer, hello_msg_t* msg) {
+    buffer[0] = MSG_TYPE_HELLO;
+    buffer[1] = msg->esp_id;
+    memcpy(&buffer[2], msg->mac_addr, sizeof(msg->mac_addr));
+}
+
+static void send_pong_udp(uint8_t* buffer) {
+    header_sensor_t header = {0};
+    header.esp_id = (uint8_t)CONFIG_ESP_ID;
+    header.timestamp = (uint32_t)(esp_timer_get_time() / 1000);
+    header.type = SENSOR_TYPE_PING;
+    uint8_t buf_udp[HEADER_SENSOR_SIZE + sizeof(uint32_t)];
+    serialize_header(&header, buf_udp);
+    memcpy(&buf_udp[HEADER_SENSOR_SIZE], &buffer[2], sizeof(uint32_t));
+
+    send_udp_sensor(buf_udp, sizeof(buf_udp));
+}
+
+#define HB_FRAME_SIZE 6 // pong type, id, timestamp
+
+void reset_ip_hello() {
+    ip_addr_host = 0;
+    hello_ack = false;
+}
+
+static void hello_broadcast(void* params) {
+    struct sockaddr_in dest_addr = {0};
+    dest_addr.sin_addr.s_addr = htonl(INADDR_BROADCAST);
+    dest_addr.sin_family = AF_INET;
+    dest_addr.sin_port = htons(PORT_HELLO);
+
+    int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+    if (sock < 0) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Unable to create socket for port %d: %s", PORT_HELLO, strerror(errno));
+        vTaskDelete(NULL);
+        return;
+    }
+
+    struct sockaddr_in me = {0};
+    me.sin_family = AF_INET;
+    me.sin_port = htons(PORT_LINK);
+    me.sin_addr.s_addr = htonl(INADDR_ANY);
+    if (bind(sock, (struct sockaddr *)&me, sizeof(me)) < 0) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "bind link: %s", strerror(errno));
+        close(sock);
+        vTaskDelete(NULL);
+        return;
+    }
+
+    // Broadcast message UDP
+    int yes = 1;
+    setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &yes, sizeof(yes));
+
+    // Set timeout to 500ms
+    struct timeval tv = { .tv_usec = 500000 };
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+    hello_msg_t hello = {0};
+    uint8_t buf_hello[HELLO_FRAME_SIZE];
+
+    hello.esp_id = (uint8_t)CONFIG_ESP_ID;
+    if (esp_base_mac_addr_get(hello.mac_addr) != ESP_OK) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Unable to get MAC Adress");
+        close(sock);
+        vTaskDelete(NULL);
+        return;
+    }
+    serialize_hello(buf_hello, &hello);
+
+    int64_t last_hello = 0, last_rx = esp_timer_get_time();
+    while (true) {
+        int64_t now = esp_timer_get_time();
+        // send hello every 1s if not set
+        if (!hello_ack && now - last_hello > 1000000) {
+            sendto(sock, buf_hello, sizeof(buf_hello), 0, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+            last_hello = now;
+        }
+        // receives ack from station (heartbeat)
+        uint8_t rx[32]; 
+        struct sockaddr_in src; 
+        socklen_t sl = sizeof(src);
+        int n = recvfrom(sock, rx, sizeof(rx), 0, (struct sockaddr *)&src, &sl);
+        if (n >= HB_FRAME_SIZE && rx[0] == MSG_TYPE_PING_PONG && rx[1] == (uint8_t)CONFIG_ESP_ID) {
+            ip_addr_host = src.sin_addr.s_addr;
+            hello_ack = true;
+            last_rx = esp_timer_get_time();
+            sendto(sock, rx, n, 0, (struct sockaddr *)&src, sl); // direct pong
+            send_pong_udp(rx); // pong by going through queues (behaviour of UDP messages)
+        } else if (hello_ack && esp_timer_get_time() - last_rx > 3000000) { //timeouts, up to 3s
+            hello_ack = false;
+        }
+    }
 }
 
 /**
@@ -840,6 +952,11 @@ void udp_client_init()
     res = xTaskCreate(udp_client_generic_task, "udp_client_dump", 8192, dump_conf, 4, NULL);
     if (res != pdPASS) {
         log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%d) create client dump UDP task", res);
+    }
+
+    res = xTaskCreate(hello_broadcast, "udp_hello", 4096, NULL, 4, NULL);
+    if (res != pdPASS) {
+        log_msg_lvl(ESP_LOG_ERROR, TAG, "Error (%d) create hello UDP task", res);
     }
 
     log_msg(TAG, "UDP client initialized");

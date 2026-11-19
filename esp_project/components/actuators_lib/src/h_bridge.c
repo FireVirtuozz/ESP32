@@ -293,7 +293,7 @@ static void apply_target_motor(void *args) {
         bool real_stop = (stopped_windows >= 5);
 
         if (dt_ms > timeout_ms || real_stop) {
-            log_msg_lvl(ESP_LOG_WARN, TAG, "Braking stopped [%s] 20ms pulses: %u, dt_ms: %u, timeout_ms: %u",
+            log_msg_lvl(ESP_LOG_DEBUG, TAG, "Braking stopped [%s] 20ms pulses: %u, dt_ms: %u, timeout_ms: %u",
                 real_stop ? "pulse" : "timeout", pulses, dt_ms, timeout_ms);
             atomic_store(&target_motor, 0);
             atomic_store(&breaking_lock, false);
@@ -523,7 +523,7 @@ esp_err_t force_motor_stop(void) {
     atomic_store(&timeout_breaking, timeout_to_store);
 
     bool last_sign = atomic_load(&last_current_motor_sign_positive);
-    log_msg_lvl(ESP_LOG_WARN, TAG,
+    log_msg_lvl(ESP_LOG_DEBUG, TAG,
         "Braking started, pulses: %u, current_motor: %d, timeout_us: %" PRIu32 ", last_sign: %s",
         pulses, val_current, timeout_to_store,
         last_sign ? "+" : "-");

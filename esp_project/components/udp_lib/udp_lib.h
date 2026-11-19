@@ -31,4 +31,7 @@ void send_udp_jpeg(const uint8_t * data, uint32_t len);
 // Send a dump UDP message
 void send_udp_dump(const uint8_t * data, uint32_t len);
 
+// Reset IP hello ack (disconnected)
+void reset_ip_hello();
+
 #endif

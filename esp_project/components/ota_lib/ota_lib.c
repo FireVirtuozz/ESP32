@@ -14,7 +14,9 @@
 #include "esp_https_ota.h"
 #include <esp_crt_bundle.h>
 #include "log_lib.h"
-
+#include "sensors_lib.h"
+#include "esp_timer.h"
+#include "udp_lib.h"
 
 static const char *TAG = "ota_library";
 
@@ -53,7 +55,7 @@ static void event_handler(void* arg, esp_event_base_t event_base,
                 log_msg(TAG, "Callback to decrypt function");
                 break;
             case ESP_HTTPS_OTA_WRITE_FLASH:
-                log_msg(TAG, "Writing to flash: %d written", *(int *)event_data);
+                log_msg_lvl(ESP_LOG_DEBUG, TAG, "Writing to flash: %d written", *(int *)event_data);
                 break;
             case ESP_HTTPS_OTA_UPDATE_BOOT_PARTITION:
                 log_msg(TAG, "Boot partition updated. Next Partition: %d", *(esp_partition_subtype_t *)event_data);
@@ -99,9 +101,39 @@ static esp_err_t _http_client_init_cb(esp_http_client_handle_t http_client)
     return err;
 }
 
+#define OTA_STATUS_FRAME_SIZE 13
+
+typedef struct {
+    uint8_t  state;   // 0 BEGIN, 1 PROGRESS, 2 OK, 3 ERR
+    uint32_t done;
+    uint32_t total;
+    int32_t  err;
+} ota_status_t;
+
+static void seralize_ota_status(uint8_t* buffer, ota_status_t* ota) {
+    buffer[0] = ota->state;
+    memcpy(&buffer[1], &ota->done, sizeof(uint32_t));
+    memcpy(&buffer[5], &ota->total, sizeof(uint32_t));
+    memcpy(&buffer[9], &ota->err, sizeof(int32_t));
+}
+
+static void send_ota_status_udp(ota_status_t* ota) {
+    header_sensor_t header = {0};
+    header.esp_id = (uint8_t)CONFIG_ESP_ID;
+    header.timestamp = (uint32_t)(esp_timer_get_time() / 1000);
+    header.type = SENSOR_TYPE_OTA;
+
+    uint8_t buf[HEADER_SENSOR_SIZE + OTA_STATUS_FRAME_SIZE];
+    serialize_header(&header, buf);
+    seralize_ota_status(&buf[HEADER_SENSOR_SIZE], ota);
+    send_udp_sensor(buf, sizeof(buf));
+}
+
 void advanced_ota_example_task(void *pvParameter)
 {
     log_msg(TAG, "Starting Advanced OTA");
+
+    ota_status_t ota_status = {0};
 
     esp_err_t err;
     esp_err_t ota_finish_err = ESP_OK;
@@ -127,6 +159,9 @@ void advanced_ota_example_task(void *pvParameter)
     if (err != ESP_OK) {
         log_msg_lvl(ESP_LOG_ERROR, TAG, "ESP HTTPS OTA Begin failed");
         atomic_store(&ota_lock, false);
+        ota_status.err = err;
+        ota_status.state = 3;
+        send_ota_status_udp(&ota_status);
         vTaskDelete(NULL);
     }
 
@@ -134,38 +169,64 @@ void advanced_ota_example_task(void *pvParameter)
     err = esp_https_ota_get_img_desc(https_ota_handle, &app_desc);
     if (err != ESP_OK) {
         log_msg_lvl(ESP_LOG_ERROR, TAG, "esp_https_ota_get_img_desc failed");
+        ota_status.err = err;
+        ota_status.state = 3;
+        send_ota_status_udp(&ota_status);
         goto ota_end;
     }
     err = validate_image_header(&app_desc);
     if (err != ESP_OK) {
         log_msg_lvl(ESP_LOG_ERROR, TAG, "image header verification failed");
+        ota_status.err = err;
+        ota_status.state = 3;
+        send_ota_status_udp(&ota_status);
         goto ota_end;
     }
 
+    int total = esp_https_ota_get_image_size(https_ota_handle);
+    ota_status.total = (uint32_t)total;
+    send_ota_status_udp(&ota_status);
+
+    int64_t last = 0;
     while (1) {
 
         err = esp_https_ota_perform(https_ota_handle);
-        if (err != ESP_ERR_HTTPS_OTA_IN_PROGRESS) {
-            break;
-        }
+        if (err != ESP_ERR_HTTPS_OTA_IN_PROGRESS) break;
 
         // esp_https_ota_perform returns after every read operation which gives user the ability to
         // monitor the status of OTA upgrade by calling esp_https_ota_get_image_len_read, which gives length of image
         // data read so far.
         const size_t len = esp_https_ota_get_image_len_read(https_ota_handle);
         log_msg_lvl(ESP_LOG_DEBUG, TAG, "Image bytes read: %d", len);
+
+        int64_t now = esp_timer_get_time();
+
+        if (now - last > 500000) {  
+            last = now;
+            ota_status.state = 1;
+            ota_status.err = 0;
+            ota_status.done = len;
+            send_ota_status_udp(&ota_status);
+        }
+
     }
 
     if (esp_https_ota_is_complete_data_received(https_ota_handle) != true) {
         // the OTA image was not completely received and user can customise the response to this situation.
         log_msg_lvl(ESP_LOG_ERROR, TAG, "Complete data was not received.");
+        ota_status.err = err;
+        ota_status.state = 3;
+        send_ota_status_udp(&ota_status);
     } else {
 
         ota_finish_err = esp_https_ota_finish(https_ota_handle);
         
         if ((err == ESP_OK) && (ota_finish_err == ESP_OK)) {
             log_msg(TAG, "ESP_HTTPS_OTA upgrade successful. Rebooting ...");
-            vTaskDelay(1000 / portTICK_PERIOD_MS);
+            ota_status.state = 2;
+            ota_status.done = total;
+            send_ota_status_udp(&ota_status);
+            vTaskDelay(pdMS_TO_TICKS(1000));
             esp_restart();
         } else {
 
@@ -174,6 +235,9 @@ void advanced_ota_example_task(void *pvParameter)
             }
 
             log_msg_lvl(ESP_LOG_ERROR, TAG, "ESP_HTTPS_OTA upgrade failed 0x%x", ota_finish_err);
+            ota_status.err = ota_finish_err;
+            ota_status.state = 3;
+            send_ota_status_udp(&ota_status);
             atomic_store(&ota_lock, false);
             vTaskDelete(NULL);
         }

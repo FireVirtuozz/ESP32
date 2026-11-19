@@ -65,6 +65,7 @@ pub fn build_app(config: AppConfig) -> MyApp {
     let shared_live_scan: Arc<RwLock<Vec<Point2<f32>>>> = Arc::new(RwLock::new(Vec::with_capacity(500)));
     let shared_lidar_diag: Arc<RwLock<LidarDiagnostics>> = Arc::new(RwLock::new(LidarDiagnostics::default()));
     let shared_cam_cfg: SharedCamCfg = Arc::new(RwLock::new(None));
+    let shared_esps = Arc::new(RwLock::new(HashMap::new()));
 
     let active_drive: Arc<ArcSwap<DriveCommand>> = Arc::new(ArcSwap::from_pointee(DriveCommand::default()));
     let active_safety: Arc<ArcSwap<SafetyCommand>> = Arc::new(ArcSwap::from_pointee(SafetyCommand::default()));
@@ -125,6 +126,7 @@ pub fn build_app(config: AppConfig) -> MyApp {
         Arc::clone(&shared_waypoints),
         Arc::clone(&shared_slam),
         Arc::clone(&shared_predicted_path),
+        Arc::clone(&shared_esps),
     );
 
     let _handle_udp_logs = udp_logs_server_init(
@@ -146,6 +148,13 @@ pub fn build_app(config: AppConfig) -> MyApp {
         config.clone(),
         rx_cmd,
         tx_ev,
+        Arc::clone(&shared_esps),
+    );
+
+    let _handle_udp_hello = udp_hello_server_init(
+        Arc::clone(&shared_esps),
+        config.clone(),
+        start_instant,
     );
 
     let _handle_cam_decode = camera_decode_thread(
@@ -234,6 +243,7 @@ pub fn build_app(config: AppConfig) -> MyApp {
         shared_waypoints,
         shared_predicted_path,
         shared_cfg: shared_cam_cfg,
+        shared_esps,
 
         active_drive,
         active_safety,
@@ -269,7 +279,7 @@ pub fn run_app(options: eframe::NativeOptions) -> Result<(), AppError> {
 #[cfg(target_os = "android")]
 use winit::platform::android::activity::AndroidApp;
 
-use crate::{camera::{CameraConfig, camera_decode_thread}, control::{ActiveSource, DriveCommand, MiscellaneousCommand, ModeState, SafetyCommand, control_thread_spawn}, odometry::{mpu::spawn_integration_thread, odo::{OdoState, spawn_odo_thread}, slam::SlamState, slam_compare::{MatchAlgo, spawn_compare_thread}}, ota::serve_firmware, recorder::{recorder_init, replay_recording}, sensors::{SensorKey, lidar::{LidarDiagnostics, spawn_lidar_accumulator_thread}}, udp::{udp_cfg::{SharedCamCfg, udp_cfg_server_init}, udp_tailscale::udp_tailscale_redirect}};
+use crate::{camera::{CameraConfig, camera_decode_thread}, control::{ActiveSource, DriveCommand, MiscellaneousCommand, ModeState, SafetyCommand, control_thread_spawn}, odometry::{mpu::spawn_integration_thread, odo::{OdoState, spawn_odo_thread}, slam::SlamState, slam_compare::{MatchAlgo, spawn_compare_thread}}, ota::serve_firmware, recorder::{recorder_init, replay_recording}, sensors::{SensorKey, lidar_accumulator::{LidarDiagnostics, spawn_lidar_accumulator_thread}}, udp::{udp_cfg::{SharedCamCfg, udp_cfg_server_init}, udp_hello::{EspPeer, udp_hello_server_init}, udp_tailscale::udp_tailscale_redirect}};
 
 #[cfg(target_os = "android")]
 #[unsafe(no_mangle)]

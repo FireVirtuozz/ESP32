@@ -1,8 +1,8 @@
-use std::{collections::VecDeque, net::UdpSocket, println, sync::{Arc, atomic::{AtomicBool, Ordering}, mpsc::Sender}, thread, time::Instant};
+use std::{collections::VecDeque, dbg, net::UdpSocket, println, sync::{Arc, atomic::{AtomicBool, Ordering}, mpsc::Sender}, thread, time::Instant};
 
 use log::{debug, error, info, warn};
 
-use crate::{config::{self, AppConfig}, error::AppError, gui::screens::logs::LogPacket, sensors::{EspPacket, PacketAcs758, PacketBatAdc, PacketBz181, PacketImu, PacketKy033, PacketRcwl0515, PacketRfidRc522, SensorType, TelemetryEnum, TelemetryPacket, lidar::{LidarD500Batch, LidarD500Packet}, parser::{SENSORS_HEADER_SIZE, SensorsUdpHeader, parse_buffer_bmp, parse_buffer_bno085_accel, parse_buffer_bno085_classif, parse_buffer_bno085_linear_accel, parse_buffer_bno085_rotation, parse_buffer_brake, parse_buffer_dht11, parse_buffer_esp, parse_buffer_hall, parse_buffer_ina, parse_buffer_motor, parse_buffer_mpu, parse_buffer_photosensor, parse_buffer_pong, parse_buffer_ultrasonic, parse_buffer_vl53l1x}}, udp::BUFFER_MAX_UDP_SIZE};
+use crate::{config::{self, AppConfig}, error::AppError, gui::screens::logs::LogPacket, sensors::{EspPacket, PacketAcs758, PacketBatAdc, PacketBz181, PacketImu, PacketKy033, PacketOtaStatus, PacketRcwl0515, PacketRfidRc522, SensorType, TelemetryEnum, TelemetryPacket, lidar_accumulator::{LidarD500Batch, LidarD500Packet}, parser::{SENSORS_HEADER_SIZE, SensorsUdpHeader, parse_buffer_bmp, parse_buffer_bno085_accel, parse_buffer_bno085_classif, parse_buffer_bno085_linear_accel, parse_buffer_bno085_rotation, parse_buffer_brake, parse_buffer_dht11, parse_buffer_esp, parse_buffer_hall, parse_buffer_ina, parse_buffer_motor, parse_buffer_mpu, parse_buffer_photosensor, parse_buffer_pong, parse_buffer_ultrasonic, parse_buffer_vl53l1x}}, udp::BUFFER_MAX_UDP_SIZE};
 
 //return Result, allows us to use ? error propagation in fn 
 pub fn udp_sensors_server_init(
@@ -345,7 +345,18 @@ fn udp_sensors_loop(
                     let _ = tx_record.send((packet.clone(), ts));
                 }
                 tx.send(packet)?;
-            }
+            },
+            SensorType::Ota => {
+                sensors_connected.store(true, Ordering::Relaxed);
+                let packet = TelemetryPacket {
+                    hd_info: frame_udp_header,
+                    packet: TelemetryEnum::OTA(PacketOtaStatus::from_buffer(&buf[SENSORS_HEADER_SIZE .. amt])?),
+                };
+                if config_udp_recv.recording {
+                    let _ = tx_record.send((packet.clone(), ts));
+                }
+                tx.send(packet)?;
+            },
             _ => return Err("Invalid frame type".into()),
         }
     }

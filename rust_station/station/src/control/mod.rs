@@ -1,11 +1,11 @@
-use std::{dbg, f64::consts::PI, fmt::{self, Display}, format, net::UdpSocket, println, sync::{Arc, RwLock, atomic::{AtomicBool, AtomicU8, AtomicU32, Ordering}}, thread, time::{Duration, Instant}, write};
+use std::{collections::HashMap, dbg, f64::consts::PI, fmt::{self, Display}, format, net::UdpSocket, println, sync::{Arc, RwLock, atomic::{AtomicBool, AtomicU8, AtomicU32, Ordering}}, thread, time::{Duration, Instant}, write};
 
 use arc_swap::ArcSwap;
 use crossbeam_channel::{Receiver, select, tick};
 use log::error;
 use nalgebra::Point2;
 
-use crate::{config::AppConfig, control::ControlType::Gamepad, error::AppError, gui::screens::car, odometry::slam::SlamState};
+use crate::{config::AppConfig, control::ControlType::Gamepad, error::AppError, gui::screens::car, odometry::slam::SlamState, udp::udp_hello::EspPeer};
 
 pub const WHEELBASE: f32 = 0.267;
 pub const MAX_STEERING_DEG: f64 = 30.0;
@@ -282,12 +282,14 @@ pub fn control_thread_spawn(
     shared_waypoints: Arc<RwLock<Vec<[f64; 2]>>>,
     shared_slam: Arc<RwLock<SlamState>>,
     shared_predicted_path: Arc<RwLock<Vec<[f64; 2]>>>,
+    shared_esps: Arc<RwLock<HashMap<u8, EspPeer>>>,
 ) -> thread::JoinHandle<()> {
 
     let handle = thread::spawn(move || {
         if let Err(e) = control_thread(
             rx_control, rx_safety, rx_misc, config_udp_control, start_instant, active_source, packet_sent,
-            active_drive, active_safety, active_misc, shared_waypoints, shared_slam, shared_predicted_path
+            active_drive, active_safety, active_misc, shared_waypoints, shared_slam, shared_predicted_path,
+            shared_esps
         ) {
             error!("UDP error dump: {:?}", e);
         }
@@ -309,10 +311,10 @@ fn control_thread(
     shared_waypoints: Arc<RwLock<Vec<[f64; 2]>>>,
     shared_slam: Arc<RwLock<SlamState>>,
     shared_predicted_path: Arc<RwLock<Vec<[f64; 2]>>>,
+    shared_esps: Arc<RwLock<HashMap<u8, EspPeer>>>,
 ) -> Result<(), AppError> { 
 
     let socket = UdpSocket::bind("0.0.0.0:0")?;
-    let addr_cmd = format!("{}:3333", config_udp_control.ip_addr_esp0);
 
     let rx_tick = tick(Duration::from_millis(20));
 
@@ -494,10 +496,16 @@ fn control_thread(
                 start_instant,
                 &*active_misc.load(),
             );
-            if let Err(e) = socket.send_to(&bytes, &addr_cmd) {
-                error!("send control failed: {e}");
-            } else {
-                packet_sent.fetch_add(1, Ordering::Relaxed);
+            let esp_ref = shared_esps.read().unwrap();
+            let ad = if let Some(esp) = esp_ref.get(&0) { Some(esp.ip_addr.ip()) } else { None };
+            drop(esp_ref);
+            if let Some(ip) = ad {
+                let addr_cmd = format!("{}:3333", ip);
+                if let Err(e) = socket.send_to(&bytes, &addr_cmd) {
+                    error!("send control failed: {e}");
+                } else {
+                    packet_sent.fetch_add(1, Ordering::Relaxed);
+                }
             }
         }
     }

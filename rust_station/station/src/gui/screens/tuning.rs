@@ -1,8 +1,8 @@
-use std::{collections::{HashMap, VecDeque}, net::UdpSocket, sync::mpsc::Sender};
+use std::{collections::{HashMap, VecDeque}, net::UdpSocket, sync::{Arc, RwLock, mpsc::Sender}};
 use egui_plot::{Line, Plot, PlotPoints};
 use log::error;
 use serde::{Deserialize, Serialize};
-use crate::{config::AppConfig, gui::{ScreensTypes, get_sensor_data}, sensors::{SensorKey, TelemetryEnum, TelemetryPacket}, udp::ConfigCommandType};
+use crate::{config::AppConfig, gui::{ScreensTypes, get_sensor_data}, sensors::{SensorKey, TelemetryEnum, TelemetryPacket}, udp::{ConfigCommandType, udp_hello::EspPeer}};
 
 #[derive(PartialEq, Clone, Copy, Serialize, Deserialize, Debug)]
 pub enum CurveType { Linear = 0, Exp = 1, Cosine = 2 }
@@ -107,6 +107,7 @@ impl TuningScreen {
         devices: &HashMap<u8, [VecDeque<(TelemetryPacket, f64)>; SensorKey::COUNT]>,
         config_egui: &AppConfig,
         screen: &mut ScreensTypes,
+        shared_esps: &Arc<RwLock<HashMap<u8, EspPeer>>>,
     ) {
 
         egui::SidePanel::left("esp_sidebar").min_width(150.0).show(ctx, |ui| {
@@ -211,9 +212,18 @@ impl TuningScreen {
             });
 
             if ui.button("Send motor config to ESP").clicked() {
-                let addr = format!("{}:{}", config_egui.ip_addr_esp0, config_egui.udp_port_config);
-                if let Err(e) = self.socket_udp_config.send_to(&self.tuning_params.to_bytes(), addr) {
-                    error!("Error sending tuning config: {e}");
+                let esp_ref = shared_esps.read().unwrap();
+                let ad = if let Some(peer) = esp_ref.get(&0) {
+                    Some(peer.ip_addr.ip())
+                } else {
+                    None
+                };
+                drop(esp_ref);
+                if let Some(ip) = ad {
+                    let addr = format!("{}:{}", ip, config_egui.udp_port_config);
+                    if let Err(e) = self.socket_udp_config.send_to(&self.tuning_params.to_bytes(), addr) {
+                        error!("Error sending tuning config: {e}");
+                    }
                 }
             }
         });

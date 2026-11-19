@@ -3,10 +3,10 @@ use std::{error::Error, f64::consts::PI, io, println, string::FromUtf8Error};
 use log::error;
 use serde::{Deserialize, Serialize};
 
-use crate::{error::AppError, gui::screens::tuning::CurveType, sensors::{lidar::{LidarD500Batch, LidarD500Packet}, parser::SensorsUdpHeader}};
+use crate::{error::AppError, gui::screens::tuning::CurveType, sensors::{lidar_accumulator::{LidarD500Batch, LidarD500Packet}, parser::SensorsUdpHeader}};
 
 pub mod parser;
-pub mod lidar;
+pub mod lidar_accumulator;
 
 pub const RAD_TO_DEG : f64 = 180.0 / PI;
 
@@ -54,8 +54,9 @@ pub enum SensorType {
     BatAdc = 38,
     Acs758 = 39,
     Bz181 = 40,
+    Ota = 41,
 
-    Max       = 41,
+    Max       = 42,
 }
 
 impl TryFrom<u8> for SensorType {
@@ -104,7 +105,8 @@ impl TryFrom<u8> for SensorType {
             38 => Ok(SensorType::BatAdc),
             39 => Ok(SensorType::Acs758),
             40 => Ok(SensorType::Bz181),
-            41 => Ok(SensorType::Max),
+            41 => Ok(SensorType::Ota),
+            42 => Ok(SensorType::Max),
             _ => Err("Sensor code not valid"),
         }
     }
@@ -364,6 +366,30 @@ pub struct PacketMotor {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PacketOtaStatus {
+    pub state: u8, // 0 BEGIN, 1 PROGRESS, 2 OK, 3 ERR
+    pub done: u32,
+    pub total: u32,
+    pub err: i32,
+}
+
+impl PacketOtaStatus {
+    pub fn from_buffer(buf: &[u8]) -> Result<Self, AppError> {
+        let state       = buf[0];
+        let done         = u32::from_le_bytes(buf[1 .. 5].try_into()?);
+        let total   = u32::from_le_bytes(buf[5 .. 9].try_into()?);
+        let err= i32::from_le_bytes(buf[9 .. 13].try_into()?);
+
+        Ok(Self {
+            done,
+            err,
+            state,
+            total,
+        })
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum TelemetryEnum {
     HCSR04(PacketUltrasonic),
     ESP(EspPacket),
@@ -389,6 +415,7 @@ pub enum TelemetryEnum {
     BATADC(PacketBatAdc),
     ACS758(PacketAcs758),
     BZ181(PacketBz181),
+    OTA(PacketOtaStatus),
 }
 
 //Buffer from ESP
@@ -730,6 +757,7 @@ pub enum SensorKey {
     BatAdc,
     ACS758,
     BZ181,
+    Ota,
     Last
 }
 
@@ -766,6 +794,7 @@ impl From<&TelemetryEnum> for SensorKey {
             TelemetryEnum::BATADC(_) => SensorKey::BatAdc,
             TelemetryEnum::ACS758(_) => SensorKey::ACS758,
             TelemetryEnum::BZ181(_) => SensorKey::BZ181,
+            TelemetryEnum::OTA(_) => SensorKey::Ota,
         }
     }
 }

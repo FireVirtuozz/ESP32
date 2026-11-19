@@ -39,7 +39,7 @@ fn udp_logs_loop(
         let buf = &buf[..amt]; //reference only to received data
 
         debug!("buf raw received : {:?}, size: {}, from: {:?}", buf, amt, src);
-        debug!("{}", String::from_utf8_lossy(buf));
+        debug!("{} from {}", String::from_utf8_lossy(buf), src.ip());
 
         logs_connected.store(true, Ordering::Relaxed);
         tx_log.send(LogPacket::log_from_buffer(&buf[.. amt])?)?;

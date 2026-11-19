@@ -5,7 +5,7 @@ use std::{
 use std::io::Write;
 
 use kiddo::{ImmutableKdTree, dist::SquaredEuclidean};
-use log::error;
+use log::{debug, error};
 use nalgebra::{Isometry2, Matrix2, Matrix3, Point2, Vector2, Vector3};
 
 use crate::odometry::{frames::Pose, slam::{OccupancyGrid, SlamEvent, SlamState, update_grid_raycasting}};
@@ -248,7 +248,7 @@ pub fn spawn_compare_thread(
                 off.get_translation_vector().norm(), off.get_rotation().to_degrees(), flags.trim_end(),
                 off.get_translation_vector().x, off.get_translation_vector().y, along, cross
             );
-            if DIAG_PRINT_EVERY > 0 && idx % DIAG_PRINT_EVERY == 0 { error!("[{}] {}", name, row); }
+            if DIAG_PRINT_EVERY > 0 && idx % DIAG_PRINT_EVERY == 0 { debug!("[{}] {}", name, row); }
             if let Some(f) = csv.as_mut() { let _ = writeln!(f, "{}", row); }
 
             if had_ref {
@@ -259,7 +259,7 @@ pub fn spawn_compare_thread(
                 s_yaw += corr_dyaw;
                 if s_n >= 100 {
                     let n = s_n as f32;
-                    error!(
+                    debug!(
                         "[{}] BILAN {} scans : rejets {:.0}% | score_last moyen {:.4} | corr moyenne {:.1} cm | biais yaw {:+.2}°",
                         name, s_n, 100.0 * s_rej as f32 / n, s_score / n, s_dt / n, s_yaw / n
                     );

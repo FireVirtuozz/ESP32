@@ -189,7 +189,7 @@ pub struct LidarD500Batch {
 impl LidarD500Batch {
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, AppError> {
         if bytes.len() != BATCH_SIZE {
-            error!("[src] lot rejeté : {} octets au lieu de {}", bytes.len(), BATCH_SIZE);
+            debug!("[src] lot rejeté : {} octets au lieu de {}", bytes.len(), BATCH_SIZE);
             return Err(AppError::Other("Invalid lidar packet size".to_string()));
         }
 
@@ -378,7 +378,7 @@ pub fn check_batch_continuity(batch: &LidarD500Batch, source: &str) {
         if dt > 10 && dt < 5000 {
             let lost = ((dt as f32 - 2.4) / 48.6).round().max(1.0) as u32;
             let total = SRC_LOST.fetch_add(lost, Ordering::Relaxed) + lost;
-            error!(
+            debug!(
                 "[src:{source}] trou de {dt} ms (~{lost} lot(s)) ; perdus {total} / reçus {}",
                 SRC_BATCHES.load(Ordering::Relaxed)
             );
@@ -432,7 +432,7 @@ impl Bilan {
             return;
         }
         let n = self.n as f32;
-        error!(
+        debug!(
             "[lidar] BILAN {} tours : rejetés {:.0}% | avec trous {:.0}% | valides moy {:.0} | couverture moy {:.0}° | âge du wrap moy {:.0} ms | coupures flux {breaks}",
             self.n,
             100.0 * self.dropped as f32 / n,
@@ -618,7 +618,7 @@ pub fn spawn_lidar_accumulator_thread(
                 if !lidar.is_plausible() {
                     bad_pkts += 1;
                     if bad_pkts <= 10 {
-                        error!(
+                        debug!(
                             "[lidar] paquet invalide ignoré : ts={} start={} end={} speed={}",
                             lidar.timestamp_ms, lidar.start_angle_centideg,
                             lidar.end_angle_centideg, lidar.radar_speed_deg_s
@@ -632,7 +632,7 @@ pub fn spawn_lidar_accumulator_thread(
                 if let Some(prev) = last_ts {
                     let dt = lidar_dt_ms(prev, ts);
                     if dt > STREAM_BREAK_MS {
-                        error!("[lidar] flux interrompu ({dt} ms) : tour en cours abandonné");
+                        debug!("[lidar] flux interrompu ({dt} ms) : tour en cours abandonné");
                         turn = Turn::new();
                         breaks += 1;
                     } else if dt > TS_GAP_MS {

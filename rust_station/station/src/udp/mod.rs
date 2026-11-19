@@ -10,6 +10,7 @@ pub mod udp_sensors;
 pub mod udp_video;
 pub mod udp_tailscale;
 pub mod udp_cfg;
+pub mod udp_hello;
 
 pub enum ConfigCommandType {
     Tuning = 1,

@@ -1,22 +1,13 @@
 use std::{
-    io::ErrorKind,
-    net::UdpSocket,
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        mpsc::{Receiver, RecvTimeoutError, Sender},
-        Arc, RwLock,
-    },
-    thread,
-    time::{Duration, Instant},
+    collections::HashMap, format, io::ErrorKind, net::UdpSocket, sync::{
+        Arc, RwLock, atomic::{AtomicU64, Ordering}, mpsc::{Receiver, RecvTimeoutError, Sender},
+    }, thread, time::{Duration, Instant},
 };
  
 use log::{debug, error, warn};
  
 use crate::{
-    camera::{CameraConfig, LEN},
-    config::AppConfig,
-    error::AppError,
-    udp::BUFFER_MAX_UDP_SIZE,
+    camera::{CameraConfig, LEN}, config::AppConfig, error::AppError, udp::{BUFFER_MAX_UDP_SIZE, udp_hello::EspPeer},
 };
  
 /// Port de config de l'ESP caméra.
@@ -136,18 +127,16 @@ pub fn udp_cfg_server_init(
     cfg: AppConfig,
     rx_cmd: Receiver<CamCmd>,
     tx_event: Sender<CamEvent>,
+    shared_esps: Arc<RwLock<HashMap<u8, EspPeer>>>,
 ) -> Result<(), AppError> {
-    // Un seul socket pour envoyer ET recevoir.
     let socket = UdpSocket::bind(format!("0.0.0.0:{}", cfg.udp_port_cfg_sta))?;
-    let esp_addr = format!("{}:{}", cfg.ip_addr_esp1, ESP_CAM_CFG_PORT);
-    start(socket, esp_addr, cfg.ip_addr_esp1.clone(), shared, rx_cmd, tx_event)?;
+    start(socket, shared_esps, shared, rx_cmd, tx_event)?;
     Ok(())
 }
  
 fn start(
     socket: UdpSocket,
-    esp_addr: String,
-    esp_ip: String,
+    shared_esps: Arc<RwLock<HashMap<u8, EspPeer>>>,
     shared: SharedCamCfg,
     rx_cmd: Receiver<CamCmd>,
     tx_event: Sender<CamEvent>,
@@ -158,17 +147,16 @@ fn start(
     let (sh, sc, ev) = (shared.clone(), state_count.clone(), tx_event.clone());
     thread::Builder::new()
         .name("cfg-recv".into())
-        .spawn(move || cfg_recv_loop(socket, esp_ip, sh, sc, ev))?;
+        .spawn(move || cfg_recv_loop(socket, sh, sc, ev))?;
     thread::Builder::new()
         .name("cfg-send".into())
-        .spawn(move || cfg_send_loop(tx_socket, esp_addr, shared, rx_cmd, state_count, tx_event))?;
+        .spawn(move || cfg_send_loop(tx_socket, shared_esps, shared, rx_cmd, state_count, tx_event))?;
     Ok(())
 }
  
-/// Seul écrivain de `shared`.
+/// Writes camera config from ESP
 fn cfg_recv_loop(
     socket: UdpSocket,
-    esp_ip: String,
     shared: SharedCamCfg,
     state_count: Arc<AtomicU64>,
     tx_event: Sender<CamEvent>,
@@ -185,12 +173,6 @@ fn cfg_recv_loop(
                 continue;
             }
         };
- 
-        // N'accepte que l'ESP configuré.
-        if src.ip().to_string() != esp_ip {
-            debug!("cfg: paquet ignoré de {src}");
-            continue;
-        }
  
         handle_datagram(&buf[..amt], &shared, &state_count, &tx_event);
     }
@@ -246,15 +228,25 @@ struct Pending {
 /// et redemande l'état tant qu'on n'en a pas.
 fn cfg_send_loop(
     sock: UdpSocket,
-    addr: String,
+    shared_esps: Arc<RwLock<HashMap<u8, EspPeer>>>,
     shared: SharedCamCfg,
     rx: Receiver<CamCmd>,
     state_count: Arc<AtomicU64>,
     tx_event: Sender<CamEvent>,
 ) {
     let send = |bytes: &[u8]| {
-        if let Err(e) = sock.send_to(bytes, &addr) {
-            warn!("cfg send: {e}");
+        let esp_ref = shared_esps.read().unwrap();
+        let addr = if let Some(esp) = esp_ref.get(&1) {
+            Some(esp.ip_addr.ip())
+        } else {
+            None
+        };
+        drop(esp_ref);
+        if let Some(ip) = addr {
+            let ad = format!("{}:{}", ip, ESP_CAM_CFG_PORT);
+            if let Err(e) = sock.send_to(bytes, ad) {
+                error!("cfg send: {e}");
+            }
         }
     };
  

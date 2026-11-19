@@ -5,7 +5,7 @@ use egui_plot::{Line, Plot, PlotBounds, PlotPoint, PlotPoints, Points, Text};
 use log::error;
 use nalgebra::Point2;
 
-use crate::{gui::{MyApp, ScreensTypes, get_sensor_data}, odometry::{ProcessedKey, ProcessedTelemetry, slam::SlamState}, sensors::{SensorKey, TelemetryEnum, TelemetryPacket, lidar::LidarDiagnostics}};
+use crate::{gui::{MyApp, ScreensTypes, get_sensor_data}, odometry::{ProcessedKey, ProcessedTelemetry, slam::SlamState}, sensors::{SensorKey, TelemetryEnum, TelemetryPacket, lidar_accumulator::LidarDiagnostics}};
 
 #[derive(PartialEq)]
 pub enum MpuSubTab {

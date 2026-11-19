@@ -6,7 +6,7 @@ use egui_plot::{Line, Plot, PlotBounds, PlotPoints};
 use log::debug;
 use nalgebra::Point2;
 
-use crate::{camera::CameraConfig, config::AppConfig, control::{DriveCommand, MiscellaneousCommand, SafetyCommand}, controller::ControllerPacket, gui::screens::{camera::CameraScreen, car::CarScreen, commands::CommandsScreen, dashboard::DashboardScreen, dump::{DumpEntry, DumpScreen}, home::HomeScreen, logs::{LogPacket, LogsScreen}, main::MainScreen, ota_control::OtaScreen, sensors::SensorsScreen, tuning::TuningScreen}, odometry::{ProcessedKey, ProcessedTelemetry, odo::OdoState, slam::SlamState}, sensors::{SensorKey, TelemetryPacket, lidar::LidarDiagnostics}, udp::udp_cfg::{CamCmd, CamEvent, SharedCamCfg}};
+use crate::{camera::CameraConfig, config::AppConfig, control::{DriveCommand, MiscellaneousCommand, SafetyCommand}, controller::ControllerPacket, gui::screens::{camera::CameraScreen, car::CarScreen, commands::CommandsScreen, dashboard::DashboardScreen, dump::{DumpEntry, DumpScreen}, home::HomeScreen, logs::{LogPacket, LogsScreen}, main::MainScreen, ota_control::OtaScreen, sensors::SensorsScreen, tuning::TuningScreen}, odometry::{ProcessedKey, ProcessedTelemetry, odo::OdoState, slam::SlamState}, sensors::{SensorKey, TelemetryPacket, lidar_accumulator::LidarDiagnostics}, udp::{udp_cfg::{CamCmd, CamEvent, SharedCamCfg}, udp_hello::EspPeer}};
 
 pub mod screens;
 
@@ -84,6 +84,7 @@ pub struct MyApp {
     pub shared_waypoints: Arc<RwLock<Vec<[f64; 2]>>>,
     pub shared_predicted_path: Arc<RwLock<Vec<[f64; 2]>>>,
     pub shared_cfg: SharedCamCfg,
+    pub shared_esps: Arc<RwLock<HashMap<u8, EspPeer>>>,
 
     pub active_drive: Arc<ArcSwap<DriveCommand>>,
     pub active_safety: Arc<ArcSwap<SafetyCommand>>,
@@ -130,7 +131,6 @@ impl eframe::App for MyApp {
 
             let device_buffers = self.devices
             .entry(packet.hd_info.esp_id).or_insert_with(|| {
-                // Crée un tableau de VecDeque vides pour chaque capteur (taille = NB_SENSOR_KEYS)
                 std::array::from_fn(|_| VecDeque::new())
             });
 
@@ -186,8 +186,12 @@ impl eframe::App for MyApp {
                 &self.active_drive, &self.active_safety, &self.active_misc,
                 &self.shared_waypoints, &self.shared_predicted_path,
             ),
-            ScreensTypes::Tuning => self.screens.tuning_screen.show(&ctx, &self.devices, &self.config_egui, &mut self.screen),
-            ScreensTypes::Ota => self.screens.ota_screen.show(&ctx, &mut self.screen, &self.config_egui),
+            ScreensTypes::Tuning => self.screens.tuning_screen.show(&ctx, &self.devices, &self.config_egui, 
+                &mut self.screen, &self.shared_esps,
+            ),
+            ScreensTypes::Ota => self.screens.ota_screen.show(&ctx, &mut self.screen, 
+                &self.config_egui, &self.shared_esps, &self.devices,
+            ),
             ScreensTypes::Dashboard => self.screens.dashboard_screen.show(&ctx, &self.devices, &mut self.screen),
         }
 
